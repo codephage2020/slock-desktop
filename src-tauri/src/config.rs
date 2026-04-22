@@ -6,14 +6,54 @@ const SETTINGS_FILE: &str = "settings.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ServiceSettings {
+    pub command_path: String,
+    pub working_directory: String,
+    pub args: Vec<String>,
+    pub auto_start_with_workspace: bool,
+}
+
+impl Default for ServiceSettings {
+    fn default() -> Self {
+        Self {
+            command_path: String::new(),
+            working_directory: String::new(),
+            args: Vec::new(),
+            auto_start_with_workspace: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSettings {
+    pub repository_slug: String,
+    pub releases_url: String,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            repository_slug: "codephage2020/slock-tauri".to_string(),
+            releases_url: "https://github.com/codephage2020/slock-tauri/releases".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub active_theme: String,
+    pub service: ServiceSettings,
+    pub updates: UpdateSettings,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             active_theme: "default".to_string(),
+            service: ServiceSettings::default(),
+            updates: UpdateSettings::default(),
         }
     }
 }

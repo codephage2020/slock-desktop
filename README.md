@@ -9,6 +9,8 @@ Tauri desktop shell for Slock. Phase 1 focuses on a persistent skin system and a
 - Three built-in themes: `Default`, `Graphite`, `Crimson`
 - Theme persistence in the app config directory
 - Runtime theme injection into the remote workspace
+- Local service settings, start, stop, and workspace-coupled auto-start
+- GitHub release check panel with one-click release and asset opening
 
 ## Development
 
@@ -25,7 +27,7 @@ pnpm test
 
 ## Planned next phases
 
-- workspace launcher refinements
-- sidecar service lifecycle
-- in-app updater
+- signed in-app updater flow
+- service health checks and richer stack orchestration
+- release workflow automation
 - OS autostart

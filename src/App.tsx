@@ -2,29 +2,51 @@ import { type CSSProperties, startTransition, useEffect, useState } from 'react'
 import './App.css'
 import {
   type BootstrapPayload,
+  type ServiceSnapshot,
   type ThemeDefinition,
   loadBootstrap,
+  openExternalUrl,
   openWorkspace,
+  saveServiceSettings,
+  saveUpdateSettings,
+  startService,
+  stopService,
   updateTheme,
 } from './lib/desktop'
+
+interface ReleaseAsset {
+  name: string
+  browserDownloadUrl: string
+}
+
+interface ReleaseInfo {
+  tagName: string
+  name: string
+  htmlUrl: string
+  publishedAt: string
+  body: string
+  prerelease: boolean
+  assets: ReleaseAsset[]
+  updateAvailable: boolean
+}
+
+interface ReleaseState {
+  loading: boolean
+  error: string | null
+  latest: ReleaseInfo | null
+}
+
+const INITIAL_RELEASE_STATE: ReleaseState = {
+  loading: false,
+  error: null,
+  latest: null,
+}
 
 function App() {
   const [snapshot, setSnapshot] = useState<BootstrapPayload | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-
-  async function handleThemeChange(themeId: string) {
-    try {
-      setBusyAction(themeId)
-      setErrorMessage(null)
-      const next = await updateTheme(themeId)
-      startTransition(() => setSnapshot(next))
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-    }
-  }
+  const [releaseState, setReleaseState] = useState<ReleaseState>(INITIAL_RELEASE_STATE)
 
   useEffect(() => {
     let cancelled = false
@@ -46,6 +68,19 @@ function App() {
     }
   }, [])
 
+  async function handleThemeChange(themeId: string) {
+    try {
+      setBusyAction(themeId)
+      setErrorMessage(null)
+      const next = await updateTheme(themeId)
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   async function handleWorkspaceOpen() {
     try {
       setBusyAction('workspace')
@@ -57,6 +92,147 @@ function App() {
     } finally {
       setBusyAction(null)
     }
+  }
+
+  async function handleServiceSave() {
+    if (!snapshot) {
+      return
+    }
+
+    try {
+      setBusyAction('save-service')
+      setErrorMessage(null)
+      const next = await saveServiceSettings(snapshot.service)
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleServiceStart() {
+    try {
+      setBusyAction('start-service')
+      setErrorMessage(null)
+      const next = await startService()
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleServiceStop() {
+    try {
+      setBusyAction('stop-service')
+      setErrorMessage(null)
+      const next = await stopService()
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleUpdateSettingsSave() {
+    if (!snapshot) {
+      return
+    }
+
+    try {
+      setBusyAction('save-updates')
+      setErrorMessage(null)
+      const next = await saveUpdateSettings(snapshot.updates)
+      startTransition(() => setSnapshot(next))
+      setReleaseState(INITIAL_RELEASE_STATE)
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleReleaseCheck() {
+    if (!snapshot) {
+      return
+    }
+
+    try {
+      setReleaseState((current) => ({
+        ...current,
+        loading: true,
+        error: null,
+      }))
+
+      const response = await fetch(snapshot.updates.latestReleaseApiUrl, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`GitHub release check failed with ${response.status}`)
+      }
+
+      const payload = await response.json()
+      const latest = mapReleasePayload(payload, snapshot.updates.currentVersion)
+      setReleaseState({
+        loading: false,
+        error: null,
+        latest,
+      })
+    } catch (error) {
+      setReleaseState({
+        loading: false,
+        error: getErrorMessage(error),
+        latest: null,
+      })
+    }
+  }
+
+  async function handleOpenExternal(url: string) {
+    try {
+      setBusyAction(`open:${url}`)
+      setErrorMessage(null)
+      await openExternalUrl(url)
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  function patchService(patch: Partial<ServiceSnapshot>) {
+    setSnapshot((current) =>
+      current
+        ? {
+            ...current,
+            service: {
+              ...current.service,
+              ...patch,
+            },
+          }
+        : current,
+    )
+  }
+
+  function patchUpdates(
+    patch: Partial<BootstrapPayload['updates']>,
+  ) {
+    setSnapshot((current) =>
+      current
+        ? {
+            ...current,
+            updates: {
+              ...current.updates,
+              ...patch,
+            },
+          }
+        : current,
+    )
   }
 
   if (!snapshot) {
@@ -74,6 +250,12 @@ function App() {
     snapshot.themes[0]
 
   const shellStyle = buildShellStyle(activeTheme)
+  const stackButtonLabel =
+    snapshot.service.autoStartWithWorkspace && snapshot.service.configured
+      ? 'Launch Stack'
+      : snapshot.workspaceOpen
+        ? 'Focus Workspace'
+        : 'Launch Workspace'
 
   return (
     <main className="studio-shell" data-mode={activeTheme.mode} style={shellStyle}>
@@ -82,16 +264,16 @@ function App() {
 
       <header className="masthead">
         <p className="eyebrow">{snapshot.appName}</p>
-        <p className="eyebrow subtle">Theme Studio / Phase 1</p>
+        <p className="eyebrow subtle">Theme Studio / Phase 2</p>
       </header>
 
       <section className="hero-grid">
         <div className="hero-copy">
-          <p className="kicker">Desktop skin system</p>
-          <h1>Shape the shell before the launcher and updater arrive.</h1>
+          <p className="kicker">Desktop control surface</p>
+          <h1>Operate the workspace, the local service, and the release line.</h1>
           <p className="lede">
-            This control surface owns the local visual system. The workspace
-            window inherits the active theme each time it opens or reloads.
+            The desktop shell now owns runtime theming, local stack launch
+            policy, and GitHub release awareness from one control plane.
           </p>
         </div>
 
@@ -107,8 +289,14 @@ function App() {
               <dd>{snapshot.workspaceUrl}</dd>
             </div>
             <div>
-              <dt>Live theme</dt>
-              <dd>{activeTheme.name}</dd>
+              <dt>Local service</dt>
+              <dd>
+                {snapshot.service.running
+                  ? `Running${snapshot.service.pid ? ` / PID ${snapshot.service.pid}` : ''}`
+                  : snapshot.service.configured
+                    ? 'Configured / idle'
+                    : 'Not configured'}
+              </dd>
             </div>
           </dl>
 
@@ -117,11 +305,7 @@ function App() {
             onClick={handleWorkspaceOpen}
             disabled={busyAction === 'workspace'}
           >
-            {busyAction === 'workspace'
-              ? 'Opening workspace…'
-              : snapshot.workspaceOpen
-                ? 'Focus Workspace'
-                : 'Launch Workspace'}
+            {busyAction === 'workspace' ? 'Launching…' : stackButtonLabel}
           </button>
         </aside>
       </section>
@@ -139,8 +323,8 @@ function App() {
           <h2>Three stable palettes. One stored choice.</h2>
         </div>
         <p className="theme-note">
-          The shell stays consistent locally. The remote Slock workspace gets a
-          matching overlay through injected theme tokens.
+          The shell stays consistent locally. The remote Slock workspace keeps
+          receiving a matching overlay through injected theme tokens.
         </p>
       </section>
 
@@ -197,12 +381,232 @@ function App() {
         })}
       </section>
 
+      <section className="operations-grid">
+        <article className="control-card">
+          <div className="control-card-head">
+            <div>
+              <p className="eyebrow">Local Service</p>
+              <h2>One-click stack startup</h2>
+            </div>
+            <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
+              {snapshot.service.running ? 'running' : 'idle'}
+            </span>
+          </div>
+
+          <p className="control-copy">
+            Keep a local daemon or API beside the desktop shell. The workspace
+            launcher can start it automatically before bringing the app forward.
+          </p>
+
+          <label className="field">
+            <span>Command path</span>
+            <input
+              value={snapshot.service.commandPath}
+              onChange={(event) =>
+                patchService({ commandPath: event.target.value })
+              }
+              placeholder="/absolute/path/to/service"
+            />
+          </label>
+
+          <label className="field">
+            <span>Working directory</span>
+            <input
+              value={snapshot.service.workingDirectory}
+              onChange={(event) =>
+                patchService({ workingDirectory: event.target.value })
+              }
+              placeholder="/absolute/path/to/project"
+            />
+          </label>
+
+          <label className="field">
+            <span>Arguments</span>
+            <textarea
+              value={snapshot.service.args.join('\n')}
+              onChange={(event) =>
+                patchService({ args: splitArgs(event.target.value) })
+              }
+              placeholder={'One argument per line\n--port\n3141'}
+            />
+          </label>
+
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={snapshot.service.autoStartWithWorkspace}
+              onChange={(event) =>
+                patchService({ autoStartWithWorkspace: event.target.checked })
+              }
+            />
+            <span>Auto-start the service when launching the workspace</span>
+          </label>
+
+          {snapshot.service.lastError ? (
+            <p className="inline-note error">{snapshot.service.lastError}</p>
+          ) : (
+            <p className="inline-note">
+              {snapshot.service.configured
+                ? 'The service command is saved locally in your app config directory.'
+                : 'Leave the command empty if this desktop build should open the cloud workspace only.'}
+            </p>
+          )}
+
+          <div className="button-row">
+            <button
+              className="theme-button"
+              onClick={handleServiceSave}
+              disabled={busyAction === 'save-service'}
+            >
+              {busyAction === 'save-service' ? 'Saving…' : 'Save Service Settings'}
+            </button>
+            <button
+              className="theme-button"
+              onClick={handleServiceStart}
+              disabled={busyAction === 'start-service'}
+            >
+              {busyAction === 'start-service' ? 'Starting…' : 'Start Service'}
+            </button>
+            <button
+              className="theme-button muted-button"
+              onClick={handleServiceStop}
+              disabled={busyAction === 'stop-service' || !snapshot.service.running}
+            >
+              {busyAction === 'stop-service' ? 'Stopping…' : 'Stop Service'}
+            </button>
+          </div>
+        </article>
+
+        <article className="control-card">
+          <div className="control-card-head">
+            <div>
+              <p className="eyebrow">Update Center</p>
+              <h2>GitHub release awareness</h2>
+            </div>
+            <span
+              className={`status-chip ${
+                releaseState.latest?.updateAvailable ? 'warm' : ''
+              }`}
+            >
+              {releaseState.latest
+                ? releaseState.latest.updateAvailable
+                  ? 'update available'
+                  : 'current'
+                : 'not checked'}
+            </span>
+          </div>
+
+          <p className="control-copy">
+            This stage checks the GitHub release channel and opens the release
+            page in one click. Signed in-app self-update is the next step.
+          </p>
+
+          <label className="field">
+            <span>Repository</span>
+            <input
+              value={snapshot.updates.repositorySlug}
+              onChange={(event) =>
+                patchUpdates({ repositorySlug: event.target.value })
+              }
+              placeholder="owner/repo"
+            />
+          </label>
+
+          <label className="field">
+            <span>Releases page</span>
+            <input
+              value={snapshot.updates.releasesUrl}
+              onChange={(event) => patchUpdates({ releasesUrl: event.target.value })}
+              placeholder="https://github.com/owner/repo/releases"
+            />
+          </label>
+
+          <div className="token-stack">
+            <div className="token-row">
+              <span>Installed</span>
+              <span>{snapshot.updates.currentVersion}</span>
+            </div>
+            <div className="token-row">
+              <span>Latest check API</span>
+              <span className="truncate">{snapshot.updates.latestReleaseApiUrl}</span>
+            </div>
+          </div>
+
+          {releaseState.error ? (
+            <p className="inline-note error">{releaseState.error}</p>
+          ) : releaseState.latest ? (
+            <div className="release-panel">
+              <div className="release-head">
+                <div>
+                  <p className="theme-name">
+                    {releaseState.latest.name || releaseState.latest.tagName}
+                  </p>
+                  <p className="theme-summary">
+                    Published {formatDate(releaseState.latest.publishedAt)}
+                  </p>
+                </div>
+                {releaseState.latest.prerelease ? (
+                  <span className="mode-chip">prerelease</span>
+                ) : null}
+              </div>
+
+              <p className="release-body">
+                {releaseState.latest.body || 'No release notes were provided for this release.'}
+              </p>
+
+              {releaseState.latest.assets.length > 0 ? (
+                <div className="asset-list">
+                  {releaseState.latest.assets.slice(0, 3).map((asset) => (
+                    <button
+                      key={asset.browserDownloadUrl}
+                      className="asset-link"
+                      onClick={() => handleOpenExternal(asset.browserDownloadUrl)}
+                    >
+                      {asset.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="inline-note">
+              No release check yet. Run a GitHub check after saving the release
+              channel.
+            </p>
+          )}
+
+          <div className="button-row">
+            <button
+              className="theme-button"
+              onClick={handleUpdateSettingsSave}
+              disabled={busyAction === 'save-updates'}
+            >
+              {busyAction === 'save-updates' ? 'Saving…' : 'Save Update Settings'}
+            </button>
+            <button
+              className="theme-button"
+              onClick={handleReleaseCheck}
+              disabled={releaseState.loading}
+            >
+              {releaseState.loading ? 'Checking…' : 'Check GitHub Release'}
+            </button>
+            <button
+              className="theme-button muted-button"
+              onClick={() => handleOpenExternal(snapshot.updates.releasesUrl)}
+              disabled={busyAction === `open:${snapshot.updates.releasesUrl}`}
+            >
+              Open Releases
+            </button>
+          </div>
+        </article>
+      </section>
+
       <section className="roadmap-strip">
         <p className="eyebrow">Queued next</p>
         <div className="pill-row">
-          <span className="pill">Workspace launcher</span>
-          <span className="pill">Sidecar service</span>
-          <span className="pill">In-app updater</span>
+          <span className="pill">Signed updater</span>
+          <span className="pill">Service health checks</span>
+          <span className="pill">Release workflow</span>
           <span className="pill">OS autostart</span>
         </div>
       </section>
@@ -225,6 +629,84 @@ function buildShellStyle(theme: ThemeDefinition) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown desktop error'
+}
+
+function splitArgs(value: string) {
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+function normalizeVersion(value: string) {
+  return value
+    .trim()
+    .replace(/^v/i, '')
+    .split('-')[0]
+}
+
+function compareVersions(left: string, right: string) {
+  const leftParts = normalizeVersion(left)
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0)
+  const rightParts = normalizeVersion(right)
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0)
+  const max = Math.max(leftParts.length, rightParts.length)
+
+  for (let index = 0; index < max; index += 1) {
+    const l = leftParts[index] ?? 0
+    const r = rightParts[index] ?? 0
+
+    if (l > r) {
+      return 1
+    }
+
+    if (l < r) {
+      return -1
+    }
+  }
+
+  return 0
+}
+
+function mapReleasePayload(payload: unknown, currentVersion: string): ReleaseInfo {
+  const release = payload as {
+    tag_name?: string
+    name?: string
+    html_url?: string
+    published_at?: string
+    body?: string
+    prerelease?: boolean
+    assets?: Array<{ name?: string; browser_download_url?: string }>
+  }
+
+  const tagName = release.tag_name ?? 'unknown'
+  return {
+    tagName,
+    name: release.name ?? '',
+    htmlUrl: release.html_url ?? '',
+    publishedAt: release.published_at ?? '',
+    body: release.body ?? '',
+    prerelease: Boolean(release.prerelease),
+    assets: (release.assets ?? [])
+      .filter((asset) => asset.browser_download_url)
+      .map((asset) => ({
+        name: asset.name ?? 'download',
+        browserDownloadUrl: asset.browser_download_url ?? '',
+      })),
+    updateAvailable: compareVersions(tagName, currentVersion) > 0,
+  }
+}
+
+function formatDate(value: string) {
+  if (!value) {
+    return 'unknown date'
+  }
+
+  return new Intl.DateTimeFormat('en', {
+    dateStyle: 'medium',
+  }).format(new Date(value))
 }
 
 export default App
