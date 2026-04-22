@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap');
+
+:root {
+  --canvas: #f3eee3;
+  --surface: #fbf7ef;
+  --surface-strong: #efe4d2;
+  --line: #d6c5aa;
+  --text: #171411;
+  --muted: #675d51;
+  --accent: #c58a1f;
+  --accent-soft: #f2ddb5;
+  font-family: 'Space Grotesk', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, var(--accent-soft), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--canvas) 92%, #ffffff), var(--canvas));
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100svh;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2.6rem, 6vw, 5.8rem);
+  line-height: 0.96;
+  letter-spacing: -0.05em;
+}
+
+h2 {
+  font-size: clamp(1.4rem, 2vw, 2.1rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}

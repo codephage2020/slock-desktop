@@ -1,0 +1,373 @@
+.loading-shell,
+.studio-shell {
+  position: relative;
+  min-height: 100svh;
+  overflow: hidden;
+}
+
+.loading-shell {
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 40px;
+  text-align: left;
+}
+
+.studio-shell {
+  padding: 28px;
+  display: grid;
+  gap: 28px;
+}
+
+.ambient {
+  position: absolute;
+  inset: auto;
+  pointer-events: none;
+  border-radius: 999px;
+  filter: blur(60px);
+  opacity: 0.7;
+}
+
+.ambient-left {
+  width: 380px;
+  height: 380px;
+  top: -120px;
+  left: -80px;
+  background: var(--accent-soft);
+}
+
+.ambient-right {
+  width: 420px;
+  height: 420px;
+  right: -120px;
+  bottom: -180px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.masthead,
+.theme-headline,
+.roadmap-strip,
+.workspace-panel,
+.theme-card,
+.error-banner {
+  position: relative;
+  z-index: 1;
+}
+
+.masthead {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.eyebrow,
+.kicker,
+.mode-chip,
+.status-row,
+.pill,
+.token-row span:last-child {
+  font-family: 'Space Mono', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.eyebrow,
+.subtle,
+.kicker {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.subtle {
+  text-align: right;
+}
+
+.hero-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.9fr);
+  gap: 22px;
+  align-items: stretch;
+}
+
+.hero-copy,
+.workspace-panel,
+.theme-card,
+.roadmap-strip,
+.error-banner {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.hero-copy {
+  padding: clamp(28px, 4vw, 56px);
+  border-radius: 34px;
+  display: grid;
+  gap: 18px;
+  min-height: 320px;
+}
+
+.workspace-panel {
+  border-radius: 30px;
+  padding: 26px;
+  display: grid;
+  gap: 22px;
+  align-content: start;
+}
+
+.kicker {
+  color: var(--accent);
+}
+
+.hero-copy h1 {
+  margin: 0;
+  max-width: 12ch;
+}
+
+.lede,
+.theme-note,
+.theme-summary,
+.meta-list dd,
+.error-banner p {
+  color: var(--muted);
+}
+
+.status-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.meta-list {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+.meta-list div {
+  display: grid;
+  gap: 6px;
+}
+
+.meta-list dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.meta-list dd {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.launch-button,
+.theme-button {
+  appearance: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.launch-button:hover,
+.theme-button:hover {
+  transform: translateY(-1px);
+}
+
+.launch-button:disabled,
+.theme-button:disabled {
+  cursor: wait;
+  opacity: 0.8;
+  transform: none;
+}
+
+.launch-button {
+  background: var(--accent);
+  color: #111;
+  padding: 14px 18px;
+  border-radius: 18px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.theme-headline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 420px);
+  gap: 22px;
+  align-items: end;
+}
+
+.theme-headline h2 {
+  margin: 6px 0 0;
+}
+
+.theme-note {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.theme-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.theme-card {
+  border-radius: 28px;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.theme-card.selected {
+  outline: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line));
+  box-shadow: 0 24px 60px -42px color-mix(in srgb, var(--accent) 48%, transparent);
+}
+
+.swatch-rail {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  min-height: 112px;
+}
+
+.swatch {
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.theme-card-body {
+  display: grid;
+  gap: 14px;
+}
+
+.theme-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 18px;
+}
+
+.theme-name {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.theme-summary {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 82px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.token-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
+  color: var(--muted);
+}
+
+.theme-button {
+  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--line) 82%, transparent);
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.theme-card.selected .theme-button {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+
+.roadmap-strip {
+  border-radius: 28px;
+  padding: 22px 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pill {
+  display: inline-flex;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+.error-banner {
+  border-radius: 22px;
+  padding: 18px 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.error-banner strong {
+  font-size: 0.92rem;
+  letter-spacing: 0.03em;
+}
+
+@media (max-width: 1080px) {
+  .studio-shell {
+    padding: 18px;
+  }
+
+  .masthead,
+  .theme-headline,
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .subtle {
+    text-align: left;
+  }
+
+  .theme-grid {
+    grid-template-columns: 1fr;
+  }
+}
