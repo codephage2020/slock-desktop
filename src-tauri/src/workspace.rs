@@ -587,10 +587,108 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     document.documentElement.lang = language;
 
+    const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const partialTranslationKeys = [
+      "thread",
+      "replyLower",
+      "repliesLower",
+      "activeLower",
+      "settings",
+      "account",
+      "browser",
+      "server",
+      "preferences",
+      "workspace",
+      "general",
+      "appearance",
+      "language",
+      "theme",
+      "security",
+      "billing",
+      "planBilling",
+      "dangerZone",
+      "integrations",
+    ];
+    const partialTranslations = [];
+
+    partialTranslationKeys.forEach((key) => {
+      const replacement = target[key];
+      if (!replacement) return;
+      Object.values(slockMenuCopy).forEach((dictionary) => {
+        const source = dictionary[key];
+        if (source && source !== replacement) {
+          partialTranslations.push([source, replacement]);
+        }
+      });
+    });
+    partialTranslations.sort((a, b) => b[0].length - a[0].length);
+
+    const canPartiallyTranslate = (element) => {
+      const text = element.textContent?.trim() || "";
+      if (!text || text.length > 96) return false;
+      if (element.closest("input, textarea, pre, code, [contenteditable='true']")) return false;
+      if (element.closest("[data-slock-message-content], [class*='message-content'], [class*='MessageContent']")) return false;
+      if (element.closest("article") && !element.closest("header, nav, aside, [role='menu'], [role='menuitem'], [role='heading']")) return false;
+
+      return element.matches([
+        "header",
+        "header *",
+        "nav",
+        "nav *",
+        "aside",
+        "aside *",
+        "[role='heading']",
+        "[role='heading'] *",
+        "[role='menu'] *",
+        "[role='menuitem']",
+        "[role='menuitem'] *",
+        "h1",
+        "h1 *",
+        "h2",
+        "h2 *",
+        "h3",
+        "h3 *",
+        "h4",
+        "h4 *",
+        "button",
+        "button *",
+        "label",
+        "label *",
+        "[data-radix-collection-item]",
+        "[data-radix-collection-item] *",
+        "[class*='uppercase']",
+        "[class*='tracking-widest']",
+      ].join(",")) || element.hasAttribute("title") || element.hasAttribute("aria-label");
+    };
+
+    const replacePartialText = (value) => {
+      let next = value;
+      partialTranslations.forEach(([source, replacement]) => {
+        if (/^[A-Za-z][A-Za-z0-9 &/.-]*$/.test(source)) {
+          const pattern = new RegExp(`(^|[^A-Za-z0-9_])(${escapeRegExp(source)})(?=$|[^A-Za-z0-9_])`, "g");
+          next = next.replace(pattern, `$1${replacement}`);
+        } else {
+          next = next.split(source).join(replacement);
+        }
+      });
+      return next;
+    };
+
+    const translateText = (value, allowPartial = false) => {
+      const text = value?.trim();
+      if (!text) return value;
+      if (translations.has(text)) {
+        return value.replace(text, translations.get(text));
+      }
+      return allowPartial ? replacePartialText(value) : value;
+    };
+
     const translateAttribute = (element, attribute) => {
       const value = element.getAttribute(attribute)?.trim();
-      if (value && translations.has(value)) {
-        element.setAttribute(attribute, translations.get(value));
+      if (!value) return;
+      const translated = translateText(value, attribute !== "placeholder");
+      if (translated !== value) {
+        element.setAttribute(attribute, translated);
       }
     };
 
@@ -656,20 +754,20 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       translateAttribute(element, "title");
       translateAttribute(element, "placeholder");
 
+      const allowPartial = canPartiallyTranslate(element);
+
       if (element.childElementCount === 0) {
-        const text = element.textContent?.trim();
-        if (text && translations.has(text)) {
-          element.textContent = translations.get(text);
-        }
+        const text = element.textContent || "";
+        const translated = translateText(text, allowPartial);
+        if (translated !== text) element.textContent = translated;
         return;
       }
 
       element.childNodes.forEach((node) => {
         if (node.nodeType !== Node.TEXT_NODE) return;
-        const text = node.textContent?.trim();
-        if (text && translations.has(text)) {
-          node.textContent = node.textContent.replace(text, translations.get(text));
-        }
+        const text = node.textContent || "";
+        const translated = translateText(text, allowPartial);
+        if (translated !== text) node.textContent = translated;
       });
     });
   };
