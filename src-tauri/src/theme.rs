@@ -891,17 +891,21 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   background: var(--slock-desktop-selection) !important;
 }}
 
-[class*="thread"] img,
-[class*="Thread"] img,
 [class*="thread"] [class*="avatar"],
 [class*="Thread"] [class*="avatar"],
 [class*="thread"] [class*="Avatar"],
 [class*="Thread"] [class*="Avatar"],
 [class*="thread"] [class*="rounded-full"][class*="h-"][class*="w-"],
 [class*="Thread"] [class*="rounded-full"][class*="h-"][class*="w-"],
-[aria-label*="thread" i] img,
-[aria-label*="线程"] img,
-[href*="thread"] img {{
+img[class*="avatar"],
+img[class*="Avatar"],
+img[class*="rounded-full"][class*="h-"][class*="w-"],
+img[alt*="avatar" i],
+img[alt*="头像"],
+img[title*="avatar" i],
+img[title*="头像"],
+img[data-avatar],
+[data-avatar] img {{
   width: 28px !important;
   min-width: 28px !important;
   max-width: 28px !important;
