@@ -2188,14 +2188,42 @@ aside :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*=
 }}
 
 [data-slock-desktop-task-row="true"] {{
-  display: flex !important;
+  display: grid !important;
+  grid-template-columns: 36px 64px 156px minmax(0, 1fr) minmax(120px, 180px) 48px !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  gap: 12px !important;
+  column-gap: 12px !important;
   text-align: left !important;
 }}
 
 [data-slock-desktop-task-row="true"] > * {{
+  min-width: 0 !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+}}
+
+[data-slock-desktop-task-row="true"] > :first-child {{
+  justify-self: center !important;
+  text-align: center !important;
+}}
+
+[data-slock-desktop-task-row="true"] > :nth-child(2),
+[data-slock-desktop-task-row="true"] > :nth-child(3),
+[data-slock-desktop-task-row="true"] > :nth-child(4) {{
+  justify-self: start !important;
+  text-align: left !important;
+}}
+
+[data-slock-desktop-task-row="true"] > :nth-child(5) {{
+  justify-self: end !important;
+  text-align: left !important;
+}}
+
+[data-slock-desktop-task-row="true"] > :last-child {{
+  justify-self: end !important;
+}}
+
+[data-slock-desktop-task-row="true"] :is(.text-center,[class*="text-center"],[class*="justify-center"]) {{
   text-align: left !important;
   justify-content: flex-start !important;
 }}
