@@ -465,6 +465,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopPrimaryList",
         "slockDesktopPrimaryRow",
         "slockDesktopPrimaryRowLayout",
+        "slockDesktopPrimaryRowVariant",
         "slockDesktopMenuItem",
         "slockDesktopTaskRow",
         "slockDesktopTaskTitle",
@@ -474,7 +475,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopPlusAction"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-module-tabs-scope],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-primary-row-layout],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-task-state-chip],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-plus-action]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-module-tabs-scope],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-primary-row-layout],[data-slock-desktop-primary-row-variant],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-task-state-chip],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-plus-action]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -528,6 +529,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 
       const detectPrimaryRowLayout = (row) => {{
         const children = Array.from(row.children).filter((child) => child instanceof HTMLElement);
+        const text = (row.textContent || "").replace(/\s+/g, " ").trim();
         const hasLeadingGraphic = children.slice(0, 2).some((child) => {{
           if (!(child instanceof HTMLElement)) return false;
           return (
@@ -536,6 +538,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           );
         }});
 
+        if (!hasLeadingGraphic && children.length <= 1 && /^#\s*\S+/.test(text)) return "hash-text";
         return hasLeadingGraphic ? "icon" : "text";
       }};
 
@@ -568,6 +571,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (text) row.setAttribute("title", text);
         row.dataset.slockDesktopPrimaryRow = "true";
         row.dataset.slockDesktopPrimaryRowLayout = detectPrimaryRowLayout(row);
+        if (/^#\s*all\b/i.test(text)) row.dataset.slockDesktopPrimaryRowVariant = "root-channel";
       }});
 
       document.querySelectorAll(`${{sidebarSelector}} button,${{sidebarSelector}} a,${{sidebarSelector}} [role="button"]`).forEach((row) => {{
@@ -581,6 +585,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (text) row.setAttribute("title", text);
         row.dataset.slockDesktopPrimaryRow = "true";
         row.dataset.slockDesktopPrimaryRowLayout = detectPrimaryRowLayout(row);
+        if (/^#\s*all\b/i.test(text)) row.dataset.slockDesktopPrimaryRowVariant = "root-channel";
       }});
 
       document.querySelectorAll('main button,main a,main [role="button"],main [class*="border-2"],main [class*="border"]').forEach((row) => {{
@@ -2339,6 +2344,15 @@ aside [data-slock-desktop-primary-row="true"],
   grid-template-columns: minmax(0, 1fr) auto !important;
 }}
 
+[data-slock-desktop-primary-row-layout="hash-text"] {{
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  padding-inline-start: 24px !important;
+}}
+
+[data-slock-desktop-primary-row-variant="root-channel"] {{
+  padding-inline-start: 24px !important;
+}}
+
 [data-slock-desktop-primary-row="true"]:hover {{
   z-index: 2 !important;
 }}
@@ -2358,12 +2372,21 @@ aside [data-slock-desktop-primary-row="true"],
   text-align: left !important;
 }}
 
+[data-slock-desktop-primary-row-layout="hash-text"] > :first-child {{
+  justify-self: start !important;
+  text-align: left !important;
+}}
+
 [data-slock-desktop-primary-row="true"]:not(:has(> :nth-child(2))) > :first-child {{
   grid-column: 2 !important;
   justify-self: start !important;
 }}
 
 [data-slock-desktop-primary-row-layout="text"]:not(:has(> :nth-child(2))) > :first-child {{
+  grid-column: 1 !important;
+}}
+
+[data-slock-desktop-primary-row-layout="hash-text"]:not(:has(> :nth-child(2))) > :first-child {{
   grid-column: 1 !important;
 }}
 
