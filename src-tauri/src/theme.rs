@@ -329,11 +329,12 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
       document.querySelectorAll(selector).forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         if (element.closest('#slock-desktop-settings-host')) return;
-        if (element.matches('button,[role="button"],input,textarea,select,svg,img')) return;
+        if (element.matches('button,[role="button"],input,textarea,select,svg')) return;
 
         const compactText = (element.textContent || "").replace(/\s+/g, "");
         const hasCompactText = compactText && compactText.length <= 3 && !/^[0-9]+$/.test(compactText);
-        const hasGraphic = !!element.querySelector("img,svg");
+        const isImage = element.matches("img");
+        const hasGraphic = isImage || !!element.querySelector("img,svg");
 
         const className = String(element.className || "");
         const looksAvatar =
@@ -344,12 +345,12 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         const nearThread = isThreadAvatarScope(element);
         const nearSidebar = isSidebarAvatarScope(element);
 
-        if (nearThread && (looksAvatar || looksSized) && (hasCompactText || looksSized)) {{
+        if (nearThread && (looksAvatar || looksSized || isImage) && (hasCompactText || looksSized || isImage)) {{
           markAvatarElement(element, "slockDesktopAvatar", 28);
         }} else if (
           nearSidebar &&
-          (looksAvatar || looksSized) &&
-          (hasCompactText || hasGraphic) &&
+          (looksAvatar || looksSized || isImage) &&
+          (hasCompactText || hasGraphic || isImage) &&
           !/badge|Badge|status|Status|presence|Presence/.test(className)
         ) {{
           markAvatarElement(element, "slockDesktopSidebarAvatar", 32);
@@ -422,6 +423,13 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
             delete element.dataset.slockDesktopSemanticShape;
           }}
 
+          const numericCount = /^\\d+\\+?$/.test(text);
+          if (badgeLike && numericCount && !tinyDot) {{
+            element.dataset.slockDesktopCountTone = brutalColor ? "accent" : "plain";
+          }} else {{
+            delete element.dataset.slockDesktopCountTone;
+          }}
+
           const taskState = resolveTaskState(text);
           if (taskState && badgeLike) {{
             element.dataset.slockDesktopTaskState = taskState;
@@ -456,15 +464,17 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopModuleTabsScope",
         "slockDesktopPrimaryList",
         "slockDesktopPrimaryRow",
+        "slockDesktopPrimaryRowLayout",
         "slockDesktopMenuItem",
         "slockDesktopTaskRow",
         "slockDesktopTaskTitle",
         "slockDesktopTaskStateChip",
         "slockDesktopAccountDock",
-        "slockDesktopAccountAction"
+        "slockDesktopAccountAction",
+        "slockDesktopPlusAction"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-module-tabs-scope],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-task-state-chip],[data-slock-desktop-account-dock],[data-slock-desktop-account-action]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-module-tabs-scope],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-primary-row-layout],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-task-state-chip],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-plus-action]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -516,6 +526,19 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         }});
       }});
 
+      const detectPrimaryRowLayout = (row) => {{
+        const children = Array.from(row.children).filter((child) => child instanceof HTMLElement);
+        const hasLeadingGraphic = children.slice(0, 2).some((child) => {{
+          if (!(child instanceof HTMLElement)) return false;
+          return (
+            child.matches('svg,img,[data-slock-desktop-sidebar-avatar="true"],[data-slock-desktop-avatar="true"],[class*="avatar"],[class*="Avatar"],[class*="rounded-full"]') ||
+            !!child.querySelector('svg,img,[data-slock-desktop-sidebar-avatar="true"],[data-slock-desktop-avatar="true"],[class*="avatar"],[class*="Avatar"],[class*="rounded-full"]')
+          );
+        }});
+
+        return hasLeadingGraphic ? "icon" : "text";
+      }};
+
       document.querySelectorAll(`${{sidebarSelector}} *`).forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         if (element.closest('#slock-desktop-settings-host')) return;
@@ -544,6 +567,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         const text = (row.textContent || "").replace(/\s+/g, " ").trim();
         if (text) row.setAttribute("title", text);
         row.dataset.slockDesktopPrimaryRow = "true";
+        row.dataset.slockDesktopPrimaryRowLayout = detectPrimaryRowLayout(row);
       }});
 
       document.querySelectorAll(`${{sidebarSelector}} button,${{sidebarSelector}} a,${{sidebarSelector}} [role="button"]`).forEach((row) => {{
@@ -556,6 +580,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (!isChannelRow) return;
         if (text) row.setAttribute("title", text);
         row.dataset.slockDesktopPrimaryRow = "true";
+        row.dataset.slockDesktopPrimaryRowLayout = detectPrimaryRowLayout(row);
       }});
 
       document.querySelectorAll('main button,main a,main [role="button"],main [class*="border-2"],main [class*="border"]').forEach((row) => {{
@@ -681,6 +706,22 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
             }}
           }}
         }});
+      }});
+
+      document.querySelectorAll('button,a,[role="button"]').forEach((action) => {{
+        if (!(action instanceof HTMLElement)) return;
+        if (action.closest('#slock-desktop-settings-host')) return;
+        const text = normalizeText(action.textContent);
+        const label = normalizeText([
+          action.textContent,
+          action.getAttribute("aria-label"),
+          action.getAttribute("title")
+        ].filter(Boolean).join(" "));
+        const iconOnly = text === "" || text === "+" || text === "＋";
+        const looksAddAction = /(add|new|create|plus|invite|添加|新建|创建|新增)/.test(label);
+        if (iconOnly && looksAddAction && action.querySelector("svg")) {{
+          action.dataset.slockDesktopPlusAction = "true";
+        }}
       }});
     }};
 
@@ -1104,6 +1145,22 @@ button[class*="size-"],
   border-radius: var(--slock-desktop-radius-sm) !important;
 }}
 
+[data-slock-desktop-plus-action="true"] {{
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding: 0 !important;
+  border-radius: var(--slock-desktop-radius-sm) !important;
+}}
+
+[data-slock-desktop-plus-action="true"] svg {{
+  width: 14px !important;
+  height: 14px !important;
+}}
+
 [class*="bg-brutal-yellow"],
 [class*="bg-brutal-orange"],
 [class*="hover\:bg-brutal-yellow"],
@@ -1466,6 +1523,26 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   border-color: color-mix(in srgb, var(--slock-desktop-semantic-current) 38%, var(--slock-desktop-line)) !important;
   color: color-mix(in srgb, var(--slock-desktop-semantic-current) 78%, var(--slock-desktop-text)) !important;
   box-shadow: none !important;
+}}
+
+[data-slock-desktop-count-tone] {{
+  background: transparent !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  min-height: auto !important;
+  border-radius: 0 !important;
+}}
+
+[data-slock-desktop-count-tone="plain"] {{
+  color: var(--slock-desktop-muted) !important;
+  font-weight: 500 !important;
+}}
+
+[data-slock-desktop-count-tone="accent"] {{
+  color: color-mix(in srgb, var(--slock-desktop-semantic-current) 78%, var(--slock-desktop-text)) !important;
+  font-weight: 650 !important;
 }}
 
 [data-slock-desktop-avatar="true"],
@@ -2258,6 +2335,10 @@ aside [data-slock-desktop-primary-row="true"],
   padding-inline: 0 !important;
 }}
 
+[data-slock-desktop-primary-row-layout="text"] {{
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}}
+
 [data-slock-desktop-primary-row="true"]:hover {{
   z-index: 2 !important;
 }}
@@ -2272,14 +2353,28 @@ aside [data-slock-desktop-primary-row="true"],
   min-width: 0 !important;
 }}
 
+[data-slock-desktop-primary-row-layout="text"] > :first-child {{
+  justify-self: start !important;
+  text-align: left !important;
+}}
+
 [data-slock-desktop-primary-row="true"]:not(:has(> :nth-child(2))) > :first-child {{
   grid-column: 2 !important;
   justify-self: start !important;
 }}
 
+[data-slock-desktop-primary-row-layout="text"]:not(:has(> :nth-child(2))) > :first-child {{
+  grid-column: 1 !important;
+}}
+
 [data-slock-desktop-primary-row="true"]:not(:has(> :nth-child(3))) > :last-child:not(:first-child) {{
   grid-column: 2 !important;
   justify-self: stretch !important;
+}}
+
+[data-slock-desktop-primary-row-layout="text"]:not(:has(> :nth-child(3))) > :last-child:not(:first-child) {{
+  grid-column: 2 !important;
+  justify-self: end !important;
 }}
 
 [data-slock-desktop-primary-row="true"]:has(> :nth-child(3)) > :last-child {{
