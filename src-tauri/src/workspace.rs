@@ -623,12 +623,19 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     });
     partialTranslations.sort((a, b) => b[0].length - a[0].length);
 
+    const isExcludedTranslationTarget = (element) => {
+      if (host.contains(element)) return true;
+      if (element.closest("input, textarea, pre, code, [contenteditable='true']")) return true;
+      if (element.closest("[data-slock-message-content], [data-message-content], [class*='message-content'], [class*='MessageContent']")) return true;
+      if (element.closest("article") && !element.closest("header, nav, aside, [role='menu'], [role='menuitem'], [role='heading'], [data-radix-collection-item]")) return true;
+
+      return false;
+    };
+
     const canPartiallyTranslate = (element) => {
       const text = element.textContent?.trim() || "";
       if (!text || text.length > 96) return false;
-      if (element.closest("input, textarea, pre, code, [contenteditable='true']")) return false;
-      if (element.closest("[data-slock-message-content], [class*='message-content'], [class*='MessageContent']")) return false;
-      if (element.closest("article") && !element.closest("header, nav, aside, [role='menu'], [role='menuitem'], [role='heading']")) return false;
+      if (isExcludedTranslationTarget(element)) return false;
 
       return element.matches([
         "header",
@@ -684,6 +691,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     };
 
     const translateAttribute = (element, attribute) => {
+      if (isExcludedTranslationTarget(element)) return;
       const value = element.getAttribute(attribute)?.trim();
       if (!value) return;
       const translated = translateText(value, attribute !== "placeholder");
@@ -748,7 +756,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     ].join(",");
 
     document.querySelectorAll(selectors).forEach((element) => {
-      if (host.contains(element)) return;
+      if (isExcludedTranslationTarget(element)) return;
 
       translateAttribute(element, "aria-label");
       translateAttribute(element, "title");
