@@ -25,6 +25,37 @@ pub fn settings_overlay_script(
         .replace("__SLOCK_DESKTOP_RESOLVED_LANGUAGE__", &resolved_language)
 }
 
+pub fn agentation_script() -> &'static str {
+    WORKSPACE_AGENTATION_SCRIPT
+}
+
+const WORKSPACE_AGENTATION_SCRIPT: &str = r#"
+(() => {
+  const rootId = "slock-desktop-agentation-root";
+  if (window.__slockDesktopAgentationMounted) return;
+  window.__slockDesktopAgentationMounted = true;
+
+  const mount = document.getElementById(rootId) || document.createElement("div");
+  mount.id = rootId;
+  if (!mount.isConnected) document.body.appendChild(mount);
+
+  Promise.all([
+    import("https://esm.sh/react@19.2.5"),
+    import("https://esm.sh/react-dom@19.2.5/client?deps=react@19.2.5"),
+    import("https://esm.sh/agentation@3.0.2?deps=react@19.2.5,react-dom@19.2.5"),
+  ])
+    .then(([React, ReactDOM, AgentationModule]) => {
+      if (window.__slockDesktopAgentationRoot) return;
+      window.__slockDesktopAgentationRoot = ReactDOM.createRoot(mount);
+      window.__slockDesktopAgentationRoot.render(React.createElement(AgentationModule.Agentation));
+    })
+    .catch((error) => {
+      window.__slockDesktopAgentationMounted = false;
+      console.warn("[Slock Desktop] Agentation workspace injection failed.", error);
+    });
+})();
+"#;
+
 const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 (() => {
   const hostId = "slock-desktop-settings-host";

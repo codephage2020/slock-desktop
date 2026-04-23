@@ -562,7 +562,12 @@ fn apply_workspace_scripts_to_window(
             resolved_language,
             &meta_catalog(active_theme_mode, custom_theme),
         ))
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    #[cfg(debug_assertions)]
+    if let Err(err) = window.eval(workspace::agentation_script()) {
+        log::warn!("failed to inject workspace Agentation: {err}");
+    }
+    Ok(())
 }
 
 fn apply_workspace_scripts_to_webview(
@@ -585,7 +590,12 @@ fn apply_workspace_scripts_to_webview(
             resolved_language,
             &meta_catalog(active_theme_mode, custom_theme),
         ))
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    #[cfg(debug_assertions)]
+    if let Err(err) = webview.eval(workspace::agentation_script()) {
+        log::warn!("failed to inject workspace Agentation: {err}");
+    }
+    Ok(())
 }
 
 fn main_window_is_workspace(app: &AppHandle) -> bool {
