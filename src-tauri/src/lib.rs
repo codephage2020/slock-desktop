@@ -14,6 +14,7 @@ use std::{
 use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::PageLoadEvent,
+    window::Color,
     AppHandle, Manager, RunEvent, State, Theme, Url,
 };
 use theme::{meta_catalog, resolve_theme, CustomThemeInput};
@@ -388,12 +389,22 @@ fn apply_theme_to_workspace(
 }
 
 fn apply_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
-    let native_theme = match theme::normalize_mode(theme_mode) {
+    let normalized_mode = theme::normalize_mode(theme_mode);
+    let native_theme = match normalized_mode {
         "light" => Some(Theme::Light),
         "dark" => Some(Theme::Dark),
         _ => None,
     };
     let _ = window.set_theme(native_theme);
+
+    let effective_dark = normalized_mode == "dark"
+        || (normalized_mode == "system" && matches!(window.theme(), Ok(Theme::Dark)));
+    let background = if effective_dark {
+        Color(37, 38, 35, 255)
+    } else {
+        Color(255, 255, 255, 255)
+    };
+    let _ = window.set_background_color(Some(background));
 }
 
 fn apply_window_language(

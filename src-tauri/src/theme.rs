@@ -287,7 +287,7 @@ fn remote_css(theme: &ThemeDefinition) -> String {
   color-scheme: {mode};
   --slock-desktop-canvas: {canvas};
   --slock-desktop-app-bg: {canvas};
-  --slock-desktop-toolbar-bg: {surface_strong};
+  --slock-desktop-toolbar-bg: {surface};
   --slock-desktop-sidebar-bg: {surface_strong};
   --slock-desktop-panel-bg: color-mix(in srgb, {surface_strong} 72%, {canvas});
   --slock-desktop-surface: {surface};
@@ -335,7 +335,7 @@ fn remote_css(theme: &ThemeDefinition) -> String {
   html[data-slock-desktop-mode="system"] {{
     --slock-desktop-canvas: #1f1f1c;
     --slock-desktop-app-bg: #1f1f1c;
-    --slock-desktop-toolbar-bg: #2f302c;
+    --slock-desktop-toolbar-bg: #252623;
     --slock-desktop-sidebar-bg: #2f302c;
     --slock-desktop-panel-bg: #282925;
     --slock-desktop-surface: #252623;
@@ -357,7 +357,7 @@ fn remote_css(theme: &ThemeDefinition) -> String {
 html,
 body,
 #root {{
-  background: var(--slock-desktop-canvas) !important;
+  background: var(--slock-desktop-surface) !important;
   color: var(--slock-desktop-text) !important;
 }}
 
@@ -716,6 +716,16 @@ button[class*="size-"],
 }}
 
 .safe-top.safe-left.safe-right,
+.safe-top,
+[class*="safe-top"],
+[class*="titlebar"],
+[class*="Titlebar"],
+[class*="topbar"],
+[class*="Topbar"],
+[class*="toolbar"],
+[class*="Toolbar"],
+[role="banner"],
+header,
 .flex.h-\[62px\],
 .flex.h-\[62px\].shrink-0,
 .relative.flex.items-center,
@@ -1132,6 +1142,16 @@ span {{
 }}
 
 .safe-top.safe-left.safe-right,
+.safe-top,
+[class*="safe-top"],
+[class*="titlebar"],
+[class*="Titlebar"],
+[class*="topbar"],
+[class*="Topbar"],
+[class*="toolbar"],
+[class*="Toolbar"],
+[role="banner"],
+header,
 .flex.h-\[62px\],
 .flex.h-\[62px\].shrink-0,
 .relative.flex.items-center.border-b-2,
