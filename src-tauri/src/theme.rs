@@ -801,7 +801,13 @@ aside button[data-active="true"],
 [class*="Thread"][aria-current="page"],
 [class*="Thread"][aria-selected="true"],
 [class*="Thread"][data-state="active"],
-[class*="Thread"][data-active="true"] {{
+[class*="Thread"][data-active="true"],
+nav .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+aside .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+[class*="sidebar"] .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+[class*="Sidebar"] .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+.group.flex.items-center.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+.flex.w-full.items-center.gap-2.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold {{
   background: var(--slock-desktop-selection) !important;
   color: var(--slock-desktop-text) !important;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slock-desktop-accent) 20%, transparent) !important;
@@ -863,7 +869,11 @@ aside [aria-selected="true"],
 aside [data-state="active"],
 nav [aria-current="page"],
 nav [aria-selected="true"],
-nav [data-state="active"] {{
+nav [data-state="active"],
+nav .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+aside .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+[class*="sidebar"] .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+[class*="Sidebar"] .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold {{
   background: var(--slock-desktop-selection) !important;
 }}
 
@@ -928,8 +938,10 @@ nav [data-state="active"] {{
 
 .relative.flex.items-center.border-t-2 button[aria-label*="send" i],
 .relative.flex.items-center.border-t-2 button[aria-label*="发送" i],
+.relative.flex.items-center.border-t-2 button[type="submit"],
 .flex.items-center.border-t-2 button[aria-label*="send" i],
 .flex.items-center.border-t-2 button[aria-label*="发送" i],
+.flex.items-center.border-t-2 button[type="submit"],
 [class*="composer"] button[aria-label*="send" i],
 [class*="composer"] button[aria-label*="发送" i],
 [class*="composer"] button[title*="send" i],

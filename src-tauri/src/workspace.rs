@@ -135,6 +135,22 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       members: "Members",
       invite: "Invite",
       search: "Search",
+      tasks: "Tasks",
+      saved: "Saved",
+      pinned: "Pinned",
+      machines: "Machines",
+      releaseNotes: "Release Notes",
+      releaseNotesSentence: "Release notes",
+      markAsRead: "Mark as Read",
+      markAsUnread: "Mark as Unread",
+      markAsReadSentence: "Mark as read",
+      markAsUnreadSentence: "Mark as unread",
+      copyLink: "Copy link",
+      copyLinkTitle: "Copy Link",
+      convertToTask: "Convert to Task",
+      convertToTaskSentence: "Convert to task",
+      loadOlderMessages: "Load older messages",
+      loadOlderMessagesTitle: "Load Older Messages",
       help: "Help",
       signOut: "Sign out",
       logOut: "Log out",
@@ -156,6 +172,22 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       members: "成员",
       invite: "邀请",
       search: "搜索",
+      tasks: "任务",
+      saved: "已保存",
+      pinned: "已置顶",
+      machines: "机器",
+      releaseNotes: "发布说明",
+      releaseNotesSentence: "发布说明",
+      markAsRead: "标记为已读",
+      markAsUnread: "标记为未读",
+      markAsReadSentence: "标记为已读",
+      markAsUnreadSentence: "标记为未读",
+      copyLink: "复制链接",
+      copyLinkTitle: "复制链接",
+      convertToTask: "转换为任务",
+      convertToTaskSentence: "转换为任务",
+      loadOlderMessages: "加载更早消息",
+      loadOlderMessagesTitle: "加载更早消息",
       help: "帮助",
       signOut: "退出登录",
       logOut: "退出登录",
@@ -351,6 +383,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       --desktop-selection: #e7f5f1;
       --desktop-hover: rgba(31, 31, 28, 0.04);
       --desktop-focus-ring: rgba(16, 163, 127, 0.28);
+      --desktop-radius-xs: 8px;
+      --desktop-radius-sm: 10px;
+      --desktop-radius-md: 12px;
+      --desktop-radius-lg: 16px;
+      --desktop-radius-xl: 20px;
+      --desktop-radius-pill: 999px;
       color: var(--desktop-text);
       font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
     }
@@ -417,7 +455,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       justify-content: center;
       padding: 0;
       border: 1px solid var(--desktop-line);
-      border-radius: 14px;
+      border-radius: var(--desktop-radius-md);
       background: var(--desktop-surface-secondary);
       color: var(--desktop-text);
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -434,7 +472,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     .launcher-icon span {
       position: relative;
       height: 2px;
-      border-radius: 999px;
+      border-radius: var(--desktop-radius-pill);
       background: currentColor;
       opacity: 0.82;
     }
@@ -445,7 +483,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       top: 50%;
       width: 5px;
       height: 5px;
-      border-radius: 999px;
+      border-radius: var(--desktop-radius-pill);
       background: var(--desktop-accent);
       box-shadow: 0 0 0 2px var(--desktop-selection);
       transform: translateY(-50%);
@@ -472,7 +510,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       max-height: min(620px, calc(100vh - 96px));
       overflow: auto;
       border: 1px solid var(--desktop-line);
-      border-radius: 20px;
+      border-radius: var(--desktop-radius-xl);
       background: var(--desktop-surface);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
       opacity: 0;
@@ -538,7 +576,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       grid-template-columns: 118px minmax(0, 1fr);
       min-height: 320px;
       border: 1px solid var(--desktop-line);
-      border-radius: 16px;
+      border-radius: var(--desktop-radius-lg);
       background: var(--desktop-canvas);
       overflow: hidden;
     }
@@ -557,7 +595,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       align-items: center;
       gap: 8px;
       padding: 8px;
-      border-radius: 12px;
+      border-radius: var(--desktop-radius-md);
       color: var(--desktop-text);
       font-size: 13px;
       font-weight: 600;
@@ -600,7 +638,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 4px;
       padding: 3px;
       border: 1px solid var(--desktop-line);
-      border-radius: 14px;
+      border-radius: var(--desktop-radius-md);
       background: var(--desktop-surface-secondary);
     }
 
@@ -609,7 +647,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       min-width: 34px;
       min-height: 30px;
       border: 0;
-      border-radius: 10px;
+      border-radius: var(--desktop-radius-sm);
       background: transparent;
       color: var(--desktop-text);
       font-size: 12px;
@@ -630,7 +668,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       align-items: center;
       gap: 10px;
       padding: 8px;
-      border-radius: 16px;
+      border-radius: var(--desktop-radius-lg);
       background: transparent;
       color: var(--desktop-text);
       text-align: left;
@@ -653,13 +691,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 4px;
       min-height: 38px;
       padding: 4px;
-      border-radius: 10px;
+      border-radius: var(--desktop-radius-sm);
       background: var(--theme-canvas);
       box-shadow: inset 0 0 0 1px var(--theme-line);
     }
 
     .swatch span {
-      border-radius: 6px;
+      border-radius: var(--desktop-radius-xs);
       background: var(--theme-surface);
     }
 
@@ -710,7 +748,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 10px;
       margin-top: 2px;
       padding: 8px 10px;
-      border-radius: 12px;
+      border-radius: var(--desktop-radius-md);
       background: var(--desktop-surface-secondary);
       color: var(--desktop-muted);
       font-size: 12px;
