@@ -256,6 +256,59 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
       document.head.appendChild(themeMeta);
     }}
     themeMeta.setAttribute("content", {accent});
+
+    const markAvatarInitials = () => {{
+      if (!document.body) return;
+      const selector = [
+        '[class*="rounded-full"]',
+        '[class*="avatar"]',
+        '[class*="Avatar"]',
+        '[class*="bg-brutal-cyan"]',
+        '[class*="bg-brutal-pink"]',
+        '[class*="bg-brutal-lime"]',
+        '[class*="bg-brutal-yellow"]',
+        '[class*="bg-brutal-orange"]'
+      ].join(',');
+
+      document.querySelectorAll(selector).forEach((element) => {{
+        if (!(element instanceof HTMLElement)) return;
+        if (element.closest('#slock-desktop-settings-host')) return;
+        if (element.matches('button,[role="button"],input,textarea,select,svg,img')) return;
+
+        const compactText = (element.textContent || "").replace(/\s+/g, "");
+        if (!compactText || compactText.length > 3 || /^[0-9]+$/.test(compactText)) return;
+
+        const className = String(element.className || "");
+        const looksAvatar =
+          /avatar|Avatar|rounded-full|bg-brutal|bg-\[|bg-(cyan|blue|indigo|emerald|green|pink|rose|orange|amber|slate|gray)/.test(className);
+        const nearThread =
+          element.closest('[class*="thread"],[class*="Thread"],[aria-label*="thread" i],[aria-label*="线程"],[href*="thread"]') ||
+          element.closest('.max-w-sm,.max-w-md,.max-w-lg,.w-full.border-2');
+
+        if (looksAvatar && nearThread) {{
+          element.dataset.slockDesktopAvatar = "true";
+        }}
+      }});
+    }};
+
+    markAvatarInitials();
+    if (!window.__slockDesktopAvatarObserver && document.body) {{
+      let avatarPending = false;
+      window.__slockDesktopAvatarObserver = new MutationObserver(() => {{
+        if (avatarPending) return;
+        avatarPending = true;
+        requestAnimationFrame(() => {{
+          avatarPending = false;
+          markAvatarInitials();
+        }});
+      }});
+      window.__slockDesktopAvatarObserver.observe(document.body, {{
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "aria-label", "href"]
+      }});
+    }}
   }};
 
   if (document.readyState === "loading") {{
@@ -316,6 +369,7 @@ fn remote_css(theme: &ThemeDefinition) -> String {
   --slock-desktop-radius-xl: 20px;
   --slock-desktop-radius-pill: 999px;
   --slock-desktop-readable-width: 840px;
+  --slock-desktop-topbar-height: 62px;
   --font-display: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
   --default-font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
   --default-mono-font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
@@ -732,13 +786,15 @@ header,
 .flex.overflow-x-auto,
 .shrink-0.border-b-2,
 .md\:hidden.shrink-0,
-[class*="border-b-2"].bg-white,
-[class*="border-t-2"].bg-white {{
+[class*="border-b-2"].bg-white {{
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
-  box-shadow: var(--slock-desktop-soft-shadow) !important;
-  min-height: 56px !important;
-  height: 56px !important;
+  border-bottom: 1px solid var(--slock-desktop-line) !important;
+  border-bottom-color: var(--slock-desktop-line) !important;
+  box-shadow: none !important;
+  min-height: var(--slock-desktop-topbar-height) !important;
+  height: var(--slock-desktop-topbar-height) !important;
+  max-height: var(--slock-desktop-topbar-height) !important;
   align-items: center !important;
   padding-block: 0 !important;
 }}
@@ -891,6 +947,7 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   background: var(--slock-desktop-selection) !important;
 }}
 
+[data-slock-desktop-avatar="true"],
 [class*="thread"] [class*="avatar"],
 [class*="Thread"] [class*="avatar"],
 [class*="thread"] [class*="Avatar"],
@@ -914,8 +971,16 @@ img[data-avatar],
   max-height: 28px !important;
   aspect-ratio: 1 / 1 !important;
   flex: 0 0 28px !important;
+  flex-basis: 28px !important;
   border-radius: var(--slock-desktop-radius-pill) !important;
   object-fit: cover !important;
+  overflow: hidden !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  text-align: center !important;
 }}
 
 [id^="message-"],
@@ -1162,11 +1227,17 @@ header,
 .flex.items-start.gap-2.border-b-2,
 .border-b-2.bg-white,
 .border-b-2.bg-\[\#ffeefb\],
-.border-t-2.bg-white,
 .flex.overflow-x-auto.border-b-2 {{
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
-  box-shadow: var(--slock-desktop-soft-shadow) !important;
+  border-bottom: 1px solid var(--slock-desktop-line) !important;
+  border-bottom-color: var(--slock-desktop-line) !important;
+  box-shadow: none !important;
+  min-height: var(--slock-desktop-topbar-height) !important;
+  height: var(--slock-desktop-topbar-height) !important;
+  max-height: var(--slock-desktop-topbar-height) !important;
+  align-items: center !important;
+  padding-block: 0 !important;
 }}
 
 .flex.w-full.items-center.gap-2,
