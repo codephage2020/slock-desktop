@@ -1599,13 +1599,19 @@ form:has(textarea[placeholder*="消息"]),
 form:has(button[title*="Attach image" i]),
 form:has(button[title*="附加图片"]) {{
   position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 0 0 auto !important;
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
   border-width: 1px 0 0 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  padding: 10px 12px !important;
-  gap: 10px !important;
+  min-height: 96px !important;
+  max-height: 154px !important;
+  height: auto !important;
+  padding: 12px 14px !important;
+  gap: 8px !important;
   overflow: visible !important;
 }}
 
@@ -1620,16 +1626,18 @@ form:has(textarea[placeholder*="消息"]) [contenteditable="true"],
 form:has(button[title*="Attach image" i]) [contenteditable="true"],
 form:has(button[title*="附加图片"]) [contenteditable="true"] {{
   min-height: 44px !important;
+  max-height: 86px !important;
   padding: 8px 12px !important;
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
   line-height: 1.55 !important;
-  overflow: visible !important;
+  overflow-y: auto !important;
   min-width: 0 !important;
   flex: 1 1 auto !important;
   width: auto !important;
+  resize: none !important;
 }}
 
 .relative.flex.items-center.border-t-2 button[aria-label*="send" i],
@@ -1672,7 +1680,10 @@ form:has(button[title*="附加图片"]) {{
   border-width: 1px 0 0 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  padding: 12px !important;
+  min-height: 96px !important;
+  max-height: 154px !important;
+  height: auto !important;
+  padding: 12px 14px !important;
   overflow: visible !important;
 }}
 
@@ -1687,6 +1698,9 @@ form:has(button[title*="附加图片"]) .flex.items-center.justify-between.gap-3
   min-height: 36px !important;
   flex: 0 0 auto !important;
   align-items: center !important;
+  width: 100% !important;
+  margin-top: 0 !important;
+  padding-inline: 2px !important;
 }}
 
 form:has(textarea[placeholder*="Message" i]) button[title*="Attach" i],
@@ -1716,12 +1730,14 @@ form:has(textarea[placeholder*="Message" i]) .border-2:has([contenteditable="tru
 form:has(textarea[placeholder*="消息"]) .border-2:has([contenteditable="true"]),
 form:has(button[title*="Attach image" i]) .border-2:has([contenteditable="true"]),
 form:has(button[title*="附加图片"]) .border-2:has([contenteditable="true"]) {{
-  background: transparent !important;
-  border-color: transparent !important;
-  border-width: 0 !important;
-  border-radius: 0 !important;
+  background: var(--slock-desktop-surface-secondary) !important;
+  border: 1px solid var(--slock-desktop-line) !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
   box-shadow: none !important;
+  min-height: 50px !important;
+  max-height: 96px !important;
   padding: 0 !important;
+  overflow: hidden !important;
 }}
 
 .text-black,
