@@ -757,6 +757,11 @@ aside button,
 [class*="thread"],
 [class*="Thread"] {{
   border-radius: 10px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  min-width: 0 !important;
 }}
 
 nav button:hover,
@@ -767,6 +772,99 @@ aside button:hover,
 [class*="thread"]:hover,
 [class*="Thread"]:hover {{
   background: var(--slock-desktop-hover) !important;
+}}
+
+nav button[aria-current="page"],
+nav button[aria-selected="true"],
+nav button[data-state="active"],
+nav button[data-active="true"],
+aside button[aria-current="page"],
+aside button[aria-selected="true"],
+aside button[data-state="active"],
+aside button[data-active="true"],
+.group.flex.items-center[aria-current="page"],
+.group.flex.items-center[aria-selected="true"],
+.group.flex.items-center[data-state="active"],
+.group.flex.items-center[data-active="true"],
+[class*="channel"][aria-current="page"],
+[class*="channel"][aria-selected="true"],
+[class*="channel"][data-state="active"],
+[class*="channel"][data-active="true"],
+[class*="Channel"][aria-current="page"],
+[class*="Channel"][aria-selected="true"],
+[class*="Channel"][data-state="active"],
+[class*="Channel"][data-active="true"],
+[class*="thread"][aria-current="page"],
+[class*="thread"][aria-selected="true"],
+[class*="thread"][data-state="active"],
+[class*="thread"][data-active="true"],
+[class*="Thread"][aria-current="page"],
+[class*="Thread"][aria-selected="true"],
+[class*="Thread"][data-state="active"],
+[class*="Thread"][data-active="true"] {{
+  background: var(--slock-desktop-selection) !important;
+  color: var(--slock-desktop-text) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slock-desktop-accent) 20%, transparent) !important;
+}}
+
+nav button > *,
+aside button > *,
+.group.flex.items-center > *,
+[class*="channel"] > *,
+[class*="Channel"] > *,
+[class*="thread"] > *,
+[class*="Thread"] > * {{
+  min-width: 0 !important;
+}}
+
+nav button > :first-child,
+aside button > :first-child,
+.group.flex.items-center > :first-child,
+[class*="channel"] > :first-child,
+[class*="Channel"] > :first-child,
+[class*="thread"] > :first-child,
+[class*="Thread"] > :first-child {{
+  text-align: left !important;
+}}
+
+nav button > :last-child,
+aside button > :last-child,
+.group.flex.items-center > :last-child,
+[class*="channel"] > :last-child,
+[class*="Channel"] > :last-child,
+[class*="thread"] > :last-child,
+[class*="Thread"] > :last-child,
+[class*="ml-auto"],
+.ml-auto,
+[class*="badge"],
+[class*="Badge"],
+[class*="count"],
+[class*="Count"] {{
+  margin-left: auto !important;
+  justify-self: end !important;
+  text-align: right !important;
+}}
+
+[class*="sidebar"] [class*="bg-brutal"],
+[class*="Sidebar"] [class*="bg-brutal"],
+aside [class*="bg-brutal"],
+nav [class*="bg-brutal"] {{
+  background: transparent !important;
+}}
+
+[class*="sidebar"] [aria-current="page"],
+[class*="Sidebar"] [aria-current="page"],
+[class*="sidebar"] [aria-selected="true"],
+[class*="Sidebar"] [aria-selected="true"],
+[class*="sidebar"] [data-state="active"],
+[class*="Sidebar"] [data-state="active"],
+aside [aria-current="page"],
+aside [aria-selected="true"],
+aside [data-state="active"],
+nav [aria-current="page"],
+nav [aria-selected="true"],
+nav [data-state="active"] {{
+  background: var(--slock-desktop-selection) !important;
 }}
 
 [id^="message-"],
@@ -799,11 +897,14 @@ aside button:hover,
 .border-t-2.bg-white,
 [class*="composer"],
 [class*="Composer"] {{
+  position: relative !important;
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
   border-radius: var(--slock-desktop-radius-lg) var(--slock-desktop-radius-lg) 0 0 !important;
   box-shadow: var(--slock-desktop-soft-shadow) !important;
   padding: 8px 12px !important;
+  gap: 10px !important;
+  overflow: visible !important;
 }}
 
 .relative.flex.items-center.border-t-2 textarea,
@@ -813,13 +914,49 @@ aside button:hover,
 [class*="composer"] [contenteditable="true"],
 [class*="Composer"] [contenteditable="true"] {{
   min-height: 44px !important;
-  padding: 10px 12px !important;
+  padding: 10px 56px 10px 12px !important;
   border: 0 !important;
   border-radius: var(--slock-desktop-radius-md) !important;
   background: transparent !important;
   box-shadow: none !important;
   line-height: 1.55 !important;
   overflow: visible !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  width: auto !important;
+}}
+
+.relative.flex.items-center.border-t-2 button[aria-label*="send" i],
+.relative.flex.items-center.border-t-2 button[aria-label*="发送" i],
+.flex.items-center.border-t-2 button[aria-label*="send" i],
+.flex.items-center.border-t-2 button[aria-label*="发送" i],
+[class*="composer"] button[aria-label*="send" i],
+[class*="composer"] button[aria-label*="发送" i],
+[class*="composer"] button[title*="send" i],
+[class*="composer"] button[title*="发送" i],
+[class*="composer"] button[type="submit"],
+[class*="composer"] button:last-of-type,
+[class*="Composer"] button[aria-label*="send" i],
+[class*="Composer"] button[aria-label*="发送" i],
+[class*="Composer"] button[title*="send" i],
+[class*="Composer"] button[title*="发送" i],
+[class*="Composer"] button[type="submit"],
+[class*="Composer"] button:last-of-type {{
+  position: relative !important;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: 3 !important;
+  flex: 0 0 36px !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  border-radius: var(--slock-desktop-radius-md) !important;
+  background: var(--slock-desktop-accent) !important;
+  color: var(--slock-desktop-surface) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }}
 
 .text-black,

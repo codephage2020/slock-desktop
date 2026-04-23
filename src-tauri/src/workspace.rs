@@ -59,6 +59,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       languageSystem: "System",
       saved: "Saved in desktop config",
       themes: "themes",
+      dragHint: "Drag to move",
       themeNames: {},
       themeSummaries: {},
     },
@@ -82,6 +83,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       languageSystem: "系统",
       saved: "已保存到桌面配置",
       themes: "个主题",
+      dragHint: "拖动移动",
       themeNames: {
         default: "默认",
         light: "雾蓝",
@@ -120,6 +122,50 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     return navigator.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
   };
   const t = (key) => copy[resolveLanguage()][key];
+  const slockMenuCopy = {
+    "en-US": {
+      channels: "Channels",
+      newChannel: "New channel",
+      directMessages: "Direct messages",
+      threads: "Threads",
+      settings: "Settings",
+      workspaceSettings: "Workspace settings",
+      profile: "Profile",
+      notifications: "Notifications",
+      members: "Members",
+      invite: "Invite",
+      search: "Search",
+      help: "Help",
+      signOut: "Sign out",
+      logOut: "Log out",
+      create: "Create",
+      new: "New",
+      more: "More",
+      collapseSidebar: "Collapse sidebar",
+      expandSidebar: "Expand sidebar",
+    },
+    "zh-CN": {
+      channels: "频道",
+      newChannel: "新建频道",
+      directMessages: "私信",
+      threads: "线程",
+      settings: "设置",
+      workspaceSettings: "工作区设置",
+      profile: "个人资料",
+      notifications: "通知",
+      members: "成员",
+      invite: "邀请",
+      search: "搜索",
+      help: "帮助",
+      signOut: "退出登录",
+      logOut: "退出登录",
+      create: "创建",
+      new: "新建",
+      more: "更多",
+      collapseSidebar: "收起侧边栏",
+      expandSidebar: "展开侧边栏",
+    },
+  };
   const themeDisplay = (theme) => {
     const dictionary = copy[resolveLanguage()];
     return {
@@ -138,6 +184,131 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     "--desktop-muted",
     "--desktop-selection",
   ];
+  const dockPositionKey = "slock-desktop-settings-position";
+  let suppressLauncherClick = false;
+
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+  const defaultDockPosition = () => ({
+    x: Math.max(12, window.innerWidth - 68),
+    y: Math.max(12, window.innerHeight - 68),
+  });
+  const sanitizeDockPosition = (position) => {
+    const fallback = defaultDockPosition();
+    const x = Number.isFinite(position?.x) ? position.x : fallback.x;
+    const y = Number.isFinite(position?.y) ? position.y : fallback.y;
+    return {
+      x: clamp(x, 12, Math.max(12, window.innerWidth - 56)),
+      y: clamp(y, 12, Math.max(12, window.innerHeight - 56)),
+    };
+  };
+  const loadDockPosition = () => {
+    try {
+      return sanitizeDockPosition(JSON.parse(localStorage.getItem(dockPositionKey) || "null"));
+    } catch {
+      return sanitizeDockPosition(null);
+    }
+  };
+  const saveDockPosition = (position) => {
+    try {
+      localStorage.setItem(dockPositionKey, JSON.stringify(sanitizeDockPosition(position)));
+    } catch {
+      // Local storage can be unavailable in hardened webview contexts.
+    }
+  };
+  const applyDockPosition = (dock, position) => {
+    const next = sanitizeDockPosition(position);
+    dock.style.setProperty("--dock-x", `${next.x}px`);
+    dock.style.setProperty("--dock-y", `${next.y}px`);
+    dock.dataset.align = next.x < window.innerWidth / 2 ? "left" : "right";
+    dock.dataset.vertical = next.y < window.innerHeight / 2 ? "top" : "bottom";
+    return next;
+  };
+
+  const translateSlockMenus = () => {
+    const language = resolveLanguage();
+    const target = slockMenuCopy[language];
+    const translations = new Map();
+
+    Object.keys(target).forEach((key) => {
+      Object.values(slockMenuCopy).forEach((dictionary) => {
+        if (dictionary[key] && dictionary[key] !== target[key]) {
+          translations.set(dictionary[key], target[key]);
+        }
+      });
+    });
+
+    document.documentElement.lang = language;
+
+    const translateAttribute = (element, attribute) => {
+      const value = element.getAttribute(attribute)?.trim();
+      if (value && translations.has(value)) {
+        element.setAttribute(attribute, translations.get(value));
+      }
+    };
+
+    const selectors = [
+      "[role='menuitem']",
+      "[role='menu'] button",
+      "[role='menu'] [role='button']",
+      "nav a",
+      "nav button",
+      "aside a",
+      "aside button",
+      "header button",
+      "button[aria-haspopup='menu']",
+      "button[aria-label]",
+      "[aria-label]",
+    ].join(",");
+
+    document.querySelectorAll(selectors).forEach((element) => {
+      if (host.contains(element)) return;
+
+      translateAttribute(element, "aria-label");
+      translateAttribute(element, "title");
+
+      if (element.childElementCount === 0) {
+        const text = element.textContent?.trim();
+        if (text && translations.has(text)) {
+          element.textContent = translations.get(text);
+        }
+        return;
+      }
+
+      element.childNodes.forEach((node) => {
+        if (node.nodeType !== Node.TEXT_NODE) return;
+        const text = node.textContent?.trim();
+        if (text && translations.has(text)) {
+          node.textContent = node.textContent.replace(text, translations.get(text));
+        }
+      });
+    });
+  };
+
+  const bindSlockMenuTranslator = () => {
+    if (!document.body) return;
+    translateSlockMenus();
+
+    if (window.__slockDesktopMenuObserver) {
+      window.__slockDesktopMenuObserver.disconnect();
+    }
+
+    let pending = false;
+    window.__slockDesktopMenuObserver = new MutationObserver(() => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        translateSlockMenus();
+      });
+    });
+    window.__slockDesktopMenuObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["aria-label", "title"],
+    });
+  };
 
   const syncHostTheme = () => {
     const theme = themes.find((candidate) => candidate.id === activeThemeId) || themes[0];
@@ -209,12 +380,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     .dock {
       position: fixed;
-      right: 24px;
-      bottom: 24px;
+      left: 0;
+      top: 0;
       z-index: 2147483647;
-      display: grid;
-      justify-items: end;
-      gap: 10px;
+      width: 44px;
+      height: 44px;
+      transform: translate3d(var(--dock-x, calc(100vw - 68px)), var(--dock-y, calc(100vh - 68px)), 0);
       pointer-events: none;
     }
 
@@ -238,13 +409,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .launcher {
-      min-height: 36px;
+      width: 44px;
+      height: 44px;
+      min-height: 44px;
       display: inline-flex;
       align-items: center;
-      gap: 9px;
-      padding: 8px 14px;
+      justify-content: center;
+      padding: 0;
       border: 1px solid var(--desktop-line);
-      border-radius: 12px;
+      border-radius: 14px;
       background: var(--desktop-surface-secondary);
       color: var(--desktop-text);
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -252,16 +425,49 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       letter-spacing: -0.01em;
     }
 
-    .launcher-dot {
-      width: 8px;
-      height: 8px;
+    .launcher-icon {
+      width: 20px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .launcher-icon span {
+      position: relative;
+      height: 2px;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: 0.82;
+    }
+
+    .launcher-icon span::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 5px;
+      height: 5px;
       border-radius: 999px;
       background: var(--desktop-accent);
-      box-shadow: 0 0 0 4px var(--desktop-selection);
+      box-shadow: 0 0 0 2px var(--desktop-selection);
+      transform: translateY(-50%);
+    }
+
+    .launcher-icon span:nth-child(1)::after {
+      left: 3px;
+    }
+
+    .launcher-icon span:nth-child(2)::after {
+      right: 4px;
+    }
+
+    .launcher-icon span:nth-child(3)::after {
+      left: 9px;
     }
 
     .panel {
       pointer-events: auto;
+      position: absolute;
+      right: 0;
+      bottom: 54px;
       width: min(420px, calc(100vw - 28px));
       max-height: min(620px, calc(100vh - 96px));
       overflow: auto;
@@ -274,6 +480,16 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       transition:
         opacity 180ms ease,
         transform 180ms ease;
+    }
+
+    .dock[data-align="left"] .panel {
+      left: 0;
+      right: auto;
+    }
+
+    .dock[data-vertical="top"] .panel {
+      top: 54px;
+      bottom: auto;
     }
 
     .dock[data-open="true"] .panel {
@@ -527,8 +743,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     @media (max-width: 520px) {
       .dock {
-        right: 12px;
-        bottom: 12px;
+        transform: translate3d(var(--dock-x, calc(100vw - 56px)), var(--dock-y, calc(100vh - 56px)), 0);
       }
 
       .settings-grid {
@@ -563,6 +778,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const dock = document.createElement("div");
     dock.className = "dock";
     dock.dataset.open = String(open);
+    applyDockPosition(dock, loadDockPosition());
 
     const panel = document.createElement("section");
     panel.className = "panel";
@@ -675,9 +891,51 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const launcher = document.createElement("button");
     launcher.className = "launcher";
     launcher.type = "button";
+    launcher.title = `${t("launcher")} · ${t("dragHint")}`;
+    launcher.setAttribute("aria-label", t("launcher"));
     launcher.setAttribute("aria-expanded", String(open));
-    launcher.innerHTML = `<span class="launcher-dot"></span><span>${t("launcher")}</span>`;
+    launcher.innerHTML = `<span class="launcher-icon" aria-hidden="true"><span></span><span></span><span></span></span>`;
+    launcher.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      const start = loadDockPosition();
+      let current = start;
+      let moved = false;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      launcher.setPointerCapture?.(event.pointerId);
+
+      const move = (moveEvent) => {
+        const deltaX = moveEvent.clientX - startX;
+        const deltaY = moveEvent.clientY - startY;
+        if (Math.abs(deltaX) + Math.abs(deltaY) > 5) {
+          moved = true;
+        }
+        current = applyDockPosition(dock, {
+          x: start.x + deltaX,
+          y: start.y + deltaY,
+        });
+      };
+
+      const end = () => {
+        launcher.removeEventListener("pointermove", move);
+        launcher.removeEventListener("pointerup", end);
+        launcher.removeEventListener("pointercancel", end);
+        launcher.releasePointerCapture?.(event.pointerId);
+        if (moved) {
+          saveDockPosition(current);
+          suppressLauncherClick = true;
+          setTimeout(() => {
+            suppressLauncherClick = false;
+          }, 0);
+        }
+      };
+
+      launcher.addEventListener("pointermove", move);
+      launcher.addEventListener("pointerup", end);
+      launcher.addEventListener("pointercancel", end);
+    });
     launcher.addEventListener("click", () => {
+      if (suppressLauncherClick) return;
       open = window.__slockDesktopSettingsOpen === true;
       open = !open;
       window.__slockDesktopSettingsOpen = open;
@@ -721,6 +979,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const setLanguage = async (language) => {
     activeLanguage = language;
     render();
+    translateSlockMenus();
 
     try {
       const invoke = window.__TAURI__?.core?.invoke;
@@ -770,5 +1029,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   }
 
   render();
+  bindSlockMenuTranslator();
 })();
 "#;
