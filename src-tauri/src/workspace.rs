@@ -313,6 +313,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       "button[title]",
       "button[type='submit']",
       "label",
+      "label span",
       "button[aria-haspopup='menu']",
       "button[aria-label]",
       "[aria-label]",

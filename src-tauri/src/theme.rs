@@ -881,6 +881,29 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   background: var(--slock-desktop-selection) !important;
 }}
 
+[class*="thread"] img,
+[class*="Thread"] img,
+[class*="thread"] [class*="avatar"],
+[class*="Thread"] [class*="avatar"],
+[class*="thread"] [class*="Avatar"],
+[class*="Thread"] [class*="Avatar"],
+[class*="thread"] [class*="rounded-full"][class*="h-"][class*="w-"],
+[class*="Thread"] [class*="rounded-full"][class*="h-"][class*="w-"],
+[aria-label*="thread" i] img,
+[aria-label*="线程"] img,
+[href*="thread"] img {{
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  aspect-ratio: 1 / 1 !important;
+  flex: 0 0 28px !important;
+  border-radius: var(--slock-desktop-radius-pill) !important;
+  object-fit: cover !important;
+}}
+
 [id^="message-"],
 [class*="message"],
 [class*="Message"],
