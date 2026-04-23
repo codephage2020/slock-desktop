@@ -435,7 +435,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
       if (!document.body) return;
 
       const normalizeText = (value) => (value || "").replace(/\s+/g, " ").trim().toLowerCase();
-      const moduleNames = new Set(["chat", "member", "members", "聊天", "成员"]);
+      const moduleNames = new Set(["chat", "member", "members", "task", "tasks", "聊天", "成员", "任务"]);
       const sectionNames = new Set([
         "channels",
         "channel",
@@ -453,6 +453,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopModuleTabs",
         "slockDesktopModuleTab",
         "slockDesktopModuleTabLabel",
+        "slockDesktopModuleTabsScope",
         "slockDesktopPrimaryList",
         "slockDesktopPrimaryRow",
         "slockDesktopMenuItem",
@@ -462,13 +463,13 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopAccountAction"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-account-dock],[data-slock-desktop-account-action]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-module-tabs-scope],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-account-dock],[data-slock-desktop-account-action]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
 
       const moduleButtons = Array.from(
-        document.querySelectorAll(`${{sidebarSelector}} button,${{sidebarSelector}} [role="tab"],${{sidebarSelector}} [role="button"]`)
+        document.querySelectorAll("button,[role='tab'],[role='button']")
       ).filter((element) => {{
         if (!(element instanceof HTMLElement)) return false;
         if (element.closest('#slock-desktop-settings-host')) return false;
@@ -487,18 +488,23 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
       moduleGroups.forEach((buttons, group) => {{
         const labels = new Set(buttons.map((button) => normalizeText(button.textContent)));
         const hasChat = labels.has("chat") || labels.has("聊天");
-        const hasMembers = labels.has("member") || labels.has("members") || labels.has("成员");
-        if (!hasChat || !hasMembers || !(group instanceof HTMLElement)) return;
+        const hasSecondary = labels.has("member") || labels.has("members") || labels.has("task") || labels.has("tasks") || labels.has("成员") || labels.has("任务");
+        if (!hasChat || !hasSecondary || !(group instanceof HTMLElement)) return;
 
         group.dataset.slockDesktopModuleTabs = "true";
-        buttons.forEach((button) => {{
+        group.dataset.slockDesktopModuleTabsScope = group.closest(sidebarSelector) ? "sidebar" : "content";
+        const selectedButtons = buttons.filter((button) => {{
           const className = String(button.className || "");
-          const selected =
+          return (
             button.getAttribute("aria-selected") === "true" ||
             button.getAttribute("aria-current") === "page" ||
             button.dataset.state === "active" ||
             button.dataset.active === "true" ||
-            /bg-brutal-(pink|lime|cyan|yellow|orange)|shadow-brutal|font-bold/.test(className);
+            /bg-brutal-(pink|lime|cyan|yellow|orange)|shadow-brutal|font-bold/.test(className)
+          );
+        }});
+        buttons.forEach((button) => {{
+          const selected = selectedButtons.length > 0 ? selectedButtons.includes(button) : button === buttons[0];
 
           button.dataset.slockDesktopModuleTab = selected ? "selected" : "icon";
           Array.from(button.querySelectorAll("span,div,p,strong")).forEach((child) => {{
@@ -1613,6 +1619,8 @@ form:has(button[title*="附加图片"]) {{
   padding: 12px 14px !important;
   gap: 8px !important;
   overflow: visible !important;
+  align-self: stretch !important;
+  margin-top: 0 !important;
 }}
 
 .relative.flex.items-center.border-t-2 textarea,
@@ -1685,6 +1693,8 @@ form:has(button[title*="附加图片"]) {{
   height: auto !important;
   padding: 12px 14px !important;
   overflow: visible !important;
+  align-self: stretch !important;
+  margin-top: 0 !important;
 }}
 
 form:has(textarea[placeholder*="Message" i]) .flex.items-center.justify-between.gap-3,
@@ -1695,12 +1705,13 @@ form:has(button[title*="附加图片"]) .flex.items-center.justify-between.gap-3
   visibility: visible !important;
   opacity: 1 !important;
   position: relative !important;
-  min-height: 36px !important;
+  min-height: 32px !important;
   flex: 0 0 auto !important;
   align-items: center !important;
   width: 100% !important;
   margin-top: 0 !important;
   padding-inline: 2px !important;
+  gap: 6px !important;
 }}
 
 form:has(textarea[placeholder*="Message" i]) button[title*="Attach" i],
@@ -1720,6 +1731,31 @@ form:has(button[title*="附加图片"]) button[type="submit"] {{
   min-height: 32px !important;
   border-radius: var(--slock-desktop-radius-md) !important;
   box-shadow: none !important;
+}}
+
+form:has(textarea[placeholder*="Message" i]) .flex.items-center.justify-between.gap-3 button,
+form:has(textarea[placeholder*="消息"]) .flex.items-center.justify-between.gap-3 button,
+form:has(button[title*="Attach image" i]) .flex.items-center.justify-between.gap-3 button,
+form:has(button[title*="附加图片"]) .flex.items-center.justify-between.gap-3 button {{
+  min-height: 32px !important;
+  max-height: 32px !important;
+  padding-inline: 8px !important;
+  border-radius: var(--slock-desktop-radius-sm) !important;
+  box-shadow: none !important;
+  white-space: nowrap !important;
+  max-width: 82px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}}
+
+form:has(textarea[placeholder*="Message" i]) .flex.items-center.justify-between.gap-3 button:is([title*="Attach" i],[aria-label*="Attach" i],[title*="image" i],[aria-label*="image" i],[title*="file" i],[aria-label*="file" i],[title*="附加"],[aria-label*="附加"],[title*="图片"],[aria-label*="图片"],[title*="文件"],[aria-label*="文件"]):not([type="submit"]),
+form:has(textarea[placeholder*="消息"]) .flex.items-center.justify-between.gap-3 button:is([title*="Attach" i],[aria-label*="Attach" i],[title*="image" i],[aria-label*="image" i],[title*="file" i],[aria-label*="file" i],[title*="附加"],[aria-label*="附加"],[title*="图片"],[aria-label*="图片"],[title*="文件"],[aria-label*="文件"]):not([type="submit"]),
+form:has(button[title*="Attach image" i]) .flex.items-center.justify-between.gap-3 button:is([title*="Attach" i],[aria-label*="Attach" i],[title*="image" i],[aria-label*="image" i],[title*="file" i],[aria-label*="file" i],[title*="附加"],[aria-label*="附加"],[title*="图片"],[aria-label*="图片"],[title*="文件"],[aria-label*="文件"]):not([type="submit"]),
+form:has(button[title*="附加图片"]) .flex.items-center.justify-between.gap-3 button:is([title*="Attach" i],[aria-label*="Attach" i],[title*="image" i],[aria-label*="image" i],[title*="file" i],[aria-label*="file" i],[title*="附加"],[aria-label*="附加"],[title*="图片"],[aria-label*="图片"],[title*="文件"],[aria-label*="文件"]):not([type="submit"]) {{
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  padding: 0 !important;
 }}
 
 form:has(textarea[placeholder*="Message" i]) .border-2:has(textarea),
@@ -2101,6 +2137,10 @@ button,
   box-shadow: none !important;
 }}
 
+[data-slock-desktop-module-tabs-scope="content"] {{
+  margin-inline-start: 28px !important;
+}}
+
 [data-slock-desktop-module-tab] {{
   min-height: 34px !important;
   border-radius: var(--slock-desktop-radius-pill) !important;
@@ -2148,6 +2188,15 @@ button,
   color: var(--slock-desktop-text) !important;
   font-size: 13px !important;
   font-weight: 650 !important;
+}}
+
+[data-slock-desktop-account-dock="true"] :is(button,a,[role="button"]),
+[data-slock-desktop-account-action="true"],
+nav [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"],
+aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
+  border-color: transparent !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
 }}
 
 [data-slock-desktop-primary-list="true"] {{
