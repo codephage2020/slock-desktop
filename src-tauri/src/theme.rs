@@ -457,10 +457,12 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopPrimaryRow",
         "slockDesktopMenuItem",
         "slockDesktopTaskRow",
-        "slockDesktopTaskTitle"
+        "slockDesktopTaskTitle",
+        "slockDesktopAccountDock",
+        "slockDesktopAccountAction"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-account-dock],[data-slock-desktop-account-action]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -615,6 +617,47 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (!semanticMenu && actions.length < 2) return;
 
         actions.forEach(markMenuItem);
+      }});
+
+      document.querySelectorAll(sidebarSelector).forEach((sidebar) => {{
+        if (!(sidebar instanceof HTMLElement)) return;
+        if (sidebar.closest('#slock-desktop-settings-host')) return;
+        const sidebarRect = sidebar.getBoundingClientRect();
+        if (sidebarRect.height <= 0) return;
+
+        const actions = Array.from(sidebar.querySelectorAll("button,a,[role='button']"))
+          .filter((element) => element instanceof HTMLElement && !element.closest("form,input,textarea,select"));
+        actions.forEach((action) => {{
+          const rect = action.getBoundingClientRect();
+          if (rect.height <= 0 || rect.width <= 0) return;
+          if (rect.bottom < sidebarRect.bottom - 190) return;
+
+          const label = normalizeText([
+            action.textContent,
+            action.getAttribute("aria-label"),
+            action.getAttribute("title")
+          ].filter(Boolean).join(" "));
+          const hasAvatar =
+            !!action.querySelector('[data-slock-desktop-sidebar-avatar="true"],img,[class*="avatar"],[class*="Avatar"],[class*="rounded-full"]');
+          const looksSettingsAction =
+            /settings|setting|profile|account|user|设置|个人|账号|账户/.test(label) ||
+            (rect.width <= 68 && rect.height <= 68 && !!action.querySelector("svg"));
+          if (!hasAvatar && !looksSettingsAction) return;
+
+          action.dataset.slockDesktopAccountAction = "true";
+          let container = action.parentElement;
+          for (let depth = 0; container && depth < 4; depth += 1, container = container.parentElement) {{
+            if (!(container instanceof HTMLElement)) continue;
+            if (container.matches("nav,aside")) break;
+            const containerRect = container.getBoundingClientRect();
+            if (containerRect.bottom < sidebarRect.bottom - 210) continue;
+            const interactiveCount = container.querySelectorAll("button,a,[role='button']").length;
+            if (interactiveCount > 0 && interactiveCount <= 4) {{
+              container.dataset.slockDesktopAccountDock = "true";
+              break;
+            }}
+          }}
+        }});
       }});
     }};
 
@@ -2283,6 +2326,26 @@ aside :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*=
   border-radius: var(--slock-desktop-radius-pill) !important;
   background: var(--slock-desktop-semantic-current) !important;
   flex: 0 0 7px !important;
+}}
+
+[data-slock-desktop-account-dock="true"] {{
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-account-action="true"] {{
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  border-radius: var(--slock-desktop-radius-md) !important;
+}}
+
+[data-slock-desktop-account-action="true"]:hover,
+[data-slock-desktop-account-action="true"]:focus-visible {{
+  background: var(--slock-desktop-hover) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }}
 
 .safe-top :is(h1,h2,h3,span,p,button),
