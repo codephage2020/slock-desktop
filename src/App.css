@@ -119,6 +119,197 @@
   align-content: start;
 }
 
+.launch-board {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1320px);
+  min-height: min(760px, calc(100svh - 48px));
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(360px, 440px) minmax(280px, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "appearance launch preview"
+    "service launch updates";
+  gap: 16px;
+  align-items: stretch;
+}
+
+.launch-center-card,
+.launch-panel,
+.launch-board > .appearance-preview,
+.launch-board > .control-card {
+  background: var(--slock-color-surface);
+  border: 1px solid var(--slock-color-border);
+  box-shadow: var(--slock-shadow-card);
+}
+
+.launch-center-card {
+  grid-area: launch;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 24px;
+  min-height: 100%;
+  padding: clamp(28px, 5vw, 48px);
+  border-radius: var(--slock-radius-xl);
+  text-align: center;
+}
+
+.launch-copy {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.launch-copy h1 {
+  max-width: 12ch;
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 0.96;
+  text-wrap: balance;
+}
+
+.launch-center-card .status-row {
+  justify-self: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--slock-color-surface-secondary);
+}
+
+.launch-center-card .launch-button {
+  min-width: min(100%, 286px);
+  min-height: 58px;
+  padding: 0 28px;
+  border-radius: 999px;
+  font-size: 1rem;
+  box-shadow: none;
+}
+
+.launch-meta-list {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  text-align: left;
+}
+
+.launch-meta-list div {
+  display: grid;
+  gap: 5px;
+  padding-top: 12px;
+  border-top: 1px solid var(--slock-color-border);
+}
+
+.launch-meta-list dt {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.launch-meta-list dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.appearance-card {
+  grid-area: appearance;
+  align-self: start;
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border-radius: var(--slock-radius-xl);
+}
+
+.launch-panel-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.launch-panel-head h2 {
+  margin: 5px 0 0;
+  color: var(--text);
+  font-size: 1.12rem;
+  letter-spacing: -0.02em;
+}
+
+.appearance-card .settings-quick-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  justify-items: start;
+  gap: 8px;
+}
+
+.compact-setting-group {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--slock-color-border);
+}
+
+.compact-copy {
+  gap: 3px;
+}
+
+.compact-copy p:last-child {
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.appearance-card .theme-picker {
+  grid-template-columns: 1fr;
+}
+
+.appearance-card .theme-option {
+  min-height: 48px;
+  grid-template-columns: 36px minmax(0, 1fr) 20px;
+}
+
+.appearance-card .theme-option-summary {
+  display: none;
+}
+
+.appearance-card .theme-option-preview {
+  min-height: 28px;
+}
+
+.appearance-card .custom-theme-controls {
+  grid-template-columns: minmax(0, 1fr) 72px;
+}
+
+.appearance-card .custom-theme-controls .theme-button {
+  grid-column: 1 / -1;
+}
+
+.launch-board > .appearance-preview {
+  grid-area: preview;
+  align-content: stretch;
+  border-radius: var(--slock-radius-xl);
+}
+
+.launch-board .preview-workspace {
+  min-height: 320px;
+}
+
+.service-card {
+  grid-area: service;
+}
+
+.update-card {
+  grid-area: updates;
+}
+
 .kicker {
   color: var(--accent);
 }
@@ -539,6 +730,21 @@
 @media (max-width: 1080px) {
   .studio-shell {
     padding: 18px;
+  }
+
+  .launch-board {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "launch"
+      "appearance"
+      "preview"
+      "service"
+      "updates";
+  }
+
+  .launch-center-card {
+    min-height: 380px;
   }
 
   .masthead,

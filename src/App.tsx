@@ -570,25 +570,34 @@ function App() {
       <div className="ambient ambient-left" />
       <div className="ambient ambient-right" />
 
-      <header className="masthead">
-        <p className="eyebrow">{snapshot.appName}</p>
-        <p className="eyebrow subtle">{copy.header}</p>
-      </header>
+      {errorMessage ? (
+        <section className="error-banner" role="alert">
+          <strong>{copy.desktopStateError}</strong>
+          <p>{errorMessage}</p>
+        </section>
+      ) : null}
 
-      <section className="hero-grid">
-        <div className="hero-copy">
-          <p className="kicker">{copy.kicker}</p>
-          <h1>{copy.title}</h1>
-          <p className="lede">{copy.lede}</p>
-        </div>
-
-        <aside className="workspace-panel">
+      <section className="launch-board" aria-labelledby="workspace-launch-title">
+        <section className="launch-center-card">
           <div className="status-row">
             <span className="status-dot" />
             <span>{snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}</span>
           </div>
 
-          <dl className="meta-list">
+          <div className="launch-copy">
+            <p className="eyebrow">{snapshot.appName}</p>
+            <h1 id="workspace-launch-title">{copy.title}</h1>
+          </div>
+
+          <button
+            className="launch-button"
+            onClick={handleWorkspaceOpen}
+            disabled={busyAction === 'workspace'}
+          >
+            {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
+          </button>
+
+          <dl className="launch-meta-list">
             <div>
               <dt>{copy.target}</dt>
               <dd>{snapshot.workspaceUrl}</dd>
@@ -604,95 +613,62 @@ function App() {
               </dd>
             </div>
           </dl>
-
-          <button
-            className="launch-button"
-            onClick={handleWorkspaceOpen}
-            disabled={busyAction === 'workspace'}
-          >
-            {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
-          </button>
-        </aside>
-      </section>
-
-      {errorMessage ? (
-        <section className="error-banner" role="alert">
-          <strong>{copy.desktopStateError}</strong>
-          <p>{errorMessage}</p>
         </section>
-      ) : null}
 
-      <section className="settings-shell" aria-labelledby="appearance-settings-title">
-        <aside className="settings-sidebar" aria-label={copy.settingsSections}>
-          <p className="settings-sidebar-title">{copy.settings}</p>
-          <button className="settings-nav-item active" type="button">
-            <span className="settings-nav-icon">A</span>
-            <span>{copy.appearance}</span>
-          </button>
-          <button className="settings-nav-item" type="button">
-            <span className="settings-nav-icon">S</span>
-            <span>{copy.service}</span>
-          </button>
-          <button className="settings-nav-item" type="button">
-            <span className="settings-nav-icon">U</span>
-            <span>{copy.updates}</span>
-          </button>
-        </aside>
-
-        <div className="settings-content">
-          <div className="settings-title-row">
+        <section className="appearance-card launch-panel" aria-labelledby="appearance-settings-title">
+          <div className="launch-panel-head">
             <div>
               <p className="eyebrow">{copy.desktopSettings}</p>
               <h2 id="appearance-settings-title">{copy.appearance}</h2>
-              <p className="settings-description">{copy.appearanceDescription}</p>
             </div>
-            <div className="settings-quick-controls">
-              <span className="settings-save-state">{copy.savedLocally}</span>
-              <div className="icon-segment" role="radiogroup" aria-label={copy.mode}>
-                {THEME_MODES.map((mode) => {
-                  const selected = mode.id === snapshot.appearanceMode
-                  return (
-                    <button
-                      key={mode.id}
-                      className={`icon-option${selected ? ' selected' : ''}`}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      title={copy[mode.labelKey]}
-                      onClick={() => handleThemeModeChange(mode.id)}
-                      disabled={busyAction === `mode:${mode.id}`}
-                    >
-                      <span aria-hidden="true">{mode.icon}</span>
-                      <span className="sr-only">{copy[mode.labelKey]}</span>
-                    </button>
-                  )
-                })}
-              </div>
-              <div className="icon-segment" role="radiogroup" aria-label={copy.language}>
-                {LANGUAGE_OPTIONS.map((language) => {
-                  const selected = language.id === snapshot.language
-                  return (
-                    <button
-                      key={language.id}
-                      className={`icon-option text-icon${selected ? ' selected' : ''}`}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      title={copy[language.labelKey]}
-                      onClick={() => handleLanguageChange(language.id)}
-                      disabled={busyAction === `language:${language.id}`}
-                    >
-                      <span aria-hidden="true">{language.icon}</span>
-                      <span className="sr-only">{copy[language.labelKey]}</span>
-                    </button>
-                  )
-                })}
-              </div>
+            <span className="settings-save-state">{copy.savedLocally}</span>
+          </div>
+
+          <div className="settings-quick-controls">
+            <div className="icon-segment" role="radiogroup" aria-label={copy.mode}>
+              {THEME_MODES.map((mode) => {
+                const selected = mode.id === snapshot.appearanceMode
+                return (
+                  <button
+                    key={mode.id}
+                    className={`icon-option${selected ? ' selected' : ''}`}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    title={copy[mode.labelKey]}
+                    onClick={() => handleThemeModeChange(mode.id)}
+                    disabled={busyAction === `mode:${mode.id}`}
+                  >
+                    <span aria-hidden="true">{mode.icon}</span>
+                    <span className="sr-only">{copy[mode.labelKey]}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="icon-segment" role="radiogroup" aria-label={copy.language}>
+              {LANGUAGE_OPTIONS.map((language) => {
+                const selected = language.id === snapshot.language
+                return (
+                  <button
+                    key={language.id}
+                    className={`icon-option text-icon${selected ? ' selected' : ''}`}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    title={copy[language.labelKey]}
+                    onClick={() => handleLanguageChange(language.id)}
+                    disabled={busyAction === `language:${language.id}`}
+                  >
+                    <span aria-hidden="true">{language.icon}</span>
+                    <span className="sr-only">{copy[language.labelKey]}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          <div className="setting-row theme-setting-row">
-            <div className="setting-copy">
+          <div className="compact-setting-group">
+            <div className="setting-copy compact-copy">
               <p className="setting-label">{copy.themeColor}</p>
               <p>{copy.themeDescription}</p>
             </div>
@@ -730,8 +706,8 @@ function App() {
             </div>
           </div>
 
-          <div className="setting-row custom-theme-row">
-            <div className="setting-copy">
+          <div className="compact-setting-group">
+            <div className="setting-copy compact-copy">
               <p className="setting-label">{copy.customTheme}</p>
               <p>{copy.customThemeDescription}</p>
             </div>
@@ -770,17 +746,7 @@ function App() {
               </button>
             </div>
           </div>
-
-          <div className="setting-row compact">
-            <div className="setting-copy">
-              <p className="setting-label">{copy.applyScope}</p>
-              <p>{copy.applyDescription}</p>
-            </div>
-            <span className="scope-pill">
-              {snapshot.appearanceMode} {copy.modeSuffix}
-            </span>
-          </div>
-        </div>
+        </section>
 
         <aside className="appearance-preview" aria-label={`${activeThemeDisplay.name} ${copy.previewLabel}`}>
           <div className="preview-toolbar">
@@ -810,10 +776,8 @@ function App() {
             </div>
           </div>
         </aside>
-      </section>
 
-      <section className="operations-grid">
-        <details className="control-card compact-control">
+        <details className="control-card compact-control service-card">
           <summary className="control-card-head">
             <div>
               <p className="eyebrow">{copy.localServiceEyebrow}</p>
@@ -911,7 +875,7 @@ function App() {
           </div>
         </details>
 
-        <details className="control-card compact-control">
+        <details className="control-card compact-control update-card">
           <summary className="control-card-head">
             <div>
               <p className="eyebrow">{copy.updateCenterEyebrow}</p>
