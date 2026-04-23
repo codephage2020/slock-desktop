@@ -288,8 +288,8 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "line-height"
       ];
 
-      const clearAvatarElement = (element) => {{
-        delete element.dataset.slockDesktopAvatar;
+      const clearMarkedAvatar = (element, key) => {{
+        delete element.dataset[key];
         avatarStyleProps.forEach((property) => element.style.removeProperty(property));
       }};
 
@@ -297,30 +297,32 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         element.closest('[class*="thread"],[class*="Thread"],[aria-label*="thread" i],[aria-label*="线程"],[href*="thread"]') ||
         element.closest('button.relative.flex.items-start.gap-3.border-2')
       );
+      const isSidebarAvatarScope = (element) =>
+        !!element.closest('nav,aside,[class*="sidebar"],[class*="Sidebar"]');
 
-      const markAvatarElement = (element) => {{
-        element.dataset.slockDesktopAvatar = "true";
-        element.style.setProperty("inline-size", "28px", "important");
-        element.style.setProperty("block-size", "28px", "important");
-        element.style.setProperty("width", "28px", "important");
-        element.style.setProperty("height", "28px", "important");
-        element.style.setProperty("min-width", "28px", "important");
-        element.style.setProperty("min-height", "28px", "important");
-        element.style.setProperty("max-width", "28px", "important");
-        element.style.setProperty("max-height", "28px", "important");
-        element.style.setProperty("flex-basis", "28px", "important");
+      const markAvatarElement = (element, key, size) => {{
+        element.dataset[key] = "true";
+        element.style.setProperty("inline-size", `${{size}}px`, "important");
+        element.style.setProperty("block-size", `${{size}}px`, "important");
+        element.style.setProperty("width", `${{size}}px`, "important");
+        element.style.setProperty("height", `${{size}}px`, "important");
+        element.style.setProperty("min-width", `${{size}}px`, "important");
+        element.style.setProperty("min-height", `${{size}}px`, "important");
+        element.style.setProperty("max-width", `${{size}}px`, "important");
+        element.style.setProperty("max-height", `${{size}}px`, "important");
+        element.style.setProperty("flex-basis", `${{size}}px`, "important");
         element.style.setProperty("aspect-ratio", "1 / 1", "important");
         element.style.setProperty("writing-mode", "horizontal-tb", "important");
         element.style.setProperty("transform", "none", "important");
-        element.style.setProperty("line-height", "28px", "important");
+        element.style.setProperty("line-height", `${{size}}px`, "important");
 
         Array.from(element.children).slice(0, 3).forEach((child) => {{
           if (!(child instanceof HTMLElement)) return;
           if (child.matches("path,defs,clipPath,mask")) return;
-          child.dataset.slockDesktopAvatar = "true";
+          child.dataset[key] = "true";
           child.style.setProperty("writing-mode", "horizontal-tb", "important");
           child.style.setProperty("transform", "none", "important");
-          child.style.setProperty("line-height", "28px", "important");
+          child.style.setProperty("line-height", `${{size}}px`, "important");
         }});
       }};
 
@@ -331,6 +333,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 
         const compactText = (element.textContent || "").replace(/\s+/g, "");
         const hasCompactText = compactText && compactText.length <= 3 && !/^[0-9]+$/.test(compactText);
+        const hasGraphic = !!element.querySelector("img,svg");
 
         const className = String(element.className || "");
         const looksAvatar =
@@ -339,16 +342,28 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           /(h-\[[0-9]+px\]|w-\[[0-9]+px\]|h-[2-9]|w-[2-9]|h-1[0-6]|w-1[0-6])/.test(className) &&
           /items-center|justify-center|inline-flex|flex|grid/.test(className);
         const nearThread = isThreadAvatarScope(element);
+        const nearSidebar = isSidebarAvatarScope(element);
 
         if (nearThread && (looksAvatar || looksSized) && (hasCompactText || looksSized)) {{
-          markAvatarElement(element);
-        }} else if (element.dataset.slockDesktopAvatar === "true") {{
-          clearAvatarElement(element);
+          markAvatarElement(element, "slockDesktopAvatar", 28);
+        }} else if (
+          nearSidebar &&
+          (looksAvatar || looksSized) &&
+          (hasCompactText || hasGraphic) &&
+          !/badge|Badge|status|Status|presence|Presence/.test(className)
+        ) {{
+          markAvatarElement(element, "slockDesktopSidebarAvatar", 32);
+        }} else {{
+          if (element.dataset.slockDesktopAvatar === "true") clearMarkedAvatar(element, "slockDesktopAvatar");
+          if (element.dataset.slockDesktopSidebarAvatar === "true") clearMarkedAvatar(element, "slockDesktopSidebarAvatar");
         }}
       }});
 
       document.querySelectorAll('[data-slock-desktop-avatar="true"]').forEach((element) => {{
-        if (element instanceof HTMLElement && !isThreadAvatarScope(element)) clearAvatarElement(element);
+        if (element instanceof HTMLElement && !isThreadAvatarScope(element)) clearMarkedAvatar(element, "slockDesktopAvatar");
+      }});
+      document.querySelectorAll('[data-slock-desktop-sidebar-avatar="true"]').forEach((element) => {{
+        if (element instanceof HTMLElement && !isSidebarAvatarScope(element)) clearMarkedAvatar(element, "slockDesktopSidebarAvatar");
       }});
     }};
 
@@ -416,8 +431,140 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         }});
     }};
 
+    const markWorkspaceModuleSurfaces = () => {{
+      if (!document.body) return;
+
+      const normalizeText = (value) => (value || "").replace(/\s+/g, " ").trim().toLowerCase();
+      const moduleNames = new Set(["chat", "member", "members", "聊天", "成员"]);
+      const sectionNames = new Set([
+        "channels",
+        "channel",
+        "direct messages",
+        "direct message",
+        "threads",
+        "频道",
+        "直接消息",
+        "私信",
+        "线程",
+        "话题"
+      ]);
+      const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"]';
+      const surfaceProps = [
+        "slockDesktopModuleTabs",
+        "slockDesktopModuleTab",
+        "slockDesktopModuleTabLabel",
+        "slockDesktopPrimaryList",
+        "slockDesktopPrimaryRow",
+        "slockDesktopMenuItem"
+      ];
+
+      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-menu-item]').forEach((element) => {{
+        if (!(element instanceof HTMLElement)) return;
+        surfaceProps.forEach((key) => delete element.dataset[key]);
+      }});
+
+      const moduleButtons = Array.from(
+        document.querySelectorAll(`${{sidebarSelector}} button,${{sidebarSelector}} [role="tab"],${{sidebarSelector}} [role="button"]`)
+      ).filter((element) => {{
+        if (!(element instanceof HTMLElement)) return false;
+        if (element.closest('#slock-desktop-settings-host')) return false;
+        return moduleNames.has(normalizeText(element.textContent));
+      }});
+
+      const moduleGroups = new Map();
+      moduleButtons.forEach((button) => {{
+        const group = button.parentElement;
+        if (!group) return;
+        const groupButtons = moduleGroups.get(group) || [];
+        groupButtons.push(button);
+        moduleGroups.set(group, groupButtons);
+      }});
+
+      moduleGroups.forEach((buttons, group) => {{
+        const labels = new Set(buttons.map((button) => normalizeText(button.textContent)));
+        const hasChat = labels.has("chat") || labels.has("聊天");
+        const hasMembers = labels.has("member") || labels.has("members") || labels.has("成员");
+        if (!hasChat || !hasMembers || !(group instanceof HTMLElement)) return;
+
+        group.dataset.slockDesktopModuleTabs = "true";
+        buttons.forEach((button) => {{
+          const className = String(button.className || "");
+          const selected =
+            button.getAttribute("aria-selected") === "true" ||
+            button.getAttribute("aria-current") === "page" ||
+            button.dataset.state === "active" ||
+            button.dataset.active === "true" ||
+            /bg-brutal-(pink|lime|cyan|yellow|orange)|shadow-brutal|font-bold/.test(className);
+
+          button.dataset.slockDesktopModuleTab = selected ? "selected" : "icon";
+          Array.from(button.querySelectorAll("span,div,p,strong")).forEach((child) => {{
+            if (!(child instanceof HTMLElement)) return;
+            const text = normalizeText(child.textContent);
+            if (moduleNames.has(text)) child.dataset.slockDesktopModuleTabLabel = "true";
+          }});
+        }});
+      }});
+
+      document.querySelectorAll(`${{sidebarSelector}} *`).forEach((element) => {{
+        if (!(element instanceof HTMLElement)) return;
+        if (element.closest('#slock-desktop-settings-host')) return;
+        const text = normalizeText(element.textContent);
+        if (!sectionNames.has(text)) return;
+        if (element.matches("button,a,[role='button'],[role='menuitem']")) return;
+
+        let container = element.parentElement;
+        for (let depth = 0; container && depth < 5; depth += 1, container = container.parentElement) {{
+          if (!(container instanceof HTMLElement)) continue;
+          if (container.matches("nav,aside")) break;
+          const interactiveCount = container.querySelectorAll("button,a,[role='button']").length;
+          const hasNestedSection = Array.from(container.querySelectorAll("span,div,p,h1,h2,h3,h4,h5,h6")).some((child) => {{
+            if (!(child instanceof HTMLElement) || child === element) return false;
+            return sectionNames.has(normalizeText(child.textContent));
+          }});
+          if (interactiveCount > 0 && interactiveCount <= 16 && !hasNestedSection) {{
+            container.dataset.slockDesktopPrimaryList = "true";
+            break;
+          }}
+        }}
+      }});
+
+      document.querySelectorAll('[data-slock-desktop-primary-list="true"] button,[data-slock-desktop-primary-list="true"] a,[data-slock-desktop-primary-list="true"] [role="button"]').forEach((row) => {{
+        if (!(row instanceof HTMLElement)) return;
+        const text = (row.textContent || "").replace(/\s+/g, " ").trim();
+        if (text) row.setAttribute("title", text);
+        row.dataset.slockDesktopPrimaryRow = "true";
+      }});
+
+      document
+        .querySelectorAll(
+          [
+            '[role="menu"] [role="menuitem"]',
+            '[role="menu"] button',
+            '[role="menu"] a',
+            '[data-radix-popper-content-wrapper] [role="menuitem"]',
+            '[data-radix-popper-content-wrapper] [role="button"]',
+            '[data-radix-popper-content-wrapper] [data-radix-collection-item]',
+            '[data-radix-popper-content-wrapper] button',
+            '[data-radix-popper-content-wrapper] a',
+            '[data-slot="popover-content"] [role="menuitem"]',
+            '[data-slot="popover-content"] [role="button"]',
+            '[data-slot="popover-content"] button',
+            '[data-slot="popover-content"] a',
+            '.fixed.z-50.card-brutal [role="menuitem"]',
+            '.absolute.z-50.card-brutal [role="menuitem"]'
+          ].join(",")
+        )
+        .forEach((element) => {{
+          if (!(element instanceof HTMLElement)) return;
+          if (element.closest('#slock-desktop-settings-host')) return;
+          if (element.matches("input,textarea,select")) return;
+          element.dataset.slockDesktopMenuItem = "true";
+        }});
+    }};
+
     markAvatarInitials();
     markSemanticStatusTokens();
+    markWorkspaceModuleSurfaces();
     if (!window.__slockDesktopAvatarObserver && document.body) {{
       let avatarPending = false;
       window.__slockDesktopAvatarObserver = new MutationObserver(() => {{
@@ -427,6 +574,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           avatarPending = false;
           markAvatarInitials();
           markSemanticStatusTokens();
+          markWorkspaceModuleSurfaces();
         }});
       }});
       window.__slockDesktopAvatarObserver.observe(document.body, {{
@@ -609,8 +757,6 @@ select {{
 [class*="Thread"],
 [class*="card"],
 [class*="Card"],
-[class*="composer"],
-[class*="Composer"],
 [class*="message"],
 [class*="Message"],
 .card-brutal,
@@ -629,8 +775,6 @@ select {{
 [class*="Panel"],
 [class*="card"],
 [class*="Card"],
-[class*="composer"],
-[class*="Composer"],
 .card-brutal,
 [data-radix-popper-content-wrapper],
 [data-state="open"],
@@ -992,6 +1136,7 @@ aside button,
 .group.flex.items-center,
 [class*="border-transparent"].mb-1.flex.w-full.items-center.gap-1\.5,
 .mb-1.flex.w-full.items-center.gap-1\.5,
+.w-full.border-2.mb-1.flex.w-full.items-center.gap-1\.5,
 [class*="channel"],
 [class*="Channel"],
 [class*="thread"],
@@ -1006,15 +1151,24 @@ aside button,
 
 .mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink),
 button.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink),
-a.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink) {{
+a.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink),
+nav .w-full.border-2:not(.bg-brutal-pink),
+aside .w-full.border-2:not(.bg-brutal-pink),
+[class*="sidebar"] .w-full.border-2:not(.bg-brutal-pink),
+[class*="Sidebar"] .w-full.border-2:not(.bg-brutal-pink) {{
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
+  border-radius: var(--slock-desktop-radius-sm) !important;
 }}
 
 .mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink):hover,
 button.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink):hover,
-a.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink):hover {{
+a.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink):hover,
+nav .w-full.border-2:not(.bg-brutal-pink):hover,
+aside .w-full.border-2:not(.bg-brutal-pink):hover,
+[class*="sidebar"] .w-full.border-2:not(.bg-brutal-pink):hover,
+[class*="Sidebar"] .w-full.border-2:not(.bg-brutal-pink):hover {{
   background: var(--slock-desktop-hover) !important;
   border-color: transparent !important;
   box-shadow: none !important;
@@ -1193,6 +1347,7 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 }}
 
 [data-slock-desktop-avatar="true"],
+[data-slock-desktop-sidebar-avatar="true"],
 [class*="thread"] [class*="avatar"],
 [class*="Thread"] [class*="avatar"],
 [class*="thread"] [class*="Avatar"],
@@ -1235,6 +1390,39 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   line-height: 1 !important;
   white-space: nowrap !important;
   text-align: center !important;
+}}
+
+[data-slock-desktop-sidebar-avatar="true"] {{
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  aspect-ratio: 1 / 1 !important;
+  flex: 0 0 32px !important;
+  flex-basis: 32px !important;
+  border-radius: var(--slock-desktop-radius-pill) !important;
+  object-fit: cover !important;
+  overflow: hidden !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-sidebar-avatar="true"] > img,
+img[data-slock-desktop-sidebar-avatar="true"] {{
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: 100% !important;
+  object-fit: cover !important;
 }}
 
 button.relative.flex.items-start.gap-3.border-2 .inline-flex.h-\[14px\].w-\[14px\],
@@ -1307,8 +1495,10 @@ img[data-slock-desktop-avatar="true"] {{
 .relative.flex.items-center.border-t-2,
 .flex.items-center.border-t-2,
 .border-t-2.bg-white,
-[class*="composer"],
-[class*="Composer"] {{
+form:has(textarea[placeholder*="Message" i]),
+form:has(textarea[placeholder*="消息"]),
+form:has(button[title*="Attach image" i]),
+form:has(button[title*="附加图片"]) {{
   position: relative !important;
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
@@ -1322,10 +1512,14 @@ img[data-slock-desktop-avatar="true"] {{
 
 .relative.flex.items-center.border-t-2 textarea,
 .flex.items-center.border-t-2 textarea,
-[class*="composer"] textarea,
-[class*="Composer"] textarea,
-[class*="composer"] [contenteditable="true"],
-[class*="Composer"] [contenteditable="true"] {{
+form:has(textarea[placeholder*="Message" i]) textarea,
+form:has(textarea[placeholder*="消息"]) textarea,
+form:has(button[title*="Attach image" i]) textarea,
+form:has(button[title*="附加图片"]) textarea,
+form:has(textarea[placeholder*="Message" i]) [contenteditable="true"],
+form:has(textarea[placeholder*="消息"]) [contenteditable="true"],
+form:has(button[title*="Attach image" i]) [contenteditable="true"],
+form:has(button[title*="附加图片"]) [contenteditable="true"] {{
   min-height: 44px !important;
   padding: 8px 12px !important;
   border: 0 !important;
@@ -1345,18 +1539,14 @@ img[data-slock-desktop-avatar="true"] {{
 .flex.items-center.border-t-2 button[aria-label*="send" i],
 .flex.items-center.border-t-2 button[aria-label*="发送" i],
 .flex.items-center.border-t-2 button[type="submit"],
-[class*="composer"] button[aria-label*="send" i],
-[class*="composer"] button[aria-label*="发送" i],
-[class*="composer"] button[title*="send" i],
-[class*="composer"] button[title*="发送" i],
-[class*="composer"] button[type="submit"],
-[class*="composer"] button:last-of-type,
-[class*="Composer"] button[aria-label*="send" i],
-[class*="Composer"] button[aria-label*="发送" i],
-[class*="Composer"] button[title*="send" i],
-[class*="Composer"] button[title*="发送" i],
-[class*="Composer"] button[type="submit"],
-[class*="Composer"] button:last-of-type {{
+form:has(textarea[placeholder*="Message" i]) button[aria-label*="send" i],
+form:has(textarea[placeholder*="消息"]) button[aria-label*="发送" i],
+form:has(button[title*="Attach image" i]) button[aria-label*="send" i],
+form:has(button[title*="附加图片"]) button[aria-label*="发送" i],
+form:has(textarea[placeholder*="Message" i]) button[type="submit"],
+form:has(textarea[placeholder*="消息"]) button[type="submit"],
+form:has(button[title*="Attach image" i]) button[type="submit"],
+form:has(button[title*="附加图片"]) button[type="submit"] {{
   position: relative !important;
   right: auto !important;
   bottom: auto !important;
@@ -1417,6 +1607,22 @@ form:has(button[title*="附加图片"]) button[type="submit"] {{
   min-height: 32px !important;
   border-radius: var(--slock-desktop-radius-md) !important;
   box-shadow: none !important;
+}}
+
+form:has(textarea[placeholder*="Message" i]) .border-2:has(textarea),
+form:has(textarea[placeholder*="消息"]) .border-2:has(textarea),
+form:has(button[title*="Attach image" i]) .border-2:has(textarea),
+form:has(button[title*="附加图片"]) .border-2:has(textarea),
+form:has(textarea[placeholder*="Message" i]) .border-2:has([contenteditable="true"]),
+form:has(textarea[placeholder*="消息"]) .border-2:has([contenteditable="true"]),
+form:has(button[title*="Attach image" i]) .border-2:has([contenteditable="true"]),
+form:has(button[title*="附加图片"]) .border-2:has([contenteditable="true"]) {{
+  background: transparent !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
 }}
 
 .text-black,
@@ -1663,6 +1869,30 @@ code,
   box-shadow: var(--slock-desktop-soft-shadow) !important;
 }}
 
+nav .h-5.w-5,
+nav .h-7.w-7,
+nav .h-8.w-8,
+nav .h-9.w-9,
+nav .h-12.w-12,
+aside .h-5.w-5,
+aside .h-7.w-7,
+aside .h-8.w-8,
+aside .h-9.w-9,
+aside .h-12.w-12,
+[class*="sidebar"] .h-5.w-5,
+[class*="sidebar"] .h-7.w-7,
+[class*="sidebar"] .h-8.w-8,
+[class*="sidebar"] .h-9.w-9,
+[class*="sidebar"] .h-12.w-12,
+[class*="Sidebar"] .h-5.w-5,
+[class*="Sidebar"] .h-7.w-7,
+[class*="Sidebar"] .h-8.w-8,
+[class*="Sidebar"] .h-9.w-9,
+[class*="Sidebar"] .h-12.w-12 {{
+  border-color: transparent !important;
+  box-shadow: none !important;
+}}
+
 .ml-auto.shrink-0.rounded,
 .rounded.bg-brutal-pink,
 .inline-flex.items-center.gap-1.border,
@@ -1744,6 +1974,191 @@ button,
   border-color: color-mix(in srgb, var(--slock-desktop-semantic-current) 38%, var(--slock-desktop-line)) !important;
   color: color-mix(in srgb, var(--slock-desktop-semantic-current) 78%, var(--slock-desktop-text)) !important;
   box-shadow: none !important;
+}}
+
+[data-slock-desktop-module-tabs="true"] {{
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 2px !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-module-tab] {{
+  min-height: 34px !important;
+  border-radius: var(--slock-desktop-radius-pill) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    inline-size 150ms ease !important;
+}}
+
+[data-slock-desktop-module-tab="icon"] {{
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  color: var(--slock-desktop-muted) !important;
+  font-size: 0 !important;
+}}
+
+[data-slock-desktop-module-tab="icon"] svg {{
+  width: 17px !important;
+  height: 17px !important;
+  font-size: 17px !important;
+}}
+
+[data-slock-desktop-module-tab="icon"] [data-slock-desktop-module-tab-label="true"] {{
+  position: absolute !important;
+  inline-size: 1px !important;
+  block-size: 1px !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+}}
+
+[data-slock-desktop-module-tab="selected"] {{
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding-inline: 12px !important;
+  background: var(--slock-desktop-selection) !important;
+  border-color: color-mix(in srgb, var(--slock-desktop-accent) 24%, transparent) !important;
+  color: var(--slock-desktop-text) !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}}
+
+[data-slock-desktop-primary-list="true"] {{
+  background: color-mix(in srgb, var(--slock-desktop-surface) 78%, var(--slock-desktop-surface-strong)) !important;
+  border: 1px solid color-mix(in srgb, var(--slock-desktop-line) 72%, transparent) !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
+  box-shadow: none !important;
+  padding: 8px !important;
+}}
+
+[data-slock-desktop-primary-list="true"] :is(button,a,[role="button"]) {{
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  text-align: left !important;
+}}
+
+[data-slock-desktop-primary-row="true"] {{
+  position: relative !important;
+  overflow: hidden !important;
+}}
+
+[data-slock-desktop-primary-row="true"]:hover {{
+  overflow: visible !important;
+  z-index: 2 !important;
+}}
+
+[data-slock-desktop-primary-list="true"] :is(button,a,[role="button"]):not(:has(svg)):not(:has([data-slock-desktop-sidebar-avatar="true"]))::before {{
+  content: "" !important;
+  width: 20px !important;
+  min-width: 20px !important;
+  height: 20px !important;
+  flex: 0 0 20px !important;
+}}
+
+[data-slock-desktop-primary-list="true"] :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
+[data-slock-desktop-primary-list="true"] :is(button,a,[role="button"]) > :first-child:last-child,
+nav :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
+aside :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
+[class*="sidebar"] :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
+[class*="Sidebar"] :is(button,a,[role="button"]) > :not(:first-child):not(:last-child) {{
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  text-align: left !important;
+}}
+
+[data-slock-desktop-primary-list="true"] :is(button,a,[role="button"]):hover > :not(:last-child) {{
+  overflow: visible !important;
+  white-space: normal !important;
+}}
+
+[data-slock-desktop-primary-list="true"] :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]),
+nav :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]),
+aside :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]) {{
+  margin-left: auto !important;
+  flex: 0 0 auto !important;
+  text-align: right !important;
+}}
+
+[data-slock-desktop-task-state] {{
+  margin-left: 0 !important;
+  justify-self: start !important;
+  align-self: flex-start !important;
+  text-align: left !important;
+}}
+
+[class*="task"],
+[class*="Task"],
+[aria-label*="task" i],
+[aria-label*="任务"] {{
+  text-align: left !important;
+  justify-content: flex-start !important;
+}}
+
+[data-slock-desktop-menu-item="true"] {{
+  min-height: 32px !important;
+  justify-content: flex-start !important;
+  border-color: transparent !important;
+  border-radius: var(--slock-desktop-radius-sm) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-align: left !important;
+}}
+
+[data-slock-desktop-menu-item="true"]:hover,
+[data-slock-desktop-menu-item="true"]:focus-visible,
+[data-slock-desktop-menu-item="true"][data-highlighted],
+[data-slock-desktop-menu-item="true"][data-state="checked"],
+[data-slock-desktop-menu-item="true"][aria-selected="true"] {{
+  background: var(--slock-desktop-hover) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-menu-item="true"][data-slock-desktop-task-state] {{
+  position: relative !important;
+  color: var(--slock-desktop-text) !important;
+}}
+
+[data-slock-desktop-menu-item="true"][data-slock-desktop-task-state]::before {{
+  content: "" !important;
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: var(--slock-desktop-radius-pill) !important;
+  background: var(--slock-desktop-semantic-current) !important;
+  flex: 0 0 7px !important;
+}}
+
+.safe-top :is(h1,h2,h3,span,p,button),
+[class*="safe-top"] :is(h1,h2,h3,span,p,button),
+[class*="topbar"] :is(h1,h2,h3,span,p,button),
+[class*="Topbar"] :is(h1,h2,h3,span,p,button),
+.flex.h-\[62px\] :is(h1,h2,h3,span,p,button),
+.relative.flex.items-center.border-b-2 :is(h1,h2,h3,span,p,button) {{
+  line-height: 1.28 !important;
+  overflow: visible !important;
+  padding-bottom: 1px !important;
 }}
 
 :focus-visible {{
