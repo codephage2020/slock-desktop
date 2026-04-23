@@ -24,8 +24,8 @@
   inset: auto;
   pointer-events: none;
   border-radius: 999px;
-  filter: blur(60px);
-  opacity: 0.7;
+  filter: blur(86px);
+  opacity: 0.32;
 }
 
 .ambient-left {
@@ -33,7 +33,7 @@
   height: 380px;
   top: -120px;
   left: -80px;
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
 }
 
 .ambient-right {
@@ -41,7 +41,7 @@
   height: 420px;
   right: -120px;
   bottom: -180px;
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .masthead,
@@ -98,9 +98,9 @@
 .theme-card,
 .roadmap-strip,
 .error-banner {
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--surface) 96%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  box-shadow: 0 18px 60px -52px color-mix(in srgb, var(--text) 42%, transparent);
 }
 
 .hero-copy {
@@ -149,7 +149,7 @@
   height: 10px;
   border-radius: 999px;
   background: var(--accent);
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .meta-list {
@@ -202,11 +202,15 @@
 
 .launch-button {
   background: var(--accent);
-  color: #111;
+  color: #f9faf8;
   padding: 14px 18px;
   border-radius: 18px;
   font-size: 1rem;
   font-weight: 700;
+}
+
+.studio-shell[data-mode='dark'] .launch-button {
+  color: #101419;
 }
 
 .theme-headline {
@@ -241,8 +245,8 @@
 }
 
 .theme-card.selected {
-  outline: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line));
-  box-shadow: 0 24px 60px -42px color-mix(in srgb, var(--accent) 48%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  box-shadow: 0 20px 52px -44px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
 .swatch-rail {
@@ -313,8 +317,8 @@
 }
 
 .theme-card.selected .theme-button {
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong));
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
 }
 
 .roadmap-strip {
@@ -367,9 +371,9 @@
   gap: 18px;
   padding: 22px;
   border-radius: 28px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--surface) 96%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  box-shadow: 0 18px 60px -52px color-mix(in srgb, var(--text) 42%, transparent);
 }
 
 .control-card-head {
@@ -388,7 +392,7 @@
 }
 
 .inline-note.error {
-  color: color-mix(in srgb, var(--accent) 72%, #ffdadf);
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
 }
 
 .status-chip {
@@ -410,8 +414,8 @@
 .status-chip.live,
 .status-chip.warm {
   color: var(--text);
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
 }
 
 .field {
@@ -448,8 +452,8 @@
 
 .field input:focus,
 .field textarea:focus {
-  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .checkbox-row {
@@ -490,8 +494,8 @@
   gap: 14px;
   padding: 16px;
   border-radius: 22px;
-  background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 88%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
 }
 
 .release-head {
@@ -529,7 +533,7 @@
 
 .asset-link:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
 }
 
 @media (max-width: 1080px) {

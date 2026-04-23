@@ -240,7 +240,7 @@ function App() {
     return (
       <main className="loading-shell">
         <p className="eyebrow">SLOCK DESKTOP</p>
-        <h1>Theme Studio is booting.</h1>
+        <h1>Desktop Console is booting.</h1>
         <p>Preparing the local shell and reading your desktop preferences.</p>
       </main>
     )
@@ -256,7 +256,7 @@ function App() {
       ? 'Launch Stack'
       : snapshot.workspaceOpen
         ? 'Focus Workspace'
-        : 'Launch Workspace'
+        : 'Open Workspace Here'
 
   return (
     <main className="studio-shell" data-mode={activeTheme.mode} style={shellStyle}>
@@ -265,16 +265,17 @@ function App() {
 
       <header className="masthead">
         <p className="eyebrow">{snapshot.appName}</p>
-        <p className="eyebrow subtle">Theme Studio / Phase 2</p>
+        <p className="eyebrow subtle">Desktop Console / Phase 3</p>
       </header>
 
       <section className="hero-grid">
         <div className="hero-copy">
           <p className="kicker">Desktop control surface</p>
-          <h1>Operate the workspace, the local service, and the release line.</h1>
+          <h1>Open Slock in this window, then tune it in place.</h1>
           <p className="lede">
-            The desktop shell now owns runtime theming, local stack launch
-            policy, and GitHub release awareness from one control plane.
+            Launch now navigates this window into the original Slock workspace.
+            The workspace receives a native Desktop Settings panel for theme
+            changes, while service and release controls remain available here.
           </p>
         </div>
 

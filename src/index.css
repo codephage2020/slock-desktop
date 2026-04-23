@@ -1,21 +1,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap');
 
 :root {
-  --canvas: #f3eee3;
-  --surface: #fbf7ef;
-  --surface-strong: #efe4d2;
-  --line: #d6c5aa;
-  --text: #171411;
-  --muted: #675d51;
-  --accent: #c58a1f;
-  --accent-soft: #f2ddb5;
+  --canvas: #f4f3ef;
+  --surface: #fbfaf7;
+  --surface-strong: #eeeee8;
+  --line: #d8d6cf;
+  --text: #242424;
+  --muted: #6f6e68;
+  --accent: #6f9d92;
+  --accent-soft: #dce8e4;
   font-family: 'Space Grotesk', sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, var(--accent-soft), transparent 34%),
-    linear-gradient(180deg, color-mix(in srgb, var(--canvas) 92%, #ffffff), var(--canvas));
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent-soft) 58%, transparent), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--canvas) 92%, var(--surface)), var(--canvas));
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

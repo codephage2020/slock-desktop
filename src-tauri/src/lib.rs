@@ -1,5 +1,6 @@
 mod config;
 mod theme;
+mod workspace;
 
 use config::{load_settings, save_settings, AppSettings, ServiceSettings, UpdateSettings};
 use serde::Serialize;
@@ -7,13 +8,10 @@ use std::{
     process::{Child, Command, Stdio},
     sync::Mutex,
 };
-use tauri::{
-    webview::{PageLoadEvent, WebviewWindowBuilder},
-    AppHandle, Manager, RunEvent, State, Url, WebviewUrl,
-};
+use tauri::{webview::PageLoadEvent, AppHandle, Manager, RunEvent, State, Url};
 use theme::{meta_catalog, resolve_theme};
 
-const WORKSPACE_LABEL: &str = "workspace";
+const MAIN_LABEL: &str = "main";
 const WORKSPACE_URL: &str = "https://app.slock.ai";
 
 pub struct DesktopState {
@@ -82,9 +80,7 @@ fn set_theme(
         save_settings(&app, &settings)?;
     }
 
-    if let Some(window) = app.get_webview_window(WORKSPACE_LABEL) {
-        apply_theme_to_workspace(&window, theme)?;
-    }
+    apply_theme_to_workspace(&app, theme)?;
 
     build_bootstrap(&app, &state)
 }
@@ -103,7 +99,7 @@ fn open_workspace(
         settings.active_theme.clone()
     };
 
-    ensure_workspace_window(&app, &theme_id)?;
+    enter_workspace_in_main_window(&app, &theme_id)?;
     build_bootstrap(&app, &state)
 }
 
@@ -197,61 +193,88 @@ fn build_bootstrap(
         app_name: "Slock Desktop",
         workspace_url: WORKSPACE_URL,
         active_theme_id: settings.active_theme.clone(),
-        workspace_open: app.get_webview_window(WORKSPACE_LABEL).is_some(),
+        workspace_open: main_window_is_workspace(app),
         themes: meta_catalog(),
         service,
         updates,
     })
 }
 
-fn ensure_workspace_window(app: &AppHandle, theme_id: &str) -> Result<(), String> {
+fn enter_workspace_in_main_window(app: &AppHandle, theme_id: &str) -> Result<(), String> {
     let theme = resolve_theme(theme_id);
+    let window = app
+        .get_webview_window(MAIN_LABEL)
+        .ok_or_else(|| "Main window is unavailable".to_string())?;
 
-    if let Some(window) = app.get_webview_window(WORKSPACE_LABEL) {
+    if window_is_workspace(&window) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
-        return apply_theme_to_workspace(&window, theme);
+        return apply_workspace_scripts_to_window(&window, theme, theme.id);
     }
 
     let target_url = WORKSPACE_URL
         .parse::<Url>()
         .map_err(|err| err.to_string())?;
-    let app_handle = app.clone();
 
-    WebviewWindowBuilder::new(app, WORKSPACE_LABEL, WebviewUrl::External(target_url))
-        .title("Slock Workspace")
-        .inner_size(1480.0, 980.0)
-        .min_inner_size(960.0, 720.0)
-        .initialization_script(theme::injected_script(theme))
-        .on_page_load(move |window, payload| {
-            if matches!(payload.event(), PageLoadEvent::Finished) {
-                let next_theme_id = {
-                    let state = app_handle.state::<DesktopState>();
-                    state
-                        .settings
-                        .lock()
-                        .map(|settings| settings.active_theme.clone())
-                        .unwrap_or_else(|_| "default".to_string())
-                };
+    window
+        .set_title("Slock Workspace")
+        .map_err(|err| err.to_string())?;
+    let _ = window.set_focus();
+    window.navigate(target_url).map_err(|err| err.to_string())
+}
 
-                if let Err(err) = apply_theme_to_workspace(&window, resolve_theme(&next_theme_id)) {
-                    log::error!("failed to apply workspace theme: {err}");
-                }
-            }
-        })
-        .build()
-        .map(|_| ())
+fn apply_theme_to_workspace(app: &AppHandle, theme: theme::ThemeDefinition) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(MAIN_LABEL) {
+        if window_is_workspace(&window) {
+            apply_workspace_scripts_to_window(&window, theme, theme.id)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn apply_workspace_scripts_to_window(
+    window: &tauri::WebviewWindow,
+    theme: theme::ThemeDefinition,
+    active_theme_id: &str,
+) -> Result<(), String> {
+    window
+        .eval(theme::injected_script(theme))
+        .map_err(|err| err.to_string())?;
+    window
+        .eval(workspace::settings_overlay_script(active_theme_id))
         .map_err(|err| err.to_string())
 }
 
-fn apply_theme_to_workspace(
-    window: &tauri::WebviewWindow,
+fn apply_workspace_scripts_to_webview(
+    webview: &tauri::Webview,
     theme: theme::ThemeDefinition,
+    active_theme_id: &str,
 ) -> Result<(), String> {
-    window
-        .eval(&theme::injected_script(theme))
+    webview
+        .eval(theme::injected_script(theme))
+        .map_err(|err| err.to_string())?;
+    webview
+        .eval(workspace::settings_overlay_script(active_theme_id))
         .map_err(|err| err.to_string())
+}
+
+fn main_window_is_workspace(app: &AppHandle) -> bool {
+    app.get_webview_window(MAIN_LABEL)
+        .map(|window| window_is_workspace(&window))
+        .unwrap_or(false)
+}
+
+fn window_is_workspace(window: &tauri::WebviewWindow) -> bool {
+    window
+        .url()
+        .map(|url| is_workspace_url(&url))
+        .unwrap_or(false)
+}
+
+fn is_workspace_url(url: &Url) -> bool {
+    url.scheme() == "https" && url.host_str() == Some("app.slock.ai")
 }
 
 fn collect_service_snapshot(
@@ -427,6 +450,26 @@ pub fn run() {
                 last_error: None,
             }),
         })
+        .on_page_load(|webview, payload| {
+            if webview.label() != MAIN_LABEL
+                || !matches!(payload.event(), PageLoadEvent::Finished)
+                || !is_workspace_url(payload.url())
+            {
+                return;
+            }
+
+            let active_theme_id = webview
+                .state::<DesktopState>()
+                .settings
+                .lock()
+                .map(|settings| settings.active_theme.clone())
+                .unwrap_or_else(|_| "default".to_string());
+            let theme = resolve_theme(&active_theme_id);
+
+            if let Err(err) = apply_workspace_scripts_to_webview(webview, theme, &active_theme_id) {
+                log::error!("failed to apply workspace desktop scripts: {err}");
+            }
+        })
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -446,8 +489,8 @@ pub fn run() {
                 *current = settings;
             }
 
-            if let Some(window) = app.get_webview_window("main") {
-                window.set_title("Slock Desktop / Theme Studio")?;
+            if let Some(window) = app.get_webview_window(MAIN_LABEL) {
+                window.set_title("Slock Desktop")?;
             }
 
             Ok(())
