@@ -267,8 +267,36 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         '[class*="bg-brutal-pink"]',
         '[class*="bg-brutal-lime"]',
         '[class*="bg-brutal-yellow"]',
-        '[class*="bg-brutal-orange"]'
+        '[class*="bg-brutal-orange"]',
+        '[class*="bg-brutal-lavender"]',
+        '[class*="h-"][class*="w-"][class*="items-center"][class*="justify-center"]'
       ].join(',');
+
+      const markAvatarElement = (element) => {{
+        element.dataset.slockDesktopAvatar = "true";
+        element.style.setProperty("inline-size", "28px", "important");
+        element.style.setProperty("block-size", "28px", "important");
+        element.style.setProperty("width", "28px", "important");
+        element.style.setProperty("height", "28px", "important");
+        element.style.setProperty("min-width", "28px", "important");
+        element.style.setProperty("min-height", "28px", "important");
+        element.style.setProperty("max-width", "28px", "important");
+        element.style.setProperty("max-height", "28px", "important");
+        element.style.setProperty("flex-basis", "28px", "important");
+        element.style.setProperty("aspect-ratio", "1 / 1", "important");
+        element.style.setProperty("writing-mode", "horizontal-tb", "important");
+        element.style.setProperty("transform", "none", "important");
+        element.style.setProperty("line-height", "28px", "important");
+
+        Array.from(element.children).slice(0, 3).forEach((child) => {{
+          if (!(child instanceof HTMLElement)) return;
+          if (child.matches("path,defs,clipPath,mask")) return;
+          child.dataset.slockDesktopAvatar = "true";
+          child.style.setProperty("writing-mode", "horizontal-tb", "important");
+          child.style.setProperty("transform", "none", "important");
+          child.style.setProperty("line-height", "28px", "important");
+        }});
+      }};
 
       document.querySelectorAll(selector).forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
@@ -276,17 +304,20 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (element.matches('button,[role="button"],input,textarea,select,svg,img')) return;
 
         const compactText = (element.textContent || "").replace(/\s+/g, "");
-        if (!compactText || compactText.length > 3 || /^[0-9]+$/.test(compactText)) return;
+        const hasCompactText = compactText && compactText.length <= 3 && !/^[0-9]+$/.test(compactText);
 
         const className = String(element.className || "");
         const looksAvatar =
-          /avatar|Avatar|rounded-full|bg-brutal|bg-\[|bg-(cyan|blue|indigo|emerald|green|pink|rose|orange|amber|slate|gray)/.test(className);
+          /avatar|Avatar|initial|Initial|rounded|bg-brutal|bg-\[|bg-(cyan|blue|indigo|emerald|green|pink|rose|orange|amber|slate|gray)/.test(className);
+        const looksSized =
+          /(h-\[[0-9]+px\]|w-\[[0-9]+px\]|h-[2-9]|w-[2-9]|h-1[0-6]|w-1[0-6])/.test(className) &&
+          /items-center|justify-center|inline-flex|flex|grid/.test(className);
         const nearThread =
           element.closest('[class*="thread"],[class*="Thread"],[aria-label*="thread" i],[aria-label*="线程"],[href*="thread"]') ||
           element.closest('.max-w-sm,.max-w-md,.max-w-lg,.w-full.border-2');
 
-        if (looksAvatar && nearThread) {{
-          element.dataset.slockDesktopAvatar = "true";
+        if (nearThread && (looksAvatar || looksSized) && (hasCompactText || looksSized)) {{
+          markAvatarElement(element);
         }}
       }});
     }};
@@ -559,24 +590,47 @@ pre {{
   border-color: var(--slock-desktop-line) !important;
 }}
 
-[class*="border-2"],
-[class*="border-b-2"],
-[class*="border-t-2"],
-[class*="border-l-3"],
-[class*="border-l-4"] {{
+[class*="border-2"] {{
   border-width: 1px !important;
+}}
+
+[class*="border-b-2"] {{
+  border-bottom-width: 1px !important;
+}}
+
+[class*="border-t-2"] {{
+  border-top-width: 1px !important;
+}}
+
+[class*="border-r-2"],
+[class*="border-r-3"] {{
+  border-right-width: 1px !important;
+}}
+
+[class*="border-l-2"],
+[class*="border-l-3"],
+[class*="border-l-4"],
+.md\:border-l-3 {{
+  border-left-width: 1px !important;
 }}
 
 .card-brutal,
 .input-brutal,
 .btn-brutal,
 .btn-brutal-sm,
-[class*="border-2"],
+[class*="border-2"] {{
+  border-width: 1px !important;
+  border-color: var(--slock-desktop-line) !important;
+}}
+
 [class*="border-b-2"],
 [class*="border-t-2"],
+[class*="border-r-2"],
+[class*="border-r-3"],
+[class*="border-l-2"],
+[class*="border-l-3"],
 [class*="border-l-4"],
 .md\:border-l-3 {{
-  border-width: 1px !important;
   border-color: var(--slock-desktop-line) !important;
 }}
 
@@ -789,6 +843,7 @@ header,
 [class*="border-b-2"].bg-white {{
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
+  border-width: 0 0 1px 0 !important;
   border-bottom: 1px solid var(--slock-desktop-line) !important;
   border-bottom-color: var(--slock-desktop-line) !important;
   box-shadow: none !important;
@@ -797,6 +852,21 @@ header,
   max-height: var(--slock-desktop-topbar-height) !important;
   align-items: center !important;
   padding-block: 0 !important;
+}}
+
+.safe-top [class*="border-b-2"],
+.safe-top [class*="border-t-2"],
+[class*="safe-top"] [class*="border-b-2"],
+[class*="safe-top"] [class*="border-t-2"],
+header [class*="border-b-2"],
+header [class*="border-t-2"],
+.flex.h-\[62px\] [class*="border-b-2"],
+.flex.h-\[62px\] [class*="border-t-2"],
+.relative.flex.items-center.border-b-2 > [class*="border-b-2"],
+.relative.flex.items-center.border-b-2 > [class*="border-t-2"] {{
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+  box-shadow: none !important;
 }}
 
 .relative.flex-1.overflow-hidden,
@@ -981,6 +1051,28 @@ img[data-avatar],
   line-height: 1 !important;
   white-space: nowrap !important;
   text-align: center !important;
+}}
+
+[data-slock-desktop-avatar="true"] > svg,
+svg[data-slock-desktop-avatar="true"] {{
+  width: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  max-height: 16px !important;
+  flex: 0 0 16px !important;
+}}
+
+[data-slock-desktop-avatar="true"] > img,
+img[data-slock-desktop-avatar="true"] {{
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: 100% !important;
+  object-fit: cover !important;
 }}
 
 [id^="message-"],
@@ -1230,6 +1322,7 @@ header,
 .flex.overflow-x-auto.border-b-2 {{
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
+  border-width: 0 0 1px 0 !important;
   border-bottom: 1px solid var(--slock-desktop-line) !important;
   border-bottom-color: var(--slock-desktop-line) !important;
   box-shadow: none !important;
