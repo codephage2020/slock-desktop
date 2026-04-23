@@ -535,6 +535,13 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         row.dataset.slockDesktopPrimaryRow = "true";
       }});
 
+      const markMenuItem = (element) => {{
+        if (!(element instanceof HTMLElement)) return;
+        if (element.closest('#slock-desktop-settings-host')) return;
+        if (element.matches("input,textarea,select")) return;
+        element.dataset.slockDesktopMenuItem = "true";
+      }};
+
       document
         .querySelectorAll(
           [
@@ -554,12 +561,25 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
             '.absolute.z-50.card-brutal [role="menuitem"]'
           ].join(",")
         )
-        .forEach((element) => {{
-          if (!(element instanceof HTMLElement)) return;
-          if (element.closest('#slock-desktop-settings-host')) return;
-          if (element.matches("input,textarea,select")) return;
-          element.dataset.slockDesktopMenuItem = "true";
-        }});
+        .forEach(markMenuItem);
+
+      document.querySelectorAll('.fixed.z-50.card-brutal,.absolute.z-50.card-brutal').forEach((container) => {{
+        if (!(container instanceof HTMLElement)) return;
+        if (container.closest('#slock-desktop-settings-host')) return;
+        if (container.querySelector("form,input,textarea,select,h1,h2,h3,p,[role='dialog']")) return;
+
+        const actions = Array.from(container.querySelectorAll("button,a,[role='button'],[role='menuitem']"))
+          .filter((element) => element instanceof HTMLElement && !element.closest("form"));
+        if (actions.length === 0 || actions.length > 18) return;
+
+        const semanticMenu =
+          container.getAttribute("role") === "menu" ||
+          !!container.querySelector("[role='menuitem'],[data-radix-collection-item]") ||
+          /menu|Menu|popover|Popover|context|Context/.test(String(container.className || ""));
+        if (!semanticMenu && actions.length < 2) return;
+
+        actions.forEach(markMenuItem);
+      }});
     }};
 
     markAvatarInitials();
