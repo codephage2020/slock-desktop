@@ -1,0 +1,238 @@
+:root {
+  --slock-radius-sm: 10px;
+  --slock-radius-md: 14px;
+  --slock-radius-lg: 18px;
+  --slock-radius-xl: 24px;
+  --slock-radius-pill: 999px;
+  --slock-depth-1: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent);
+  --slock-depth-2: 0 14px 48px -40px color-mix(in srgb, var(--text) 42%, transparent);
+  --slock-focus: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  --slock-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body {
+  background: var(--canvas);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.loading-shell,
+.studio-shell {
+  background:
+    radial-gradient(circle at 8% -10%, color-mix(in srgb, var(--accent-soft) 44%, transparent), transparent 26%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 36%, var(--canvas)), var(--canvas));
+}
+
+.studio-shell {
+  gap: 20px;
+  padding: clamp(16px, 2.4vw, 28px);
+}
+
+.ambient {
+  filter: blur(96px);
+  opacity: 0.22;
+}
+
+.eyebrow,
+.kicker,
+.mode-chip,
+.status-row,
+.pill,
+.token-row span:last-child,
+.meta-list dt,
+.field span,
+.status-chip {
+  font-family: inherit;
+  letter-spacing: 0.055em;
+}
+
+.hero-copy,
+.workspace-panel,
+.settings-shell,
+.control-card,
+.roadmap-strip,
+.error-banner {
+  background: color-mix(in srgb, var(--surface) 97%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
+  border-radius: var(--slock-radius-xl);
+  box-shadow: var(--slock-depth-2);
+}
+
+.hero-copy {
+  min-height: 280px;
+}
+
+.workspace-panel,
+.control-card {
+  border-radius: var(--slock-radius-lg);
+}
+
+.hero-copy h1,
+.settings-title-row h2,
+.control-card h2 {
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.hero-copy h1 {
+  max-width: 16ch;
+}
+
+.lede,
+.settings-description,
+.setting-copy p:last-child,
+.control-copy,
+.inline-note,
+.release-body {
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.launch-button,
+.theme-button,
+.asset-link,
+.settings-nav-item,
+.theme-option,
+.preview-composer button {
+  min-height: 40px;
+  border-radius: var(--slock-radius-md);
+  transition:
+    transform 150ms var(--slock-ease),
+    background 150ms var(--slock-ease),
+    border-color 150ms var(--slock-ease),
+    box-shadow 150ms var(--slock-ease);
+}
+
+.launch-button {
+  border-color: transparent;
+  box-shadow: 0 10px 28px -20px color-mix(in srgb, var(--accent) 72%, transparent);
+}
+
+.theme-button,
+.asset-link {
+  background: color-mix(in srgb, var(--surface-strong) 78%, var(--surface));
+  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+  box-shadow: var(--slock-depth-1);
+}
+
+@media (hover: hover) {
+  .launch-button:hover,
+  .theme-button:hover,
+  .asset-link:hover,
+  .settings-nav-item:hover,
+  .theme-option:hover,
+  .preview-composer button:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.launch-button:active,
+.theme-button:active,
+.asset-link:active,
+.settings-nav-item:active,
+.theme-option:active,
+.preview-composer button:active {
+  transform: scale(0.96);
+}
+
+.field input,
+.field textarea {
+  border-radius: var(--slock-radius-md);
+  background: color-mix(in srgb, var(--surface-strong) 72%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 42%, transparent);
+}
+
+.field input:focus,
+.field textarea:focus {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, var(--line)),
+    var(--slock-focus);
+}
+
+.settings-shell {
+  grid-template-columns: 208px minmax(0, 1fr) minmax(300px, 390px);
+  padding: 10px;
+}
+
+.settings-sidebar {
+  border-radius: var(--slock-radius-lg);
+}
+
+.settings-nav-item {
+  border-radius: var(--slock-radius-sm);
+}
+
+.settings-nav-item.active,
+.theme-option.selected,
+.release-panel,
+.status-chip.live,
+.status-chip.warm {
+  background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+}
+
+.theme-option {
+  border-radius: var(--slock-radius-md);
+}
+
+.theme-option-preview {
+  border-radius: var(--slock-radius-sm);
+}
+
+.appearance-preview {
+  border-color: color-mix(in srgb, var(--line) 58%, transparent);
+}
+
+.preview-workspace {
+  border-radius: var(--slock-radius-lg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 64%, transparent);
+}
+
+.preview-message p,
+.preview-composer,
+.release-panel {
+  border-radius: var(--slock-radius-md);
+}
+
+.mode-chip,
+.status-chip,
+.pill,
+.settings-save-state,
+.scope-pill,
+.asset-link {
+  border-radius: var(--slock-radius-pill);
+}
+
+.roadmap-strip {
+  padding: 18px 20px;
+}
+
+@media (max-width: 1080px) {
+  .settings-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .studio-shell {
+    padding: 12px;
+  }
+
+  .hero-copy,
+  .workspace-panel,
+  .settings-shell,
+  .control-card,
+  .roadmap-strip {
+    border-radius: var(--slock-radius-lg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

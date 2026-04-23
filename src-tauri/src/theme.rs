@@ -193,6 +193,11 @@ fn remote_css(theme: ThemeDefinition) -> String {
   --slock-desktop-active: color-mix(in srgb, {accent} 12%, {surface});
   --slock-desktop-shadow: 0 14px 46px -38px color-mix(in srgb, {text} 38%, transparent);
   --slock-desktop-soft-shadow: 0 1px 2px color-mix(in srgb, {text} 8%, transparent);
+  --slock-desktop-radius-sm: 10px;
+  --slock-desktop-radius-md: 14px;
+  --slock-desktop-radius-lg: 18px;
+  --slock-desktop-radius-xl: 24px;
+  --slock-desktop-radius-pill: 999px;
   --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --default-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --default-mono-font-family: "SFMono-Regular", "SF Mono", ui-monospace, monospace;
@@ -219,6 +224,7 @@ body {{
   accent-color: var(--slock-desktop-accent) !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
   letter-spacing: -0.01em !important;
+  text-rendering: optimizeLegibility !important;
 }}
 
 #root {{
@@ -335,6 +341,8 @@ pre {{
   transform: none !important;
 }}
 
+[class*="shadow-brutal"],
+[class*="shadow-\["],
 .shadow-brutal,
 .shadow-brutal-sm,
 .shadow-\[4px_4px_0_\#000\],
@@ -347,6 +355,21 @@ pre {{
 .active\:shadow-brutal-active:active,
 .active\:shadow-brutal-sm:active {{
   box-shadow: var(--slock-desktop-soft-shadow) !important;
+}}
+
+[class*="border-black"],
+[class*="border-brutal"],
+[class*="hover\:border-black"],
+[class*="hover\:border-brutal"] {{
+  border-color: var(--slock-desktop-line) !important;
+}}
+
+[class*="border-2"],
+[class*="border-b-2"],
+[class*="border-t-2"],
+[class*="border-l-3"],
+[class*="border-l-4"] {{
+  border-width: 1px !important;
 }}
 
 .card-brutal,
@@ -440,6 +463,31 @@ button:hover,
 button:active,
 [role="button"]:active {{
   transform: scale(0.97) !important;
+}}
+
+[class*="bg-brutal-yellow"],
+[class*="bg-brutal-pink"],
+[class*="bg-brutal-cyan"],
+[class*="bg-brutal-lime"],
+[class*="bg-brutal-lavender"],
+[class*="bg-brutal-orange"],
+[class*="hover\:bg-brutal-yellow"],
+[class*="hover\:bg-brutal-pink"],
+[class*="hover\:bg-brutal-cyan"],
+[class*="hover\:bg-brutal-lime"],
+[class*="hover\:bg-brutal-lavender"],
+[class*="hover\:bg-brutal-orange"] {{
+  background-color: var(--slock-desktop-accent-soft) !important;
+}}
+
+[class*="text-brutal-yellow"],
+[class*="text-brutal-pink"],
+[class*="text-brutal-cyan"],
+[class*="text-brutal-lime"],
+[class*="text-brutal-lavender"],
+[class*="text-brutal-orange"],
+[class*="hover\:text-brutal"] {{
+  color: var(--slock-desktop-accent) !important;
 }}
 
 .bg-white,
@@ -644,6 +692,234 @@ aside button:hover,
 .text-brutal-pink,
 .text-brutal-lime {{
   color: var(--slock-desktop-accent) !important;
+}}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {{
+  color: var(--slock-desktop-text) !important;
+  letter-spacing: -0.02em !important;
+  text-wrap: balance !important;
+}}
+
+p,
+li,
+dd,
+span {{
+  text-wrap: pretty;
+}}
+
+.rounded,
+.rounded-none,
+.rounded-r,
+.card-brutal,
+.input-brutal,
+.btn-brutal,
+.btn-brutal-sm,
+[role="dialog"],
+[role="menu"],
+[data-slot="popover-content"],
+[data-radix-popper-content-wrapper] {{
+  border-radius: var(--slock-desktop-radius-md) !important;
+}}
+
+.rounded-full,
+[class*="rounded-full"] {{
+  border-radius: var(--slock-desktop-radius-pill) !important;
+}}
+
+.w-full.border-2,
+.max-w-sm.border-2,
+.max-w-md.border-2,
+.max-w-lg.border-2,
+.overflow-hidden.border-2,
+.max-h-72.overflow-y-auto,
+.max-h-48.overflow-y-auto,
+.fixed.z-50.card-brutal,
+.absolute.top-full,
+.absolute.bottom-full,
+.absolute.left-0.top-\[calc\(100\%\+8px\)\] {{
+  background: var(--slock-desktop-surface) !important;
+  border-color: var(--slock-desktop-line) !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
+  box-shadow: var(--slock-desktop-shadow) !important;
+}}
+
+.flex.min-h-0.flex-1.items-center.justify-center,
+.flex.min-h-0.flex-1.overflow-y-auto.bg-brutal-cream,
+.flex.min-h-0.flex-1.items-center.justify-center.bg-brutal-cream {{
+  background: var(--slock-desktop-canvas) !important;
+}}
+
+.flex.min-h-0.flex-1.items-center.justify-center .w-full.border-2,
+.flex.min-h-0.flex-1.overflow-y-auto .w-full.border-2 {{
+  max-width: 440px !important;
+  padding: 28px !important;
+}}
+
+.inline-block.tilt-neg-2,
+.relative.inline-flex.tilt-neg-2 {{
+  border-radius: var(--slock-desktop-radius-md) !important;
+  background: var(--slock-desktop-text) !important;
+  color: var(--slock-desktop-surface) !important;
+  box-shadow: var(--slock-desktop-soft-shadow) !important;
+}}
+
+.safe-top.safe-left.safe-right,
+.flex.h-\[62px\],
+.flex.h-\[62px\].shrink-0,
+.relative.flex.items-center.border-b-2,
+.flex.items-start.gap-2.border-b-2,
+.border-b-2.bg-white,
+.border-b-2.bg-\[\#ffeefb\],
+.border-t-2.bg-white,
+.flex.overflow-x-auto.border-b-2 {{
+  background: var(--slock-desktop-surface) !important;
+  border-color: var(--slock-desktop-line) !important;
+  box-shadow: var(--slock-desktop-soft-shadow) !important;
+}}
+
+.flex.w-full.items-center.gap-2,
+.group.flex.items-center,
+.inline-flex.items-center,
+.btn-brutal,
+.btn-brutal-sm {{
+  min-height: 34px;
+}}
+
+.flex.w-full.items-center.gap-2,
+.group.flex.items-center {{
+  border-radius: var(--slock-desktop-radius-sm) !important;
+}}
+
+.flex.w-full.items-center.gap-2:hover,
+.group.flex.items-center:hover {{
+  background: var(--slock-desktop-hover) !important;
+}}
+
+.grid-cols-1,
+.sm\:grid-cols-3,
+.md\:grid-cols-2 {{
+  gap: 12px !important;
+}}
+
+.space-y-1 > :not(:last-child),
+.space-y-1\.5 > :not(:last-child),
+.space-y-2 > :not(:last-child),
+.space-y-3 > :not(:last-child),
+.space-y-4 > :not(:last-child) {{
+  margin-block-end: 8px !important;
+}}
+
+.border-collapse,
+table {{
+  border-color: var(--slock-desktop-line) !important;
+  border-radius: var(--slock-desktop-radius-md) !important;
+  overflow: hidden !important;
+}}
+
+th,
+td {{
+  border-color: var(--slock-desktop-line) !important;
+}}
+
+pre,
+code,
+.my-2.overflow-x-auto {{
+  border-color: var(--slock-desktop-line) !important;
+  border-radius: var(--slock-desktop-radius-md) !important;
+}}
+
+.my-2.overflow-x-auto {{
+  background: color-mix(in srgb, var(--slock-desktop-text) 7%, var(--slock-desktop-surface)) !important;
+  color: var(--slock-desktop-text) !important;
+}}
+
+.max-w-\[70\%\] {{
+  max-width: min(760px, 86%) !important;
+}}
+
+.max-w-\[70\%\].border-2,
+.max-w-sm.border-2.bg-brutal-cyan,
+.mx-auto.mb-3.max-w-md {{
+  background: var(--slock-desktop-surface) !important;
+  color: var(--slock-desktop-text) !important;
+  border: 1px solid var(--slock-desktop-line) !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
+  box-shadow: var(--slock-desktop-soft-shadow) !important;
+}}
+
+.h-5.w-5,
+.h-7.w-7,
+.h-8.w-8,
+.h-9.w-9,
+.h-12.w-12,
+.h-16.w-16 {{
+  border-color: var(--slock-desktop-line) !important;
+  box-shadow: var(--slock-desktop-soft-shadow) !important;
+}}
+
+.ml-auto.shrink-0.rounded,
+.rounded.bg-brutal-pink,
+.inline-flex.items-center.gap-1.border,
+.inline-flex.items-center.gap-1\.5.border,
+.inline-flex.items-center.px-1\.5,
+.shrink-0.inline-flex.items-center {{
+  border-color: var(--slock-desktop-line) !important;
+  border-radius: var(--slock-desktop-radius-pill) !important;
+  background: var(--slock-desktop-accent-soft) !important;
+  color: var(--slock-desktop-text) !important;
+}}
+
+.fixed.z-50.card-brutal,
+.absolute.z-50.card-brutal,
+.absolute.left-0.top-\[calc\(100\%\+8px\)\],
+.absolute.top-full,
+.absolute.bottom-full {{
+  overflow: hidden !important;
+}}
+
+.animate-pulse {{
+  background: var(--slock-desktop-accent-soft) !important;
+  border-color: color-mix(in srgb, var(--slock-desktop-accent) 24%, var(--slock-desktop-line)) !important;
+}}
+
+.select-none,
+button,
+[role="button"] {{
+  touch-action: manipulation;
+}}
+
+@media (hover: hover) {{
+  a:hover,
+  [role="link"]:hover {{
+    color: color-mix(in srgb, var(--slock-desktop-accent) 82%, var(--slock-desktop-text)) !important;
+  }}
+}}
+
+@media (max-width: 768px) {{
+  .max-w-\[70\%\] {{
+    max-width: 92% !important;
+  }}
+
+  .safe-top.safe-left.safe-right,
+  .relative.flex.items-center.border-t-2,
+  .flex.items-center.border-t-2 {{
+    border-radius: 0 !important;
+  }}
+}}
+
+@media (prefers-reduced-motion: reduce) {{
+  *,
+  *::before,
+  *::after {{
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }}
 }}
 
 .border-black,
