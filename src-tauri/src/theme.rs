@@ -292,8 +292,14 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         delete element.dataset[key];
         delete element.dataset.slockDesktopAvatarHasImage;
         avatarStyleProps.forEach((property) => element.style.removeProperty(property));
-        Array.from(element.children).slice(0, 3).forEach((child) => {{
-          if (child instanceof HTMLElement) delete child.dataset.slockDesktopAvatarFallback;
+        Array.from(
+          element.querySelectorAll(
+            '[data-slock-desktop-avatar-fallback="true"],[data-slock-desktop-avatar-image-layer="true"]'
+          )
+        ).forEach((child) => {{
+          if (!(child instanceof HTMLElement)) return;
+          delete child.dataset.slockDesktopAvatarFallback;
+          delete child.dataset.slockDesktopAvatarImageLayer;
         }});
       }};
 
@@ -304,8 +310,25 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
       const isSidebarAvatarScope = (element) =>
         !!element.closest('nav,aside,[class*="sidebar"],[class*="Sidebar"]');
 
+      const findAvatarImageLayer = (element) => {{
+        const candidates = [element, ...Array.from(element.querySelectorAll("img,picture,canvas,div,span"))];
+        return candidates.find((candidate) => {{
+          if (!(candidate instanceof HTMLElement)) return false;
+          if (candidate === element && !candidate.matches("img,picture,canvas")) return false;
+          const computed = window.getComputedStyle(candidate);
+          const backgroundImage = `${{candidate.style.backgroundImage || ""}} ${{computed.backgroundImage || ""}}`;
+          return (
+            candidate.matches("img,picture,canvas") ||
+            /url\\(/i.test(backgroundImage) ||
+            candidate.hasAttribute("data-avatar-src") ||
+            candidate.hasAttribute("data-profile-image")
+          );
+        }});
+      }};
+
       const markAvatarElement = (element, key, size) => {{
-        const hasImage = element.matches("img") || !!element.querySelector("img");
+        const imageLayer = findAvatarImageLayer(element);
+        const hasImage = !!imageLayer;
         element.dataset[key] = "true";
         if (hasImage) element.dataset.slockDesktopAvatarHasImage = "true";
         else delete element.dataset.slockDesktopAvatarHasImage;
@@ -323,12 +346,20 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         element.style.setProperty("transform", "none", "important");
         element.style.setProperty("line-height", `${{size}}px`, "important");
 
-        Array.from(element.children).slice(0, 3).forEach((child) => {{
+        if (imageLayer instanceof HTMLElement) imageLayer.dataset.slockDesktopAvatarImageLayer = "true";
+
+        Array.from(element.children).slice(0, 4).forEach((child) => {{
           if (!(child instanceof HTMLElement)) return;
           if (child.matches("path,defs,clipPath,mask")) return;
           child.dataset[key] = "true";
           delete child.dataset.slockDesktopAvatarFallback;
-          if (hasImage && !child.matches("img,picture,svg") && !child.querySelector("img,picture")) {{
+          if (
+            hasImage &&
+            child !== imageLayer &&
+            !child.contains(imageLayer) &&
+            !child.matches("img,picture,canvas,svg") &&
+            !child.querySelector("img,picture,canvas,[data-slock-desktop-avatar-image-layer='true']")
+          ) {{
             child.dataset.slockDesktopAvatarFallback = "true";
           }}
           child.style.setProperty("writing-mode", "horizontal-tb", "important");
@@ -467,6 +498,10 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "线程",
         "话题"
       ]);
+      const isSectionLabel = (value) => {{
+        if (!value) return false;
+        return Array.from(sectionNames).some((name) => value === name || value.startsWith(`${{name}} `));
+      }};
       const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"]';
       const surfaceProps = [
         "slockDesktopModuleTabs",
@@ -516,16 +551,32 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 
         group.dataset.slockDesktopModuleTabs = "true";
         group.dataset.slockDesktopModuleTabsScope = group.closest(sidebarSelector) ? "sidebar" : "content";
-        const selectedButtons = buttons.filter((button) => {{
+        let selectedButtons = buttons.filter((button) => {{
           const className = String(button.className || "");
           return (
             button.getAttribute("aria-selected") === "true" ||
             button.getAttribute("aria-current") === "page" ||
             button.dataset.state === "active" ||
             button.dataset.active === "true" ||
-            /bg-brutal-(pink|lime|cyan|yellow|orange)|shadow-brutal|font-bold/.test(className)
+            /bg-brutal-(pink|lime|cyan|yellow|orange)|shadow-brutal/.test(className)
           );
         }});
+        if (selectedButtons.length != 1) {{
+          const currentUrl = new URL(window.location.href);
+          const chatTab = normalizeText(currentUrl.searchParams.get("chatTab") || "");
+          const path = normalizeText(currentUrl.pathname);
+          const resolvedKey =
+            chatTab ||
+            (path.includes("/tasks") ? "tasks" : "") ||
+            (path.includes("/members") ? "members" : "") ||
+            "chat";
+          selectedButtons = buttons.filter((button) => {{
+            const label = normalizeText(button.textContent);
+            if (/(member|members|成员)/.test(label)) return resolvedKey === "members";
+            if (/(task|tasks|任务)/.test(label)) return resolvedKey === "tasks";
+            return resolvedKey === "chat";
+          }});
+        }}
         buttons.forEach((button) => {{
           const selected = selectedButtons.length > 0 ? selectedButtons.includes(button) : button === buttons[0];
 
@@ -557,7 +608,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (!(element instanceof HTMLElement)) return;
         if (element.closest('#slock-desktop-settings-host')) return;
         const text = normalizeText(element.textContent);
-        if (!sectionNames.has(text)) return;
+        if (!isSectionLabel(text)) return;
         if (element.matches("button,a,[role='button'],[role='menuitem']")) return;
 
         let container = element.parentElement;
@@ -567,7 +618,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           const interactiveCount = container.querySelectorAll("button,a,[role='button']").length;
           const hasNestedSection = Array.from(container.querySelectorAll("span,div,p,h1,h2,h3,h4,h5,h6")).some((child) => {{
             if (!(child instanceof HTMLElement) || child === element) return false;
-            return sectionNames.has(normalizeText(child.textContent));
+            return isSectionLabel(normalizeText(child.textContent));
           }});
           if (interactiveCount > 0 && interactiveCount <= 16 && !hasNestedSection) {{
             container.dataset.slockDesktopPrimaryList = "true";
@@ -581,7 +632,9 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         const text = (row.textContent || "").replace(/\s+/g, " ").trim();
         if (text) row.setAttribute("title", text);
         row.dataset.slockDesktopPrimaryRow = "true";
-        row.dataset.slockDesktopPrimaryRowLayout = detectPrimaryRowLayout(row);
+        row.dataset.slockDesktopPrimaryRowLayout = /^#\s*all\b/i.test(text)
+          ? "hash-text"
+          : detectPrimaryRowLayout(row);
         if (/^#\s*all\b/i.test(text)) row.dataset.slockDesktopPrimaryRowVariant = "root-channel";
       }});
 
@@ -595,7 +648,9 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (!isChannelRow) return;
         if (text) row.setAttribute("title", text);
         row.dataset.slockDesktopPrimaryRow = "true";
-        row.dataset.slockDesktopPrimaryRowLayout = detectPrimaryRowLayout(row);
+        row.dataset.slockDesktopPrimaryRowLayout = /^#\s*all\b/i.test(text)
+          ? "hash-text"
+          : detectPrimaryRowLayout(row);
         if (/^#\s*all\b/i.test(text)) row.dataset.slockDesktopPrimaryRowVariant = "root-channel";
       }});
 
@@ -722,6 +777,32 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
             }}
           }}
         }});
+      }});
+
+      document.querySelectorAll(`${{sidebarSelector}} *`).forEach((heading) => {{
+        if (!(heading instanceof HTMLElement)) return;
+        if (heading.closest('#slock-desktop-settings-host,[data-slock-desktop-account-dock="true"]')) return;
+        const label = normalizeText(heading.textContent);
+        if (!isSectionLabel(label)) return;
+        const headerRect = heading.getBoundingClientRect();
+        if (headerRect.width <= 0 || headerRect.height <= 0) return;
+        let container = heading.parentElement;
+        for (let depth = 0; container && depth < 3; depth += 1, container = container.parentElement) {{
+          if (!(container instanceof HTMLElement)) continue;
+          const actions = Array.from(container.querySelectorAll("button,a,[role='button']"))
+            .filter((action) => action instanceof HTMLElement)
+            .filter((action) => !action.matches('[data-slock-desktop-account-action="true"]'))
+            .filter((action) => {{
+              const rect = action.getBoundingClientRect();
+              const overlapsVertically = Math.abs(rect.top - headerRect.top) <= 18 || Math.abs(rect.bottom - headerRect.bottom) <= 18;
+              const sitsToRight = rect.left >= headerRect.right - 8;
+              return rect.width > 0 && rect.width <= 56 && rect.height > 0 && rect.height <= 56 && overlapsVertically && sitsToRight;
+            }});
+          if (actions.length === 1) {{
+            actions[0].dataset.slockDesktopPlusAction = "true";
+            break;
+          }}
+        }}
       }});
 
       document.querySelectorAll('button,a,[role="button"]').forEach((action) => {{
@@ -1166,16 +1247,23 @@ button[class*="size-"],
   width: 30px !important;
   min-width: 30px !important;
   max-width: 30px !important;
+  inline-size: 30px !important;
   height: 30px !important;
   min-height: 30px !important;
   max-height: 30px !important;
+  block-size: 30px !important;
+  flex: 0 0 30px !important;
+  flex-basis: 30px !important;
   padding: 0 !important;
   border-radius: var(--slock-desktop-radius-sm) !important;
 }}
 
-[data-slock-desktop-plus-action="true"] svg {{
+[data-slock-desktop-plus-action="true"] svg,
+[data-slock-desktop-plus-action="true"] span {{
   width: 14px !important;
   height: 14px !important;
+  font-size: 14px !important;
+  line-height: 14px !important;
 }}
 
 [class*="bg-brutal-yellow"],
@@ -1571,6 +1659,22 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 [data-slock-desktop-avatar-fallback="true"] {{
   opacity: 0 !important;
   pointer-events: none !important;
+}}
+
+[data-slock-desktop-avatar-image-layer="true"] {{
+  position: relative !important;
+  z-index: 1 !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: 100% !important;
+  border-radius: inherit !important;
+  overflow: hidden !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
 }}
 
 [data-slock-desktop-avatar="true"],
@@ -2326,6 +2430,15 @@ aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
   box-shadow: none !important;
 }}
 
+[data-slock-desktop-account-dock="true"] :is(button,a,[role="button"],div,span)[class*="border"],
+[data-slock-desktop-account-action="true"] :is(div,span)[class*="border"],
+[data-slock-desktop-account-action="true"] :is(div,span)[class*="btn-brutal"] {{
+  border-color: transparent !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}}
+
 [data-slock-desktop-primary-list="true"] {{
   background: color-mix(in srgb, var(--slock-desktop-surface) 78%, var(--slock-desktop-surface-strong)) !important;
   border: 1px solid color-mix(in srgb, var(--slock-desktop-line) 72%, transparent) !important;
@@ -2374,11 +2487,12 @@ aside [data-slock-desktop-primary-row="true"],
 
 [data-slock-desktop-primary-row-layout="hash-text"] {{
   grid-template-columns: minmax(0, 1fr) auto !important;
-  padding-inline-start: 24px !important;
+  padding-inline-start: 36px !important;
 }}
 
 [data-slock-desktop-primary-row-variant="root-channel"] {{
-  padding-inline-start: 24px !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  padding-inline-start: 36px !important;
 }}
 
 [data-slock-desktop-primary-row="true"]:hover {{
@@ -2405,6 +2519,14 @@ aside [data-slock-desktop-primary-row="true"],
   text-align: left !important;
 }}
 
+[data-slock-desktop-primary-row-variant="root-channel"] > :first-child {{
+  grid-column: 1 !important;
+  justify-self: start !important;
+  text-align: left !important;
+  margin-inline-start: 0 !important;
+  padding-inline-start: 0 !important;
+}}
+
 [data-slock-desktop-primary-row="true"]:not(:has(> :nth-child(2))) > :first-child {{
   grid-column: 2 !important;
   justify-self: start !important;
@@ -2415,6 +2537,10 @@ aside [data-slock-desktop-primary-row="true"],
 }}
 
 [data-slock-desktop-primary-row-layout="hash-text"]:not(:has(> :nth-child(2))) > :first-child {{
+  grid-column: 1 !important;
+}}
+
+[data-slock-desktop-primary-row-variant="root-channel"]:not(:has(> :nth-child(2))) > :first-child {{
   grid-column: 1 !important;
 }}
 
