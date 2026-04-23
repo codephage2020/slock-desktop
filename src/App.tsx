@@ -1,5 +1,6 @@
 import { type CSSProperties, startTransition, useEffect, useState } from 'react'
 import './App.css'
+import './Settings.css'
 import {
   type BootstrapPayload,
   type ServiceSnapshot,
@@ -249,7 +250,6 @@ function App() {
     snapshot.themes.find((theme) => theme.id === snapshot.activeThemeId) ??
     snapshot.themes[0]
 
-  const themeHeadline = `${snapshot.themes.length} stable palettes. One stored choice.`
   const shellStyle = buildShellStyle(activeTheme)
   const stackButtonLabel =
     snapshot.service.autoStartWithWorkspace && snapshot.service.configured
@@ -318,68 +318,111 @@ function App() {
         </section>
       ) : null}
 
-      <section className="theme-headline">
-        <div>
-          <p className="eyebrow">Theme catalog</p>
-          <h2>{themeHeadline}</h2>
+      <section className="settings-shell" aria-labelledby="appearance-settings-title">
+        <aside className="settings-sidebar" aria-label="Desktop settings sections">
+          <p className="settings-sidebar-title">Settings</p>
+          <button className="settings-nav-item active" type="button">
+            <span className="settings-nav-icon">A</span>
+            <span>Appearance</span>
+          </button>
+          <button className="settings-nav-item" type="button">
+            <span className="settings-nav-icon">S</span>
+            <span>Service</span>
+          </button>
+          <button className="settings-nav-item" type="button">
+            <span className="settings-nav-icon">U</span>
+            <span>Updates</span>
+          </button>
+        </aside>
+
+        <div className="settings-content">
+          <div className="settings-title-row">
+            <div>
+              <p className="eyebrow">Desktop Settings</p>
+              <h2 id="appearance-settings-title">Appearance</h2>
+              <p className="settings-description">
+                Theme settings now behave like a real settings surface: choose a
+                mode, preview the workspace, and apply it immediately.
+              </p>
+            </div>
+            <span className="settings-save-state">Saved locally</span>
+          </div>
+
+          <div className="setting-row">
+            <div className="setting-copy">
+              <p className="setting-label">Theme</p>
+              <p>Sync the desktop shell and remote workspace overlay.</p>
+            </div>
+
+            <div className="theme-picker" role="radiogroup" aria-label="Theme">
+              {snapshot.themes.map((theme) => {
+                const selected = theme.id === snapshot.activeThemeId
+                return (
+                  <button
+                    key={theme.id}
+                    className={`theme-option${selected ? ' selected' : ''}`}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => handleThemeChange(theme.id)}
+                    disabled={busyAction === theme.id}
+                    style={buildThemeOptionStyle(theme)}
+                  >
+                    <span className="theme-option-preview" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                    <span className="theme-option-copy">
+                      <span className="theme-option-name">{theme.name}</span>
+                      <span className="theme-option-summary">{theme.summary}</span>
+                    </span>
+                    <span className="theme-option-check" aria-hidden="true">
+                      {selected ? '✓' : ''}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="setting-row compact">
+            <div className="setting-copy">
+              <p className="setting-label">Apply scope</p>
+              <p>Current theme covers the local shell, page background, cards, inputs, messages, and popovers.</p>
+            </div>
+            <span className="scope-pill">{activeTheme.mode} mode</span>
+          </div>
         </div>
-        <p className="theme-note">
-          The shell stays consistent locally. The remote Slock workspace keeps
-          receiving a matching overlay through injected theme tokens.
-        </p>
-      </section>
 
-      <section className="theme-grid">
-        {snapshot.themes.map((theme) => {
-          const selected = theme.id === snapshot.activeThemeId
-          return (
-            <article
-              key={theme.id}
-              className={`theme-card${selected ? ' selected' : ''}`}
-            >
-              <div className="swatch-rail" aria-hidden="true">
-                {theme.preview.map((color) => (
-                  <span
-                    key={`${theme.id}-${color}`}
-                    className="swatch"
-                    style={{ background: color }}
-                  />
-                ))}
+        <aside className="appearance-preview" aria-label={`${activeTheme.name} preview`}>
+          <div className="preview-toolbar">
+            <span />
+            <span />
+            <span />
+          </div>
+          <div className="preview-workspace">
+            <div className="preview-sidebar">
+              <span className="preview-pill wide" />
+              <span className="preview-pill" />
+              <span className="preview-pill short" />
+            </div>
+            <div className="preview-thread">
+              <div className="preview-message user">
+                <span />
+                <p>Theme settings should feel native.</p>
               </div>
-
-              <div className="theme-card-body">
-                <div className="theme-card-header">
-                  <div>
-                    <p className="theme-name">{theme.name}</p>
-                    <p className="theme-summary">{theme.summary}</p>
-                  </div>
-                  <span className="mode-chip">{theme.mode}</span>
-                </div>
-
-                <div className="token-row">
-                  <span>Canvas</span>
-                  <span>{theme.canvas}</span>
-                </div>
-                <div className="token-row">
-                  <span>Accent</span>
-                  <span>{theme.accent}</span>
-                </div>
-
-                <button
-                  className="theme-button"
-                  onClick={() => handleThemeChange(theme.id)}
-                  disabled={busyAction === theme.id}
-                >
-                  {selected
-                    ? 'Active Theme'
-                    : busyAction === theme.id
-                      ? 'Applying…'
-                      : 'Apply Theme'}
-                </button>
+              <div className="preview-message assistant">
+                <span />
+                <p>{activeTheme.name} keeps the workspace quiet and readable.</p>
               </div>
-            </article>
-          )
-        })}
+              <div className="preview-composer">
+                <span>Previewing {activeTheme.name}</span>
+                <button type="button" aria-label="Preview send button">↵</button>
+              </div>
+            </div>
+          </div>
+        </aside>
       </section>
 
       <section className="operations-grid">
@@ -625,6 +668,18 @@ function buildShellStyle(theme: ThemeDefinition) {
     '--muted': theme.muted,
     '--accent': theme.accent,
     '--accent-soft': theme.accentSoft,
+  } as CSSProperties
+}
+
+function buildThemeOptionStyle(theme: ThemeDefinition) {
+  return {
+    '--option-canvas': theme.canvas,
+    '--option-surface': theme.surface,
+    '--option-surface-strong': theme.surfaceStrong,
+    '--option-line': theme.line,
+    '--option-text': theme.text,
+    '--option-muted': theme.muted,
+    '--option-accent': theme.accent,
   } as CSSProperties
 }
 
