@@ -697,7 +697,7 @@ function App() {
               <p>{copy.themeDescription}</p>
             </div>
 
-            <div className="theme-picker" role="radiogroup" aria-label="Theme">
+            <div className="theme-picker" role="radiogroup" aria-label={copy.themeColor}>
               {snapshot.themes.map((theme) => {
                 const selected = theme.id === snapshot.colorScheme
                 const themeDisplay = getThemeDisplay(theme, snapshot.language)
