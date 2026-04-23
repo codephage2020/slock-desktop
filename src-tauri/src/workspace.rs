@@ -1,13 +1,24 @@
 use crate::theme;
 
-pub fn settings_overlay_script(active_theme_id: &str) -> String {
-    let themes = serde_json::to_string(&theme::meta_catalog()).unwrap_or_else(|_| "[]".into());
+pub fn settings_overlay_script(
+    active_theme_id: &str,
+    active_theme_mode: &str,
+    active_language: &str,
+    themes: &[theme::ThemeMeta],
+) -> String {
+    let themes = serde_json::to_string(themes).unwrap_or_else(|_| "[]".into());
     let active_theme =
         serde_json::to_string(active_theme_id).unwrap_or_else(|_| "\"default\"".into());
+    let active_mode =
+        serde_json::to_string(active_theme_mode).unwrap_or_else(|_| "\"system\"".into());
+    let active_language =
+        serde_json::to_string(active_language).unwrap_or_else(|_| "\"system\"".into());
 
     WORKSPACE_SETTINGS_SCRIPT
         .replace("__SLOCK_DESKTOP_THEMES__", &themes)
         .replace("__SLOCK_DESKTOP_ACTIVE_THEME__", &active_theme)
+        .replace("__SLOCK_DESKTOP_ACTIVE_MODE__", &active_mode)
+        .replace("__SLOCK_DESKTOP_ACTIVE_LANGUAGE__", &active_language)
 }
 
 const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
@@ -15,6 +26,48 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const hostId = "slock-desktop-settings-host";
   const themes = __SLOCK_DESKTOP_THEMES__;
   const initialThemeId = __SLOCK_DESKTOP_ACTIVE_THEME__;
+  const initialMode = __SLOCK_DESKTOP_ACTIVE_MODE__;
+  const initialLanguage = __SLOCK_DESKTOP_ACTIVE_LANGUAGE__;
+  const modes = [
+    { id: "light", name: "Light" },
+    { id: "dark", name: "Dark" },
+    { id: "system", name: "System" },
+  ];
+  const languages = [
+    { id: "en-US", name: "English" },
+    { id: "zh-CN", name: "中文" },
+    { id: "system", name: "System" },
+  ];
+  const copy = {
+    "en-US": {
+      launcher: "Desktop Settings",
+      eyebrow: "Slock Desktop",
+      title: "Desktop Settings",
+      description: "Appearance settings apply to this workspace window immediately and persist locally.",
+      appearance: "Appearance",
+      service: "Service",
+      updates: "Updates",
+      mode: "Mode",
+      theme: "Theme",
+      language: "Language",
+      saved: "Saved in desktop config",
+      themes: "themes",
+    },
+    "zh-CN": {
+      launcher: "桌面设置",
+      eyebrow: "Slock 桌面端",
+      title: "桌面设置",
+      description: "外观设置会立即应用到当前工作页窗口，并保存在本地。",
+      appearance: "外观",
+      service: "服务",
+      updates: "更新",
+      mode: "模式",
+      theme: "主题",
+      language: "语言",
+      saved: "已保存到桌面配置",
+      themes: "个主题",
+    },
+  };
   const existing = document.getElementById(hostId);
   const host = existing || document.createElement("div");
 
@@ -26,18 +79,85 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const shadow = host.shadowRoot || host.attachShadow({ mode: "open" });
   let open = window.__slockDesktopSettingsOpen === true;
   let activeThemeId = initialThemeId;
+  let activeMode = initialMode;
+  let activeLanguage = initialLanguage;
+  const resolveLanguage = () => {
+    if (activeLanguage === "zh-CN" || activeLanguage === "en-US") {
+      return activeLanguage;
+    }
+    return navigator.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
+  };
+  const t = (key) => copy[resolveLanguage()][key];
+  const themeVarNames = [
+    "--desktop-canvas",
+    "--desktop-surface",
+    "--desktop-surface-secondary",
+    "--desktop-line",
+    "--desktop-text",
+    "--desktop-muted",
+    "--desktop-selection",
+  ];
+
+  const syncHostTheme = () => {
+    const theme = themes.find((candidate) => candidate.id === activeThemeId) || themes[0];
+    if (!theme) return;
+
+    if (activeMode === "system") {
+      themeVarNames.forEach((name) => host.style.removeProperty(name));
+    } else {
+      host.style.setProperty("--desktop-canvas", theme.canvas);
+      host.style.setProperty("--desktop-surface", theme.surface);
+      host.style.setProperty("--desktop-surface-secondary", theme.surfaceStrong);
+      host.style.setProperty("--desktop-line", theme.line);
+      host.style.setProperty("--desktop-text", theme.text);
+      host.style.setProperty("--desktop-muted", theme.muted);
+      host.style.setProperty("--desktop-selection", theme.accentSoft);
+    }
+
+    host.style.setProperty("--desktop-accent", theme.accent);
+  };
 
   const css = `
     :host {
-      --desktop-canvas: #f7f7f8;
+      --desktop-canvas: #f7f7f5;
+      --desktop-toolbar: #ecede8;
+      --desktop-sidebar: #ecede8;
+      --desktop-panel: #f1f2ee;
       --desktop-surface: #ffffff;
-      --desktop-surface-strong: #ececf1;
-      --desktop-line: rgba(32, 33, 35, 0.14);
-      --desktop-text: #202123;
-      --desktop-muted: #6e6e80;
-      --desktop-accent: #6a9f91;
+      --desktop-surface-secondary: #f3f4f1;
+      --desktop-surface-tertiary: #ecefea;
+      --desktop-line: #e2e4de;
+      --desktop-line-strong: #d4d8d0;
+      --desktop-text: #1f1f1c;
+      --desktop-muted: #6b6f67;
+      --desktop-tertiary: #8a8f86;
+      --desktop-accent: #10a37f;
+      --desktop-accent-hover: #0e8f70;
+      --desktop-accent-active: #0c7a60;
+      --desktop-selection: #e7f5f1;
+      --desktop-hover: rgba(31, 31, 28, 0.04);
+      --desktop-focus-ring: rgba(16, 163, 127, 0.28);
       color: var(--desktop-text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :host {
+        --desktop-canvas: #1f1f1c;
+        --desktop-toolbar: #2f302c;
+        --desktop-sidebar: #2f302c;
+        --desktop-panel: #282925;
+        --desktop-surface: #252623;
+        --desktop-surface-secondary: #2f302c;
+        --desktop-surface-tertiary: #383a34;
+        --desktop-line: #3e413a;
+        --desktop-line-strong: #51554b;
+        --desktop-text: #f4f4ef;
+        --desktop-muted: #b7bbae;
+        --desktop-tertiary: #8f9488;
+        --desktop-selection: color-mix(in srgb, var(--desktop-accent) 22%, #1f1f1c);
+        --desktop-hover: rgba(244, 244, 239, 0.06);
+      }
     }
 
     *, *::before, *::after {
@@ -46,8 +166,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     .dock {
       position: fixed;
-      right: 22px;
-      bottom: 22px;
+      right: 24px;
+      bottom: 24px;
       z-index: 2147483647;
       display: grid;
       justify-items: end;
@@ -61,6 +181,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .launcher,
+    .mode-option,
     .theme-option {
       pointer-events: auto;
       appearance: none;
@@ -74,16 +195,17 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .launcher {
-      min-height: 42px;
+      min-height: 36px;
       display: inline-flex;
       align-items: center;
       gap: 9px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: var(--desktop-text);
-      color: var(--desktop-surface);
-      box-shadow: 0 14px 38px rgba(0, 0, 0, 0.18);
-      font-weight: 650;
+      padding: 8px 14px;
+      border: 1px solid var(--desktop-line);
+      border-radius: 12px;
+      background: var(--desktop-surface-secondary);
+      color: var(--desktop-text);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      font-weight: 600;
       letter-spacing: -0.01em;
     }
 
@@ -92,7 +214,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       height: 8px;
       border-radius: 999px;
       background: var(--desktop-accent);
-      box-shadow: 0 0 0 4px rgba(106, 159, 145, 0.18);
+      box-shadow: 0 0 0 4px var(--desktop-selection);
     }
 
     .panel {
@@ -100,11 +222,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       width: min(420px, calc(100vw - 28px));
       max-height: min(620px, calc(100vh - 96px));
       overflow: auto;
-      border-radius: 24px;
+      border: 1px solid var(--desktop-line);
+      border-radius: 20px;
       background: var(--desktop-surface);
-      box-shadow:
-        0 1px 2px rgba(0, 0, 0, 0.08),
-        0 30px 90px rgba(0, 0, 0, 0.18);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
       opacity: 0;
       transform: translateY(10px) scale(0.98);
       transition:
@@ -157,7 +278,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       display: grid;
       grid-template-columns: 118px minmax(0, 1fr);
       min-height: 320px;
-      border-radius: 18px;
+      border: 1px solid var(--desktop-line);
+      border-radius: 16px;
       background: var(--desktop-canvas);
       overflow: hidden;
     }
@@ -167,7 +289,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       align-content: start;
       gap: 4px;
       padding: 10px;
-      background: var(--desktop-surface-strong);
+      background: var(--desktop-sidebar);
     }
 
     .nav-item {
@@ -176,15 +298,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       align-items: center;
       gap: 8px;
       padding: 8px;
-      border-radius: 10px;
+      border-radius: 12px;
       color: var(--desktop-text);
       font-size: 13px;
       font-weight: 600;
     }
 
     .nav-item.active {
-      background: var(--desktop-surface);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      background: var(--desktop-selection);
+      box-shadow: none;
     }
 
     .content {
@@ -206,6 +328,35 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 7px;
     }
 
+    .mode-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .language-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .language-option,
+    .mode-option {
+      min-height: 32px;
+      border: 1px solid var(--desktop-line);
+      border-radius: 12px;
+      background: var(--desktop-surface-secondary);
+      color: var(--desktop-text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .language-option.active,
+    .mode-option.active {
+      background: var(--desktop-selection);
+      border-color: color-mix(in srgb, var(--desktop-accent) 24%, var(--desktop-line));
+    }
+
     .theme-option {
       min-height: 58px;
       display: grid;
@@ -213,17 +364,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       align-items: center;
       gap: 10px;
       padding: 8px;
-      border-radius: 14px;
+      border-radius: 16px;
       background: transparent;
       color: var(--desktop-text);
       text-align: left;
     }
 
     .theme-option.active {
-      background: var(--desktop-surface);
-      box-shadow:
-        inset 0 0 0 1px rgba(106, 159, 145, 0.26),
-        0 1px 2px rgba(0, 0, 0, 0.05);
+      background: var(--desktop-selection);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--desktop-accent) 24%, var(--desktop-line));
     }
 
     .theme-option:disabled {
@@ -295,25 +444,35 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 10px;
       margin-top: 2px;
       padding: 8px 10px;
-      border-radius: 14px;
-      background: var(--desktop-surface);
+      border-radius: 12px;
+      background: var(--desktop-surface-secondary);
       color: var(--desktop-muted);
       font-size: 12px;
     }
 
     @media (hover: hover) {
       .launcher:hover {
-        transform: translateY(-1px);
+        background: var(--desktop-hover);
       }
 
       .theme-option:hover {
-        background: var(--desktop-surface);
+        background: var(--desktop-hover);
+      }
+
+      .mode-option:hover {
+        background: var(--desktop-hover);
+      }
+
+      .language-option:hover {
+        background: var(--desktop-hover);
       }
     }
 
     .launcher:active,
+    .language-option:active,
+    .mode-option:active,
     .theme-option:active {
-      transform: scale(0.96);
+      transform: scale(0.97);
     }
 
     @media (max-width: 520px) {
@@ -334,6 +493,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     @media (prefers-reduced-motion: reduce) {
       .launcher,
+      .language-option,
+      .mode-option,
       .theme-option,
       .panel {
         transition-duration: 1ms;
@@ -342,6 +503,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   `;
 
   const render = () => {
+    syncHostTheme();
     shadow.innerHTML = "";
 
     const style = document.createElement("style");
@@ -362,28 +524,58 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     inner.className = "panel-inner";
     inner.innerHTML = `
       <div class="panel-head">
-        <p class="eyebrow">Slock Desktop</p>
-        <h2>Desktop Settings</h2>
-        <p class="description">Appearance settings apply to this workspace window immediately and persist locally.</p>
+        <p class="eyebrow">${t("eyebrow")}</p>
+        <h2>${t("title")}</h2>
+        <p class="description">${t("description")}</p>
       </div>
       <div class="settings-grid">
         <nav class="nav" aria-label="Desktop settings sections">
-          <div class="nav-item active">Appearance</div>
-          <div class="nav-item">Service</div>
-          <div class="nav-item">Updates</div>
+          <div class="nav-item active">${t("appearance")}</div>
+          <div class="nav-item">${t("service")}</div>
+          <div class="nav-item">${t("updates")}</div>
         </nav>
         <div class="content">
-          <p class="setting-title">Theme</p>
+          <p class="setting-title">${t("mode")}</p>
+          <div class="mode-list" role="radiogroup" aria-label="Theme mode"></div>
+          <p class="setting-title">${t("theme")}</p>
           <div class="theme-list" role="radiogroup" aria-label="Workspace theme"></div>
+          <p class="setting-title">${t("language")}</p>
+          <div class="language-list" role="radiogroup" aria-label="Language"></div>
           <div class="status">
-            <span>Saved in desktop config</span>
-            <span>${themes.length} themes</span>
+            <span>${t("saved")}</span>
+            <span>${themes.length} ${t("themes")}</span>
           </div>
         </div>
       </div>
     `;
 
+    const modeList = inner.querySelector(".mode-list");
     const list = inner.querySelector(".theme-list");
+    const languageList = inner.querySelector(".language-list");
+
+    modes.forEach((mode) => {
+      const selected = mode.id === activeMode;
+      const option = document.createElement("button");
+      option.className = `mode-option${selected ? " active" : ""}`;
+      option.type = "button";
+      option.setAttribute("role", "radio");
+      option.setAttribute("aria-checked", String(selected));
+      option.textContent = mode.name;
+      option.addEventListener("click", () => setMode(mode.id));
+      modeList.appendChild(option);
+    });
+
+    languages.forEach((language) => {
+      const selected = language.id === activeLanguage;
+      const option = document.createElement("button");
+      option.className = `language-option${selected ? " active" : ""}`;
+      option.type = "button";
+      option.setAttribute("role", "radio");
+      option.setAttribute("aria-checked", String(selected));
+      option.textContent = language.name;
+      option.addEventListener("click", () => setLanguage(language.id));
+      languageList.appendChild(option);
+    });
 
     themes.forEach((theme) => {
       const selected = theme.id === activeThemeId;
@@ -431,7 +623,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     launcher.className = "launcher";
     launcher.type = "button";
     launcher.setAttribute("aria-expanded", String(open));
-    launcher.innerHTML = '<span class="launcher-dot"></span><span>Desktop Settings</span>';
+    launcher.innerHTML = `<span class="launcher-dot"></span><span>${t("launcher")}</span>`;
     launcher.addEventListener("click", () => {
       open = !open;
       window.__slockDesktopSettingsOpen = open;
@@ -454,6 +646,36 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       await invoke("set_theme", { themeId });
     } catch (error) {
       console.error("[Slock Desktop] theme update failed", error);
+    }
+  };
+
+  const setMode = async (mode) => {
+    activeMode = mode;
+    render();
+
+    try {
+      const invoke = window.__TAURI__?.core?.invoke;
+      if (typeof invoke !== "function") {
+        throw new Error("Tauri invoke API is unavailable");
+      }
+      await invoke("set_theme_mode", { themeMode: mode });
+    } catch (error) {
+      console.error("[Slock Desktop] theme mode update failed", error);
+    }
+  };
+
+  const setLanguage = async (language) => {
+    activeLanguage = language;
+    render();
+
+    try {
+      const invoke = window.__TAURI__?.core?.invoke;
+      if (typeof invoke !== "function") {
+        throw new Error("Tauri invoke API is unavailable");
+      }
+      await invoke("set_language", { language });
+    } catch (error) {
+      console.error("[Slock Desktop] language update failed", error);
     }
   };
 

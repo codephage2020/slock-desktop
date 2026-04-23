@@ -1,138 +1,209 @@
 use serde::Serialize;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ThemeDefinition {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub summary: &'static str,
-    pub mode: &'static str,
-    pub canvas: &'static str,
-    pub surface: &'static str,
-    pub surface_strong: &'static str,
-    pub line: &'static str,
-    pub text: &'static str,
-    pub muted: &'static str,
-    pub accent: &'static str,
-    pub accent_soft: &'static str,
-    pub preview: [&'static str; 3],
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    pub mode: String,
+    pub canvas: String,
+    pub surface: String,
+    pub surface_strong: String,
+    pub line: String,
+    pub text: String,
+    pub muted: String,
+    pub accent: String,
+    pub accent_soft: String,
+    pub preview: [String; 3],
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThemeMeta {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub summary: &'static str,
-    pub mode: &'static str,
-    pub canvas: &'static str,
-    pub surface: &'static str,
-    pub surface_strong: &'static str,
-    pub line: &'static str,
-    pub text: &'static str,
-    pub muted: &'static str,
-    pub accent: &'static str,
-    pub accent_soft: &'static str,
-    pub preview: [&'static str; 3],
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    pub mode: String,
+    pub canvas: String,
+    pub surface: String,
+    pub surface_strong: String,
+    pub line: String,
+    pub text: String,
+    pub muted: String,
+    pub accent: String,
+    pub accent_soft: String,
+    pub preview: [String; 3],
 }
 
-const THEMES: [ThemeDefinition; 5] = [
-    ThemeDefinition {
+#[derive(Debug, Clone)]
+pub struct CustomThemeInput {
+    pub name: String,
+    pub accent: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ThemePreset {
+    id: &'static str,
+    name: &'static str,
+    summary: &'static str,
+    accent: &'static str,
+    dark_accent: &'static str,
+}
+
+const PRESETS: [ThemePreset; 5] = [
+    ThemePreset {
         id: "default",
         name: "Default",
-        summary: "Soft neutral workspace with restrained sage accents.",
-        mode: "light",
-        canvas: "#f4f3ef",
-        surface: "#fbfaf7",
-        surface_strong: "#eeeee8",
-        line: "#d8d6cf",
-        text: "#242424",
-        muted: "#6f6e68",
-        accent: "#6f9d92",
-        accent_soft: "#dce8e4",
-        preview: ["#f4f3ef", "#eeeee8", "#6f9d92"],
+        summary: "Restrained green accent for daily desktop work.",
+        accent: "#10a37f",
+        dark_accent: "#19c99b",
     },
-    ThemeDefinition {
+    ThemePreset {
         id: "light",
-        name: "Light",
-        summary: "ChatGPT-inspired light mode with quiet gray-white surfaces.",
-        mode: "light",
-        canvas: "#f7f7f8",
-        surface: "#fdfdfb",
-        surface_strong: "#ececf1",
-        line: "#d9d9e3",
-        text: "#202123",
-        muted: "#6e6e80",
-        accent: "#6a9f91",
-        accent_soft: "#e2eee9",
-        preview: ["#f7f7f8", "#ececf1", "#6a9f91"],
+        name: "Mist",
+        summary: "Soft blue accent for quiet operational views.",
+        accent: "#3b82f6",
+        dark_accent: "#74a8ff",
     },
-    ThemeDefinition {
+    ThemePreset {
         id: "dark",
-        name: "Dark",
-        summary: "VS Code-inspired dark mode with muted blue-gray depth.",
-        mode: "dark",
-        canvas: "#1e1e1e",
-        surface: "#252526",
-        surface_strong: "#2d2d30",
-        line: "#3c3c3c",
-        text: "#d4d4d4",
-        muted: "#9da3ae",
-        accent: "#75a6d8",
-        accent_soft: "#2d4056",
-        preview: ["#1e1e1e", "#2d2d30", "#75a6d8"],
+        name: "Indigo",
+        summary: "Muted indigo accent for structured focus.",
+        accent: "#6366f1",
+        dark_accent: "#9ea2ff",
     },
-    ThemeDefinition {
+    ThemePreset {
         id: "graphite",
         name: "Graphite",
-        summary: "Low-saturation slate shell for long operational sessions.",
-        mode: "dark",
-        canvas: "#1b1f24",
-        surface: "#22272e",
-        surface_strong: "#2b313a",
-        line: "#3c444f",
-        text: "#d8dee9",
-        muted: "#98a2b3",
-        accent: "#8fa8c8",
-        accent_soft: "#2d3948",
-        preview: ["#1b1f24", "#2b313a", "#8fa8c8"],
+        summary: "Low-saturation slate accent for long sessions.",
+        accent: "#64748b",
+        dark_accent: "#a8b3c5",
     },
-    ThemeDefinition {
+    ThemePreset {
         id: "crimson",
         name: "Rose",
-        summary: "Muted rose-gray variant with warm editorial depth.",
-        mode: "dark",
-        canvas: "#211c1f",
-        surface: "#2a2428",
-        surface_strong: "#332b30",
-        line: "#4a3d43",
-        text: "#eee7ea",
-        muted: "#b8aab0",
-        accent: "#d4a3ad",
-        accent_soft: "#443138",
-        preview: ["#211c1f", "#332b30", "#d4a3ad"],
+        summary: "Warm rose accent for editorial workspace depth.",
+        accent: "#c05a6f",
+        dark_accent: "#e0a2ae",
     },
 ];
 
-pub fn catalog() -> &'static [ThemeDefinition] {
-    &THEMES
+pub fn normalize_mode(mode: &str) -> &'static str {
+    match mode {
+        "light" => "light",
+        "dark" => "dark",
+        "system" => "system",
+        _ => "system",
+    }
 }
 
-pub fn meta_catalog() -> Vec<ThemeMeta> {
-    catalog().iter().copied().map(ThemeMeta::from).collect()
-}
-
-pub fn resolve_theme(id: &str) -> ThemeDefinition {
-    catalog()
+pub fn meta_catalog(mode: &str, custom: &CustomThemeInput) -> Vec<ThemeMeta> {
+    PRESETS
         .iter()
-        .copied()
+        .map(|preset| materialize_preset(*preset, mode).into())
+        .chain(std::iter::once(materialize_custom(custom, mode).into()))
+        .collect()
+}
+
+pub fn resolve_theme(id: &str, mode: &str, custom: &CustomThemeInput) -> ThemeDefinition {
+    PRESETS
+        .iter()
         .find(|theme| theme.id == id)
-        .unwrap_or(THEMES[0])
+        .map(|preset| materialize_preset(*preset, mode))
+        .unwrap_or_else(|| {
+            if id == "custom" {
+                materialize_custom(custom, mode)
+            } else {
+                materialize_preset(PRESETS[0], mode)
+            }
+        })
+}
+
+fn materialize_preset(preset: ThemePreset, mode: &str) -> ThemeDefinition {
+    materialize_theme(
+        preset.id,
+        preset.name,
+        preset.summary,
+        preset.accent,
+        preset.dark_accent,
+        mode,
+    )
+}
+
+fn materialize_custom(custom: &CustomThemeInput, mode: &str) -> ThemeDefinition {
+    let name = if custom.name.trim().is_empty() {
+        "Custom"
+    } else {
+        custom.name.trim()
+    };
+    let accent = sanitize_hex(&custom.accent).unwrap_or_else(|| "#10a37f".to_string());
+    materialize_theme(
+        "custom",
+        name,
+        "User-defined accent theme.",
+        &accent,
+        &accent,
+        mode,
+    )
+}
+
+fn materialize_theme(
+    id: &str,
+    name: &str,
+    summary: &str,
+    light_accent: &str,
+    dark_accent: &str,
+    mode: &str,
+) -> ThemeDefinition {
+    let normalized_mode = normalize_mode(mode);
+    let dark = normalized_mode == "dark";
+    let accent = if dark { dark_accent } else { light_accent };
+    let accent_soft = if dark {
+        format!("color-mix(in srgb, {accent} 22%, #1f1f1c)")
+    } else {
+        format!("color-mix(in srgb, {accent} 12%, #ffffff)")
+    };
+
+    ThemeDefinition {
+        id: id.to_string(),
+        name: name.to_string(),
+        summary: summary.to_string(),
+        mode: normalized_mode.to_string(),
+        canvas: if dark { "#1f1f1c" } else { "#f7f7f5" }.to_string(),
+        surface: if dark { "#252623" } else { "#ffffff" }.to_string(),
+        surface_strong: if dark { "#2f302c" } else { "#f3f4f1" }.to_string(),
+        line: if dark { "#3e413a" } else { "#e2e4de" }.to_string(),
+        text: if dark { "#f4f4ef" } else { "#1f1f1c" }.to_string(),
+        muted: if dark { "#b7bbae" } else { "#6b6f67" }.to_string(),
+        accent: accent.to_string(),
+        accent_soft,
+        preview: [
+            if dark { "#1f1f1c" } else { "#f7f7f5" }.to_string(),
+            if dark { "#2f302c" } else { "#f3f4f1" }.to_string(),
+            accent.to_string(),
+        ],
+    }
+}
+
+pub fn sanitize_hex(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let hex = trimmed.strip_prefix('#').unwrap_or(trimmed);
+    let valid_length = hex.len() == 6;
+    let valid_digits = hex.chars().all(|ch| ch.is_ascii_hexdigit());
+
+    if valid_length && valid_digits {
+        Some(format!("#{}", hex.to_ascii_lowercase()))
+    } else {
+        None
+    }
 }
 
 pub fn injected_script(theme: ThemeDefinition) -> String {
-    let css_payload = serde_json::to_string(&remote_css(theme)).unwrap_or_else(|_| "\"\"".into());
-    let theme_id = serde_json::to_string(theme.id).unwrap_or_else(|_| "\"default\"".into());
-    let mode = serde_json::to_string(theme.mode).unwrap_or_else(|_| "\"light\"".into());
+    let css_payload = serde_json::to_string(&remote_css(&theme)).unwrap_or_else(|_| "\"\"".into());
+    let theme_id = serde_json::to_string(&theme.id).unwrap_or_else(|_| "\"default\"".into());
+    let mode = serde_json::to_string(&theme.mode).unwrap_or_else(|_| "\"system\"".into());
+    let color_scheme =
+        serde_json::to_string(color_scheme(&theme)).unwrap_or_else(|_| "\"light dark\"".into());
 
     format!(
         r#"
@@ -140,11 +211,13 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
   const styleId = "slock-desktop-theme";
   const themeId = {theme_id};
   const mode = {mode};
+  const colorScheme = {color_scheme};
   const css = {css_payload};
 
   const apply = () => {{
     document.documentElement.dataset.slockDesktopTheme = themeId;
-    document.documentElement.style.colorScheme = mode;
+    document.documentElement.dataset.slockDesktopMode = mode;
+    document.documentElement.style.colorScheme = colorScheme;
 
     let style = document.getElementById(styleId);
     if (!style) {{
@@ -171,36 +244,60 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
   apply();
 }})();
 "#,
-        accent = serde_json::to_string(theme.accent).unwrap_or_else(|_| "\"#6f9d92\"".into())
+        accent = serde_json::to_string(&theme.accent).unwrap_or_else(|_| "\"#10a37f\"".into())
     )
 }
 
-fn remote_css(theme: ThemeDefinition) -> String {
+fn color_scheme(theme: &ThemeDefinition) -> &'static str {
+    if theme.mode == "system" {
+        "light dark"
+    } else if theme.mode == "dark" {
+        "dark"
+    } else {
+        "light"
+    }
+}
+
+fn remote_css(theme: &ThemeDefinition) -> String {
     format!(
         r#"
 :root,
 :host {{
   color-scheme: {mode};
   --slock-desktop-canvas: {canvas};
+  --slock-desktop-app-bg: {canvas};
+  --slock-desktop-toolbar-bg: {surface_strong};
+  --slock-desktop-sidebar-bg: {surface_strong};
+  --slock-desktop-panel-bg: color-mix(in srgb, {surface_strong} 72%, {canvas});
   --slock-desktop-surface: {surface};
   --slock-desktop-surface-strong: {surface_strong};
+  --slock-desktop-surface-secondary: {surface_strong};
+  --slock-desktop-surface-tertiary: color-mix(in srgb, {surface_strong} 72%, {canvas});
   --slock-desktop-line: {line};
+  --slock-desktop-line-strong: color-mix(in srgb, {line} 82%, {text});
   --slock-desktop-text: {text};
   --slock-desktop-muted: {muted};
+  --slock-desktop-text-tertiary: color-mix(in srgb, {muted} 72%, {surface});
   --slock-desktop-accent: {accent};
   --slock-desktop-accent-soft: {accent_soft};
-  --slock-desktop-hover: color-mix(in srgb, {accent_soft} 44%, {surface});
-  --slock-desktop-active: color-mix(in srgb, {accent} 12%, {surface});
-  --slock-desktop-shadow: 0 14px 46px -38px color-mix(in srgb, {text} 38%, transparent);
-  --slock-desktop-soft-shadow: 0 1px 2px color-mix(in srgb, {text} 8%, transparent);
+  --slock-desktop-accent-hover: color-mix(in srgb, {accent} 88%, {text});
+  --slock-desktop-accent-active: color-mix(in srgb, {accent} 72%, {text});
+  --slock-desktop-selection: {accent_soft};
+  --slock-desktop-hover: color-mix(in srgb, {text} 4%, transparent);
+  --slock-desktop-active: color-mix(in srgb, {text} 8%, transparent);
+  --slock-desktop-focus-ring: color-mix(in srgb, {accent} 28%, transparent);
+  --slock-desktop-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --slock-desktop-soft-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --slock-desktop-radius-xs: 8px;
   --slock-desktop-radius-sm: 10px;
-  --slock-desktop-radius-md: 14px;
-  --slock-desktop-radius-lg: 18px;
-  --slock-desktop-radius-xl: 24px;
+  --slock-desktop-radius-md: 12px;
+  --slock-desktop-radius-lg: 16px;
+  --slock-desktop-radius-xl: 20px;
   --slock-desktop-radius-pill: 999px;
-  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --default-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --default-mono-font-family: "SFMono-Regular", "SF Mono", ui-monospace, monospace;
+  --slock-desktop-readable-width: 840px;
+  --font-display: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  --default-font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  --default-mono-font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
   --color-white: {surface};
   --color-black: {text};
   --color-gray-400: {muted};
@@ -213,6 +310,29 @@ fn remote_css(theme: ThemeDefinition) -> String {
   --color-brutal-orange: {accent_soft};
 }}
 
+@media (prefers-color-scheme: dark) {{
+  html[data-slock-desktop-mode="system"] {{
+    --slock-desktop-canvas: #1f1f1c;
+    --slock-desktop-app-bg: #1f1f1c;
+    --slock-desktop-toolbar-bg: #2f302c;
+    --slock-desktop-sidebar-bg: #2f302c;
+    --slock-desktop-panel-bg: #282925;
+    --slock-desktop-surface: #252623;
+    --slock-desktop-surface-strong: #2f302c;
+    --slock-desktop-surface-secondary: #2f302c;
+    --slock-desktop-surface-tertiary: #383a34;
+    --slock-desktop-line: #3e413a;
+    --slock-desktop-line-strong: #51554b;
+    --slock-desktop-text: #f4f4ef;
+    --slock-desktop-muted: #b7bbae;
+    --slock-desktop-text-tertiary: #8f9488;
+    --slock-desktop-accent-soft: color-mix(in srgb, {accent} 22%, #1f1f1c);
+    --slock-desktop-selection: color-mix(in srgb, {accent} 22%, #1f1f1c);
+    --slock-desktop-hover: rgba(244, 244, 239, 0.06);
+    --slock-desktop-active: rgba(244, 244, 239, 0.1);
+  }}
+}}
+
 html,
 body,
 #root {{
@@ -222,7 +342,8 @@ body,
 
 body {{
   accent-color: var(--slock-desktop-accent) !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif !important;
+  font-size: 14px !important;
   letter-spacing: -0.01em !important;
   text-rendering: optimizeLegibility !important;
 }}
@@ -307,7 +428,7 @@ select {{
 [data-state="open"],
 [data-slot="popover-content"] {{
   background: var(--slock-desktop-surface) !important;
-  border-radius: 18px !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
   box-shadow: none !important;
 }}
 
@@ -315,13 +436,12 @@ select {{
 [class*="Message"],
 [class*="thread"],
 [class*="Thread"] {{
-  background: var(--slock-desktop-surface-strong) !important;
-  border-radius: 18px !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
 }}
 
 [class*="message"],
 [class*="Message"] {{
-  background: var(--slock-desktop-surface-strong) !important;
+  background: transparent !important;
 }}
 
 .font-display,
@@ -390,7 +510,7 @@ pre {{
 [role="menu"],
 [data-radix-popper-content-wrapper],
 [data-slot="popover-content"] {{
-  border-radius: 14px !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
   background: var(--slock-desktop-surface) !important;
   box-shadow: var(--slock-desktop-shadow) !important;
 }}
@@ -400,8 +520,8 @@ input,
 textarea,
 select,
 [contenteditable="true"] {{
-  border-radius: 14px !important;
-  background: var(--slock-desktop-surface) !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
+  background: var(--slock-desktop-surface-secondary) !important;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slock-desktop-line) 55%, transparent) !important;
 }}
 
@@ -419,7 +539,7 @@ select:focus,
 .btn-brutal-sm,
 button,
 [role="button"] {{
-  border-radius: 12px !important;
+  border-radius: var(--slock-desktop-radius-md) !important;
   transform: none !important;
   transition:
     background 150ms ease,
@@ -455,7 +575,7 @@ button,
 button:hover,
 [role="button"]:hover {{
   background: var(--slock-desktop-hover) !important;
-  transform: translateY(-1px) !important;
+  transform: none !important;
 }}
 
 .btn-brutal:active,
@@ -466,18 +586,24 @@ button:active,
 }}
 
 [class*="bg-brutal-yellow"],
-[class*="bg-brutal-pink"],
-[class*="bg-brutal-cyan"],
-[class*="bg-brutal-lime"],
-[class*="bg-brutal-lavender"],
 [class*="bg-brutal-orange"],
 [class*="hover\:bg-brutal-yellow"],
+[class*="hover\:bg-brutal-orange"] {{
+  background-color: var(--slock-desktop-surface-secondary) !important;
+}}
+
+[class*="bg-brutal-pink"],
+[class*="bg-brutal-cyan"],
+[class*="bg-brutal-lavender"],
 [class*="hover\:bg-brutal-pink"],
 [class*="hover\:bg-brutal-cyan"],
-[class*="hover\:bg-brutal-lime"],
-[class*="hover\:bg-brutal-lavender"],
-[class*="hover\:bg-brutal-orange"] {{
-  background-color: var(--slock-desktop-accent-soft) !important;
+[class*="hover\:bg-brutal-lavender"] {{
+  background-color: var(--slock-desktop-surface-tertiary) !important;
+}}
+
+[class*="bg-brutal-lime"],
+[class*="hover\:bg-brutal-lime"] {{
+  background-color: var(--slock-desktop-selection) !important;
 }}
 
 [class*="text-brutal-yellow"],
@@ -506,20 +632,26 @@ button:active,
 .bg-brutal-yellow\/30,
 .bg-brutal-yellow\/40,
 .bg-brutal-yellow\/60,
+.bg-brutal-orange,
+.bg-brutal-orange\/20,
+.bg-brutal-orange\/30 {{
+  background-color: var(--slock-desktop-surface-secondary) !important;
+}}
+
 .bg-brutal-pink,
 .bg-brutal-pink\/30,
 .bg-brutal-cyan,
 .bg-brutal-cyan\/30,
 .bg-brutal-cyan\/40,
+.bg-brutal-lavender,
+.bg-brutal-lavender\/40 {{
+  background-color: var(--slock-desktop-surface-tertiary) !important;
+}}
+
 .bg-brutal-lime,
 .bg-brutal-lime\/20,
-.bg-brutal-lime\/30,
-.bg-brutal-lavender,
-.bg-brutal-lavender\/40,
-.bg-brutal-orange,
-.bg-brutal-orange\/20,
-.bg-brutal-orange\/30 {{
-  background-color: var(--slock-desktop-accent-soft) !important;
+.bg-brutal-lime\/30 {{
+  background-color: var(--slock-desktop-selection) !important;
 }}
 
 .hover\:bg-brutal-yellow:hover,
@@ -604,7 +736,7 @@ aside button:hover,
 [class*="message"] > *,
 [class*="Message"] > *,
 .max-w-\[70\%\] {{
-  border-radius: 18px !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
 }}
 
 .whitespace-pre-wrap,
@@ -622,8 +754,8 @@ aside button:hover,
 [class*="Composer"] {{
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
-  border-radius: 18px 18px 0 0 !important;
-  box-shadow: 0 -12px 42px -36px color-mix(in srgb, var(--slock-desktop-text) 35%, transparent) !important;
+  border-radius: var(--slock-desktop-radius-lg) var(--slock-desktop-radius-lg) 0 0 !important;
+  box-shadow: var(--slock-desktop-soft-shadow) !important;
 }}
 
 .relative.flex.items-center.border-t-2 textarea,
@@ -631,8 +763,8 @@ aside button:hover,
 [class*="composer"] textarea,
 [class*="Composer"] textarea {{
   min-height: 44px !important;
-  border-radius: 16px !important;
-  background: var(--slock-desktop-canvas) !important;
+  border-radius: var(--slock-desktop-radius-lg) !important;
+  background: var(--slock-desktop-surface-secondary) !important;
 }}
 
 .text-black,
@@ -839,13 +971,13 @@ code,
 }}
 
 .max-w-\[70\%\] {{
-  max-width: min(760px, 86%) !important;
+  max-width: min(var(--slock-desktop-readable-width), 86%) !important;
 }}
 
 .max-w-\[70\%\].border-2,
 .max-w-sm.border-2.bg-brutal-cyan,
 .mx-auto.mb-3.max-w-md {{
-  background: var(--slock-desktop-surface) !important;
+  background: var(--slock-desktop-surface-secondary) !important;
   color: var(--slock-desktop-text) !important;
   border: 1px solid var(--slock-desktop-line) !important;
   border-radius: var(--slock-desktop-radius-lg) !important;
@@ -952,15 +1084,15 @@ svg {{
   border-radius: 999px;
 }}
 "#,
-        mode = theme.mode,
-        canvas = theme.canvas,
-        surface = theme.surface,
-        surface_strong = theme.surface_strong,
-        line = theme.line,
-        text = theme.text,
-        muted = theme.muted,
-        accent = theme.accent,
-        accent_soft = theme.accent_soft
+        mode = color_scheme(theme),
+        canvas = theme.canvas.as_str(),
+        surface = theme.surface.as_str(),
+        surface_strong = theme.surface_strong.as_str(),
+        line = theme.line.as_str(),
+        text = theme.text.as_str(),
+        muted = theme.muted.as_str(),
+        accent = theme.accent.as_str(),
+        accent_soft = theme.accent_soft.as_str()
     )
 }
 

@@ -43,7 +43,14 @@ impl Default for UpdateSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
+    #[serde(default = "default_active_theme")]
     pub active_theme: String,
+    #[serde(default = "default_theme_mode")]
+    pub theme_mode: String,
+    #[serde(default)]
+    pub custom_theme: CustomThemeSettings,
+    #[serde(default = "default_language")]
+    pub language: String,
     pub service: ServiceSettings,
     pub updates: UpdateSettings,
 }
@@ -51,11 +58,42 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            active_theme: "default".to_string(),
+            active_theme: default_active_theme(),
+            theme_mode: default_theme_mode(),
+            custom_theme: CustomThemeSettings::default(),
+            language: default_language(),
             service: ServiceSettings::default(),
             updates: UpdateSettings::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomThemeSettings {
+    pub name: String,
+    pub accent: String,
+}
+
+impl Default for CustomThemeSettings {
+    fn default() -> Self {
+        Self {
+            name: "Custom".to_string(),
+            accent: "#10a37f".to_string(),
+        }
+    }
+}
+
+fn default_active_theme() -> String {
+    "default".to_string()
+}
+
+fn default_theme_mode() -> String {
+    "system".to_string()
+}
+
+fn default_language() -> String {
+    "system".to_string()
 }
 
 pub fn load_settings<R: Runtime>(app: &AppHandle<R>) -> AppSettings {

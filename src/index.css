@@ -1,21 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap');
-
 :root {
-  --canvas: #f4f3ef;
-  --surface: #fbfaf7;
-  --surface-strong: #eeeee8;
-  --line: #d8d6cf;
-  --text: #242424;
-  --muted: #6f6e68;
-  --accent: #6f9d92;
-  --accent-soft: #dce8e4;
-  font-family: 'Space Grotesk', sans-serif;
+  --canvas: #f7f7f5;
+  --surface: #ffffff;
+  --surface-strong: #f3f4f1;
+  --line: #e2e4de;
+  --text: #1f1f1c;
+  --muted: #6b6f67;
+  --accent: #10a37f;
+  --accent-soft: #e7f5f1;
+  font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
   color: var(--text);
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--accent-soft) 58%, transparent), transparent 30%),
-    linear-gradient(180deg, color-mix(in srgb, var(--canvas) 92%, var(--surface)), var(--canvas));
+  background: var(--canvas);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -50,13 +47,13 @@ p {
 }
 
 h1 {
-  font-size: clamp(2.6rem, 6vw, 5.8rem);
-  line-height: 0.96;
-  letter-spacing: -0.05em;
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.022em;
 }
 
 h2 {
-  font-size: clamp(1.4rem, 2vw, 2.1rem);
-  line-height: 1.05;
-  letter-spacing: -0.04em;
+  font-size: 18px;
+  line-height: 26px;
+  letter-spacing: -0.018em;
 }

@@ -4,7 +4,7 @@ export interface ThemeDefinition {
   id: string
   name: string
   summary: string
-  mode: 'light' | 'dark'
+  mode: 'light' | 'dark' | 'system'
   canvas: string
   surface: string
   surfaceStrong: string
@@ -14,6 +14,11 @@ export interface ThemeDefinition {
   accent: string
   accentSoft: string
   preview: [string, string, string]
+}
+
+export interface CustomThemeSnapshot {
+  name: string
+  accent: string
 }
 
 export interface ServiceSnapshot {
@@ -38,6 +43,9 @@ export interface BootstrapPayload {
   appName: string
   workspaceUrl: string
   activeThemeId: string
+  activeThemeMode: 'light' | 'dark' | 'system'
+  customTheme: CustomThemeSnapshot
+  activeLanguage: 'en-US' | 'zh-CN' | 'system'
   workspaceOpen: boolean
   themes: ThemeDefinition[]
   service: ServiceSnapshot
@@ -50,6 +58,18 @@ export async function loadBootstrap() {
 
 export async function updateTheme(themeId: string) {
   return invoke<BootstrapPayload>('set_theme', { themeId })
+}
+
+export async function updateThemeMode(themeMode: BootstrapPayload['activeThemeMode']) {
+  return invoke<BootstrapPayload>('set_theme_mode', { themeMode })
+}
+
+export async function saveCustomTheme(customTheme: CustomThemeSnapshot) {
+  return invoke<BootstrapPayload>('save_custom_theme', { customTheme })
+}
+
+export async function updateLanguage(language: BootstrapPayload['activeLanguage']) {
+  return invoke<BootstrapPayload>('set_language', { language })
 }
 
 export async function openWorkspace() {
