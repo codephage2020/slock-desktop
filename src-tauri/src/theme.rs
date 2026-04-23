@@ -459,11 +459,12 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopMenuItem",
         "slockDesktopTaskRow",
         "slockDesktopTaskTitle",
+        "slockDesktopTaskStateChip",
         "slockDesktopAccountDock",
         "slockDesktopAccountAction"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-module-tabs-scope],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-account-dock],[data-slock-desktop-account-action]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-module-tabs-scope],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-task-state-chip],[data-slock-desktop-account-dock],[data-slock-desktop-account-action]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -545,6 +546,18 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         row.dataset.slockDesktopPrimaryRow = "true";
       }});
 
+      document.querySelectorAll(`${{sidebarSelector}} button,${{sidebarSelector}} a,${{sidebarSelector}} [role="button"]`).forEach((row) => {{
+        if (!(row instanceof HTMLElement)) return;
+        if (row.closest('#slock-desktop-settings-host')) return;
+        if (row.closest('[data-slock-desktop-module-tabs="true"]')) return;
+        const text = (row.textContent || "").replace(/\s+/g, " ").trim();
+        if (!text) return;
+        const isChannelRow = /^#\\s*\\S+/.test(text) || !!row.querySelector("svg,path,[data-slock-desktop-sidebar-avatar='true'],img");
+        if (!isChannelRow) return;
+        if (text) row.setAttribute("title", text);
+        row.dataset.slockDesktopPrimaryRow = "true";
+      }});
+
       document.querySelectorAll('main button,main a,main [role="button"],main [class*="border-2"],main [class*="border"]').forEach((row) => {{
         if (!(row instanceof HTMLElement)) return;
         if (row.closest('#slock-desktop-settings-host,form,input,textarea,[contenteditable="true"]')) return;
@@ -553,8 +566,11 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (row.dataset.slockDesktopTaskState) return;
         const rect = row.getBoundingClientRect();
         if (rect.width > 0 && rect.width < 240) return;
+        const stateElement = row.dataset.slockDesktopTaskState
+          ? row
+          : row.querySelector("[data-slock-desktop-task-state]");
         const hasTaskState =
-          !!row.querySelector("[data-slock-desktop-task-state]") ||
+          !!stateElement ||
           /\\b(todo|to do|in progress|in review|done)\\b/i.test(text) ||
           /待办|进行中|待复核|完成/.test(text);
         const hasTaskMarker =
@@ -564,7 +580,8 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (!hasTaskState || !hasTaskMarker) return;
 
         row.dataset.slockDesktopTaskRow = "true";
-        const titleCandidate = Array.from(row.querySelectorAll("span,p,div,strong"))
+        if (stateElement instanceof HTMLElement) stateElement.dataset.slockDesktopTaskStateChip = "true";
+        const titleCandidate = Array.from(row.querySelectorAll("span,p,div,strong,button"))
           .filter((element) => {{
             if (!(element instanceof HTMLElement)) return false;
             if (element.dataset.slockDesktopTaskState) return false;
@@ -2221,9 +2238,24 @@ aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
   text-align: left !important;
 }}
 
+nav [data-slock-desktop-primary-row="true"],
+aside [data-slock-desktop-primary-row="true"],
+[class*="sidebar"] [data-slock-desktop-primary-row="true"],
+[class*="Sidebar"] [data-slock-desktop-primary-row="true"] {{
+  display: grid !important;
+  grid-template-columns: 28px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  justify-content: stretch !important;
+  column-gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  text-align: left !important;
+}}
+
 [data-slock-desktop-primary-row="true"] {{
   position: relative !important;
   overflow: hidden !important;
+  padding-inline: 0 !important;
 }}
 
 [data-slock-desktop-primary-row="true"]:hover {{
@@ -2265,7 +2297,11 @@ aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
 nav :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
 aside :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
 [class*="sidebar"] :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
-[class*="Sidebar"] :is(button,a,[role="button"]) > :not(:first-child):not(:last-child) {{
+[class*="Sidebar"] :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
+nav [data-slock-desktop-primary-row="true"] > :not(:first-child):not(:last-child),
+aside [data-slock-desktop-primary-row="true"] > :not(:first-child):not(:last-child),
+[class*="sidebar"] [data-slock-desktop-primary-row="true"] > :not(:first-child):not(:last-child),
+[class*="Sidebar"] [data-slock-desktop-primary-row="true"] > :not(:first-child):not(:last-child) {{
   min-width: 0 !important;
   flex: 1 1 auto !important;
   overflow: hidden !important;
@@ -2282,7 +2318,11 @@ aside :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
 
 [data-slock-desktop-primary-list="true"] :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]),
 nav :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]),
-aside :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]) {{
+aside :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]),
+nav [data-slock-desktop-primary-row="true"] > :last-child,
+aside [data-slock-desktop-primary-row="true"] > :last-child,
+[class*="sidebar"] [data-slock-desktop-primary-row="true"] > :last-child,
+[class*="Sidebar"] [data-slock-desktop-primary-row="true"] > :last-child {{
   margin-left: auto !important;
   flex: 0 0 auto !important;
   text-align: right !important;
@@ -2297,7 +2337,7 @@ aside :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*=
 
 [data-slock-desktop-task-row="true"] {{
   display: grid !important;
-  grid-template-columns: 36px 64px 156px minmax(0, 1fr) minmax(120px, 180px) 48px !important;
+  grid-template-columns: 36px minmax(0, 1fr) minmax(128px, 176px) 48px !important;
   align-items: center !important;
   justify-content: flex-start !important;
   column-gap: 12px !important;
@@ -2315,15 +2355,8 @@ aside :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*=
   text-align: center !important;
 }}
 
-[data-slock-desktop-task-row="true"] > :nth-child(2),
-[data-slock-desktop-task-row="true"] > :nth-child(3),
-[data-slock-desktop-task-row="true"] > :nth-child(4) {{
+[data-slock-desktop-task-row="true"] > :not(:first-child):not(:last-child) {{
   justify-self: start !important;
-  text-align: left !important;
-}}
-
-[data-slock-desktop-task-row="true"] > :nth-child(5) {{
-  justify-self: end !important;
   text-align: left !important;
 }}
 
@@ -2349,6 +2382,16 @@ aside :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*=
   margin-inline: 0 !important;
   justify-self: start !important;
   align-self: center !important;
+}}
+
+[data-slock-desktop-task-state-chip="true"] {{
+  align-self: center !important;
+  justify-self: start !important;
+  text-align: left !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
 }}
 
 [class*="task"],
