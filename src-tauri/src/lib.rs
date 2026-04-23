@@ -7,10 +7,15 @@ use config::{
 };
 use serde::Serialize;
 use std::{
+    env,
     process::{Child, Command, Stdio},
     sync::Mutex,
 };
-use tauri::{webview::PageLoadEvent, AppHandle, Manager, RunEvent, State, Theme, Url};
+use tauri::{
+    menu::{MenuBuilder, SubmenuBuilder},
+    webview::PageLoadEvent,
+    AppHandle, Manager, RunEvent, State, Theme, Url,
+};
 use theme::{meta_catalog, resolve_theme, CustomThemeInput};
 
 const MAIN_LABEL: &str = "main";
@@ -26,10 +31,10 @@ pub struct DesktopState {
 struct BootstrapPayload {
     app_name: &'static str,
     workspace_url: &'static str,
-    active_theme_id: String,
-    active_theme_mode: String,
+    color_scheme: String,
+    appearance_mode: String,
     custom_theme: CustomThemeSettings,
-    active_language: String,
+    language: String,
     workspace_open: bool,
     themes: Vec<theme::ThemeMeta>,
     service: ServiceSnapshot,
@@ -74,29 +79,29 @@ fn set_theme(
     state: State<'_, DesktopState>,
     theme_id: String,
 ) -> Result<BootstrapPayload, String> {
-    let (active_theme_id, active_theme_mode, custom_theme, active_language) = {
+    let (color_scheme, appearance_mode, custom_theme, language) = {
         let mut settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         let theme = resolve_theme(
             &theme_id,
-            &settings.theme_mode,
+            &settings.appearance_mode,
             &custom_theme_input(&settings.custom_theme),
         );
-        settings.active_theme = theme.id.clone();
+        settings.color_scheme = theme.id.clone();
         save_settings(&app, &settings)?;
         (
-            settings.active_theme.clone(),
-            settings.theme_mode.clone(),
+            settings.color_scheme.clone(),
+            settings.appearance_mode.clone(),
             settings.custom_theme.clone(),
             settings.language.clone(),
         )
     };
 
     let custom = custom_theme_input(&custom_theme);
-    let theme = resolve_theme(&active_theme_id, &active_theme_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &active_theme_mode, &active_language, &custom)?;
+    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
     build_bootstrap(&app, &state)
 }
@@ -107,24 +112,24 @@ fn set_theme_mode(
     state: State<'_, DesktopState>,
     theme_mode: String,
 ) -> Result<BootstrapPayload, String> {
-    let (active_theme_id, active_theme_mode, custom_theme, active_language) = {
+    let (color_scheme, appearance_mode, custom_theme, language) = {
         let mut settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
-        settings.theme_mode = theme::normalize_mode(&theme_mode).to_string();
+        settings.appearance_mode = theme::normalize_mode(&theme_mode).to_string();
         save_settings(&app, &settings)?;
         (
-            settings.active_theme.clone(),
-            settings.theme_mode.clone(),
+            settings.color_scheme.clone(),
+            settings.appearance_mode.clone(),
             settings.custom_theme.clone(),
             settings.language.clone(),
         )
     };
 
     let custom = custom_theme_input(&custom_theme);
-    let theme = resolve_theme(&active_theme_id, &active_theme_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &active_theme_mode, &active_language, &custom)?;
+    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
     build_bootstrap(&app, &state)
 }
@@ -135,24 +140,24 @@ fn save_custom_theme(
     state: State<'_, DesktopState>,
     custom_theme: CustomThemeSettings,
 ) -> Result<BootstrapPayload, String> {
-    let (active_theme_mode, active_language, saved_custom_theme) = {
+    let (appearance_mode, language, saved_custom_theme) = {
         let mut settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         settings.custom_theme = sanitize_custom_theme(custom_theme);
-        settings.active_theme = "custom".to_string();
+        settings.color_scheme = "custom".to_string();
         save_settings(&app, &settings)?;
         (
-            settings.theme_mode.clone(),
+            settings.appearance_mode.clone(),
             settings.language.clone(),
             settings.custom_theme.clone(),
         )
     };
 
     let custom = custom_theme_input(&saved_custom_theme);
-    let theme = resolve_theme("custom", &active_theme_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &active_theme_mode, &active_language, &custom)?;
+    let theme = resolve_theme("custom", &appearance_mode, &custom);
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
     build_bootstrap(&app, &state)
 }
@@ -163,7 +168,7 @@ fn set_language(
     state: State<'_, DesktopState>,
     language: String,
 ) -> Result<BootstrapPayload, String> {
-    let (active_theme_id, active_theme_mode, custom_theme, active_language) = {
+    let (color_scheme, appearance_mode, custom_theme, language) = {
         let mut settings = state
             .settings
             .lock()
@@ -171,16 +176,16 @@ fn set_language(
         settings.language = sanitize_language(&language).to_string();
         save_settings(&app, &settings)?;
         (
-            settings.active_theme.clone(),
-            settings.theme_mode.clone(),
+            settings.color_scheme.clone(),
+            settings.appearance_mode.clone(),
             settings.custom_theme.clone(),
             settings.language.clone(),
         )
     };
 
     let custom = custom_theme_input(&custom_theme);
-    let theme = resolve_theme(&active_theme_id, &active_theme_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &active_theme_mode, &active_language, &custom)?;
+    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
     build_bootstrap(&app, &state)
 }
@@ -190,15 +195,15 @@ fn open_workspace(
     app: AppHandle,
     state: State<'_, DesktopState>,
 ) -> Result<BootstrapPayload, String> {
-    let (theme_id, theme_mode, custom_theme, language) = {
+    let (color_scheme, appearance_mode, custom_theme, language) = {
         let settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         maybe_start_service(&state, &settings.service)?;
         (
-            settings.active_theme.clone(),
-            settings.theme_mode.clone(),
+            settings.color_scheme.clone(),
+            settings.appearance_mode.clone(),
             settings.custom_theme.clone(),
             settings.language.clone(),
         )
@@ -206,8 +211,8 @@ fn open_workspace(
 
     enter_workspace_in_main_window(
         &app,
-        &theme_id,
-        &theme_mode,
+        &color_scheme,
+        &appearance_mode,
         &language,
         &custom_theme_input(&custom_theme),
     )?;
@@ -290,7 +295,7 @@ fn build_bootstrap(
         .clone();
 
     let service = collect_service_snapshot(state, &settings.service)?;
-    let active_theme_mode = theme::normalize_mode(&settings.theme_mode).to_string();
+    let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
     let updates = UpdateSnapshot {
         current_version: app.package_info().version.to_string(),
         repository_slug: settings.updates.repository_slug.clone(),
@@ -304,13 +309,13 @@ fn build_bootstrap(
     Ok(BootstrapPayload {
         app_name: "Slock Desktop",
         workspace_url: WORKSPACE_URL,
-        active_theme_id: settings.active_theme.clone(),
-        active_theme_mode: active_theme_mode.clone(),
+        color_scheme: settings.color_scheme.clone(),
+        appearance_mode: appearance_mode.clone(),
         custom_theme: settings.custom_theme.clone(),
-        active_language: sanitize_language(&settings.language).to_string(),
+        language: sanitize_language(&settings.language).to_string(),
         workspace_open: main_window_is_workspace(app),
         themes: meta_catalog(
-            &active_theme_mode,
+            &appearance_mode,
             &custom_theme_input(&settings.custom_theme),
         ),
         service,
@@ -335,7 +340,7 @@ fn enter_workspace_in_main_window(
         let _ = window.show();
         let _ = window.set_focus();
         apply_window_theme(&window, theme_mode);
-        apply_window_language(&window, language, true);
+        apply_window_language(app, &window, language, true);
         return apply_workspace_scripts_to_window(
             &window,
             theme,
@@ -350,7 +355,7 @@ fn enter_workspace_in_main_window(
         .parse::<Url>()
         .map_err(|err| err.to_string())?;
 
-    apply_window_language(&window, language, true);
+    apply_window_language(app, &window, language, true);
     apply_window_theme(&window, theme_mode);
     let _ = window.set_focus();
     window.navigate(target_url).map_err(|err| err.to_string())
@@ -365,7 +370,7 @@ fn apply_theme_to_workspace(
 ) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(MAIN_LABEL) {
         apply_window_theme(&window, theme_mode);
-        apply_window_language(&window, language, window_is_workspace(&window));
+        apply_window_language(app, &window, language, window_is_workspace(&window));
         if window_is_workspace(&window) {
             let active_theme_id = theme.id.clone();
             apply_workspace_scripts_to_window(
@@ -391,14 +396,134 @@ fn apply_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
     let _ = window.set_theme(native_theme);
 }
 
-fn apply_window_language(window: &tauri::WebviewWindow, language: &str, workspace: bool) {
-    let title = match (sanitize_language(language), workspace) {
+fn apply_window_language(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+    language: &str,
+    workspace: bool,
+) {
+    let resolved_language = resolve_desktop_language(language);
+    let title = match (resolved_language, workspace) {
         ("zh-CN", true) => "Slock 工作区",
         ("zh-CN", false) => "Slock 桌面端",
         (_, true) => "Slock Workspace",
         (_, false) => "Slock Desktop",
     };
     let _ = window.set_title(title);
+    if let Err(err) = apply_native_menu(app, resolved_language) {
+        log::warn!("failed to apply localized native menu: {err}");
+    }
+}
+
+struct NativeMenuCopy {
+    app: &'static str,
+    about: &'static str,
+    services: &'static str,
+    hide: &'static str,
+    hide_others: &'static str,
+    quit: &'static str,
+    edit: &'static str,
+    undo: &'static str,
+    redo: &'static str,
+    cut: &'static str,
+    copy: &'static str,
+    paste: &'static str,
+    select_all: &'static str,
+    view: &'static str,
+    fullscreen: &'static str,
+    window: &'static str,
+    minimize: &'static str,
+    zoom: &'static str,
+    close: &'static str,
+}
+
+fn apply_native_menu(app: &AppHandle, language: &str) -> tauri::Result<()> {
+    let copy = native_menu_copy(language);
+    let app_menu = SubmenuBuilder::new(app, copy.app)
+        .about_with_text(copy.about, None)
+        .separator()
+        .services_with_text(copy.services)
+        .separator()
+        .hide_with_text(copy.hide)
+        .hide_others_with_text(copy.hide_others)
+        .separator()
+        .quit_with_text(copy.quit)
+        .build()?;
+    let edit_menu = SubmenuBuilder::new(app, copy.edit)
+        .undo_with_text(copy.undo)
+        .redo_with_text(copy.redo)
+        .separator()
+        .cut_with_text(copy.cut)
+        .copy_with_text(copy.copy)
+        .paste_with_text(copy.paste)
+        .select_all_with_text(copy.select_all)
+        .build()?;
+    let view_menu = SubmenuBuilder::new(app, copy.view)
+        .fullscreen_with_text(copy.fullscreen)
+        .build()?;
+    let window_menu = SubmenuBuilder::new(app, copy.window)
+        .minimize_with_text(copy.minimize)
+        .maximize_with_text(copy.zoom)
+        .separator()
+        .close_window_with_text(copy.close)
+        .build()?;
+    let menu = MenuBuilder::new(app)
+        .item(&app_menu)
+        .item(&edit_menu)
+        .item(&view_menu)
+        .item(&window_menu)
+        .build()?;
+
+    app.set_menu(menu)?;
+    Ok(())
+}
+
+fn native_menu_copy(language: &str) -> NativeMenuCopy {
+    if language == "zh-CN" {
+        NativeMenuCopy {
+            app: "Slock",
+            about: "关于 Slock",
+            services: "服务",
+            hide: "隐藏 Slock",
+            hide_others: "隐藏其他",
+            quit: "退出 Slock",
+            edit: "编辑",
+            undo: "撤销",
+            redo: "重做",
+            cut: "剪切",
+            copy: "复制",
+            paste: "粘贴",
+            select_all: "全选",
+            view: "显示",
+            fullscreen: "进入全屏",
+            window: "窗口",
+            minimize: "最小化",
+            zoom: "缩放",
+            close: "关闭窗口",
+        }
+    } else {
+        NativeMenuCopy {
+            app: "Slock",
+            about: "About Slock",
+            services: "Services",
+            hide: "Hide Slock",
+            hide_others: "Hide Others",
+            quit: "Quit Slock",
+            edit: "Edit",
+            undo: "Undo",
+            redo: "Redo",
+            cut: "Cut",
+            copy: "Copy",
+            paste: "Paste",
+            select_all: "Select All",
+            view: "View",
+            fullscreen: "Enter Full Screen",
+            window: "Window",
+            minimize: "Minimize",
+            zoom: "Zoom",
+            close: "Close Window",
+        }
+    }
 }
 
 fn apply_workspace_scripts_to_window(
@@ -616,6 +741,28 @@ fn sanitize_language(language: &str) -> &'static str {
     }
 }
 
+fn resolve_desktop_language(language: &str) -> &'static str {
+    match sanitize_language(language) {
+        "zh-CN" => "zh-CN",
+        "en-US" => "en-US",
+        _ => resolve_system_language(),
+    }
+}
+
+fn resolve_system_language() -> &'static str {
+    let locale = env::var("LC_ALL")
+        .or_else(|_| env::var("LC_MESSAGES"))
+        .or_else(|_| env::var("LANG"))
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if locale.starts_with("zh") {
+        "zh-CN"
+    } else {
+        "en-US"
+    }
+}
+
 fn custom_theme_input(custom_theme: &CustomThemeSettings) -> CustomThemeInput {
     CustomThemeInput {
         name: custom_theme.name.clone(),
@@ -669,14 +816,14 @@ pub fn run() {
                 return;
             }
 
-            let (active_theme_id, active_theme_mode, custom_theme, active_language) = webview
+            let (color_scheme, appearance_mode, custom_theme, language) = webview
                 .state::<DesktopState>()
                 .settings
                 .lock()
                 .map(|settings| {
                     (
-                        settings.active_theme.clone(),
-                        settings.theme_mode.clone(),
+                        settings.color_scheme.clone(),
+                        settings.appearance_mode.clone(),
                         settings.custom_theme.clone(),
                         settings.language.clone(),
                     )
@@ -690,14 +837,14 @@ pub fn run() {
                     )
                 });
             let custom = custom_theme_input(&custom_theme);
-            let theme = resolve_theme(&active_theme_id, &active_theme_mode, &custom);
+            let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
 
             if let Err(err) = apply_workspace_scripts_to_webview(
                 webview,
                 theme,
-                &active_theme_id,
-                &active_theme_mode,
-                &active_language,
+                &color_scheme,
+                &appearance_mode,
+                &language,
                 &custom,
             ) {
                 log::error!("failed to apply workspace desktop scripts: {err}");
@@ -723,14 +870,14 @@ pub fn run() {
             }
 
             if let Some(window) = app.get_webview_window(MAIN_LABEL) {
-                let (theme_mode, language) = app
+                let (appearance_mode, language) = app
                     .state::<DesktopState>()
                     .settings
                     .lock()
-                    .map(|settings| (settings.theme_mode.clone(), settings.language.clone()))
+                    .map(|settings| (settings.appearance_mode.clone(), settings.language.clone()))
                     .unwrap_or_else(|_| ("system".to_string(), "system".to_string()));
-                apply_window_language(&window, &language, false);
-                apply_window_theme(&window, &theme_mode);
+                apply_window_language(app.handle(), &window, &language, false);
+                apply_window_theme(&window, &appearance_mode);
             }
 
             Ok(())

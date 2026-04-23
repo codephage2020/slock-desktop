@@ -156,9 +156,20 @@ fn materialize_theme(
     mode: &str,
 ) -> ThemeDefinition {
     let normalized_mode = normalize_mode(mode);
+    let system = normalized_mode == "system";
     let dark = normalized_mode == "dark";
-    let accent = if dark { dark_accent } else { light_accent };
-    let accent_soft = if dark {
+    let accent = if system {
+        format!("light-dark({light_accent}, {dark_accent})")
+    } else if dark {
+        dark_accent.to_string()
+    } else {
+        light_accent.to_string()
+    };
+    let accent_soft = if system {
+        format!(
+            "light-dark(color-mix(in srgb, {light_accent} 12%, #ffffff), color-mix(in srgb, {dark_accent} 22%, #1f1f1c))"
+        )
+    } else if dark {
         format!("color-mix(in srgb, {accent} 22%, #1f1f1c)")
     } else {
         format!("color-mix(in srgb, {accent} 12%, #ffffff)")
@@ -169,19 +180,29 @@ fn materialize_theme(
         name: name.to_string(),
         summary: summary.to_string(),
         mode: normalized_mode.to_string(),
-        canvas: if dark { "#1f1f1c" } else { "#f7f7f5" }.to_string(),
-        surface: if dark { "#252623" } else { "#ffffff" }.to_string(),
-        surface_strong: if dark { "#2f302c" } else { "#f3f4f1" }.to_string(),
-        line: if dark { "#3e413a" } else { "#e2e4de" }.to_string(),
-        text: if dark { "#f4f4ef" } else { "#1f1f1c" }.to_string(),
-        muted: if dark { "#b7bbae" } else { "#6b6f67" }.to_string(),
-        accent: accent.to_string(),
+        canvas: mode_color(system, dark, "#f7f7f5", "#1f1f1c"),
+        surface: mode_color(system, dark, "#ffffff", "#252623"),
+        surface_strong: mode_color(system, dark, "#f3f4f1", "#2f302c"),
+        line: mode_color(system, dark, "#e2e4de", "#3e413a"),
+        text: mode_color(system, dark, "#1f1f1c", "#f4f4ef"),
+        muted: mode_color(system, dark, "#6b6f67", "#b7bbae"),
+        accent: accent.clone(),
         accent_soft,
         preview: [
-            if dark { "#1f1f1c" } else { "#f7f7f5" }.to_string(),
-            if dark { "#2f302c" } else { "#f3f4f1" }.to_string(),
-            accent.to_string(),
+            mode_color(system, dark, "#f7f7f5", "#1f1f1c"),
+            mode_color(system, dark, "#f3f4f1", "#2f302c"),
+            accent,
         ],
+    }
+}
+
+fn mode_color(system: bool, dark: bool, light_value: &str, dark_value: &str) -> String {
+    if system {
+        format!("light-dark({light_value}, {dark_value})")
+    } else if dark {
+        dark_value.to_string()
+    } else {
+        light_value.to_string()
     }
 }
 
@@ -539,7 +560,14 @@ select:focus,
 .btn-brutal-sm,
 button,
 [role="button"] {{
+  min-height: 34px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding-inline: 12px !important;
   border-radius: var(--slock-desktop-radius-md) !important;
+  line-height: 1.1 !important;
   transform: none !important;
   transition:
     background 150ms ease,
@@ -583,6 +611,21 @@ button:hover,
 button:active,
 [role="button"]:active {{
   transform: scale(0.97) !important;
+}}
+
+button[class*="h-8"][class*="w-8"],
+button[class*="h-9"][class*="w-9"],
+button[class*="size-"],
+[role="button"][class*="h-8"][class*="w-8"],
+[aria-label*="channel" i]:is(button),
+[aria-label*="channel" i][role="button"],
+[aria-label*="频道" i]:is(button) {{
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  border-radius: var(--slock-desktop-radius-sm) !important;
 }}
 
 [class*="bg-brutal-yellow"],
@@ -684,6 +727,10 @@ button:active,
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
   box-shadow: var(--slock-desktop-soft-shadow) !important;
+  min-height: 56px !important;
+  height: 56px !important;
+  align-items: center !important;
+  padding-block: 0 !important;
 }}
 
 .relative.flex-1.overflow-hidden,
@@ -756,15 +803,23 @@ aside button:hover,
   border-color: var(--slock-desktop-line) !important;
   border-radius: var(--slock-desktop-radius-lg) var(--slock-desktop-radius-lg) 0 0 !important;
   box-shadow: var(--slock-desktop-soft-shadow) !important;
+  padding: 8px 12px !important;
 }}
 
 .relative.flex.items-center.border-t-2 textarea,
 .flex.items-center.border-t-2 textarea,
 [class*="composer"] textarea,
-[class*="Composer"] textarea {{
+[class*="Composer"] textarea,
+[class*="composer"] [contenteditable="true"],
+[class*="Composer"] [contenteditable="true"] {{
   min-height: 44px !important;
-  border-radius: var(--slock-desktop-radius-lg) !important;
-  background: var(--slock-desktop-surface-secondary) !important;
+  padding: 10px 12px !important;
+  border: 0 !important;
+  border-radius: var(--slock-desktop-radius-md) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  line-height: 1.55 !important;
+  overflow: visible !important;
 }}
 
 .text-black,

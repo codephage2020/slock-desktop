@@ -142,6 +142,15 @@ body {
 .studio-shell {
   gap: var(--slock-space-xl);
   padding: var(--slock-space-xl);
+  color-scheme: light;
+}
+
+.studio-shell[data-mode='dark'] {
+  color-scheme: dark;
+}
+
+.studio-shell[data-mode='system'] {
+  color-scheme: light dark;
 }
 
 .ambient {

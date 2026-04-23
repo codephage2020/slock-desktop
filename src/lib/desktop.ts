@@ -42,10 +42,10 @@ export interface UpdateSnapshot {
 export interface BootstrapPayload {
   appName: string
   workspaceUrl: string
-  activeThemeId: string
-  activeThemeMode: 'light' | 'dark' | 'system'
+  colorScheme: string
+  appearanceMode: 'light' | 'dark' | 'system'
   customTheme: CustomThemeSnapshot
-  activeLanguage: 'en-US' | 'zh-CN' | 'system'
+  language: 'en-US' | 'zh-CN' | 'system'
   workspaceOpen: boolean
   themes: ThemeDefinition[]
   service: ServiceSnapshot
@@ -60,7 +60,7 @@ export async function updateTheme(themeId: string) {
   return invoke<BootstrapPayload>('set_theme', { themeId })
 }
 
-export async function updateThemeMode(themeMode: BootstrapPayload['activeThemeMode']) {
+export async function updateThemeMode(themeMode: BootstrapPayload['appearanceMode']) {
   return invoke<BootstrapPayload>('set_theme_mode', { themeMode })
 }
 
@@ -68,7 +68,7 @@ export async function saveCustomTheme(customTheme: CustomThemeSnapshot) {
   return invoke<BootstrapPayload>('save_custom_theme', { customTheme })
 }
 
-export async function updateLanguage(language: BootstrapPayload['activeLanguage']) {
+export async function updateLanguage(language: BootstrapPayload['language']) {
   return invoke<BootstrapPayload>('set_language', { language })
 }
 

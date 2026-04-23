@@ -91,6 +91,12 @@
   gap: 18px;
 }
 
+.settings-quick-controls {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
 .settings-title-row h2 {
   margin: 6px 0 0;
 }
@@ -118,6 +124,56 @@
   color: var(--muted);
   font-size: 0.8rem;
   white-space: nowrap;
+}
+
+.icon-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-strong) 78%, var(--surface));
+}
+
+.icon-option {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 30px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.icon-option.text-icon {
+  min-width: 34px;
+  width: auto;
+  padding-inline: 8px;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+.icon-option.selected {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .setting-row {
@@ -149,16 +205,17 @@
 
 .theme-picker {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
 }
 
 .theme-option {
   display: grid;
-  grid-template-columns: 70px minmax(0, 1fr) 26px;
+  grid-template-columns: 42px minmax(0, 1fr) 22px;
   align-items: center;
-  gap: 14px;
-  min-height: 72px;
-  padding: 10px 12px;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 10px;
   border: 1px solid transparent;
   border-radius: 16px;
   background: transparent;
@@ -183,9 +240,9 @@
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
   gap: 5px;
-  min-height: 46px;
-  padding: 5px;
-  border-radius: 12px;
+  min-height: 34px;
+  padding: 4px;
+  border-radius: 10px;
   background: var(--option-canvas);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--option-line) 72%, transparent);
 }
@@ -221,7 +278,7 @@
 .theme-option-summary {
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.86rem;
+  font-size: 0.8rem;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -365,7 +422,8 @@
 
 @media (hover: hover) {
   .settings-nav-item:hover,
-  .theme-option:hover {
+  .theme-option:hover,
+  .icon-option:hover {
     background: color-mix(in srgb, var(--surface-strong) 58%, var(--surface));
   }
 
@@ -376,6 +434,7 @@
 
 .settings-nav-item:active,
 .theme-option:active,
+.icon-option:active,
 .preview-composer button:active {
   transform: scale(0.96);
 }

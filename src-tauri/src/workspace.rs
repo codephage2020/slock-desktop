@@ -29,43 +29,75 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const initialMode = __SLOCK_DESKTOP_ACTIVE_MODE__;
   const initialLanguage = __SLOCK_DESKTOP_ACTIVE_LANGUAGE__;
   const modes = [
-    { id: "light", name: "Light" },
-    { id: "dark", name: "Dark" },
-    { id: "system", name: "System" },
+    { id: "light", icon: "☼", key: "modeLight" },
+    { id: "dark", icon: "◐", key: "modeDark" },
+    { id: "system", icon: "◌", key: "modeSystem" },
   ];
   const languages = [
-    { id: "en-US", name: "English" },
-    { id: "zh-CN", name: "中文" },
-    { id: "system", name: "System" },
+    { id: "en-US", icon: "EN", key: "languageEnglish" },
+    { id: "zh-CN", icon: "中", key: "languageChinese" },
+    { id: "system", icon: "A", key: "languageSystem" },
   ];
   const copy = {
     "en-US": {
       launcher: "Desktop Settings",
       eyebrow: "Slock Desktop",
       title: "Desktop Settings",
+      settingsSections: "Desktop settings sections",
       description: "Appearance settings apply to this workspace window immediately and persist locally.",
       appearance: "Appearance",
       service: "Service",
       updates: "Updates",
       mode: "Mode",
+      modeLight: "Light",
+      modeDark: "Dark",
+      modeSystem: "System",
       theme: "Theme",
       language: "Language",
+      languageEnglish: "English",
+      languageChinese: "Chinese",
+      languageSystem: "System",
       saved: "Saved in desktop config",
       themes: "themes",
+      themeNames: {},
+      themeSummaries: {},
     },
     "zh-CN": {
       launcher: "桌面设置",
       eyebrow: "Slock 桌面端",
       title: "桌面设置",
+      settingsSections: "桌面设置分区",
       description: "外观设置会立即应用到当前工作页窗口，并保存在本地。",
       appearance: "外观",
       service: "服务",
       updates: "更新",
       mode: "模式",
+      modeLight: "亮色",
+      modeDark: "暗黑",
+      modeSystem: "系统",
       theme: "主题",
       language: "语言",
+      languageEnglish: "英文",
+      languageChinese: "中文",
+      languageSystem: "系统",
       saved: "已保存到桌面配置",
       themes: "个主题",
+      themeNames: {
+        default: "默认",
+        light: "雾蓝",
+        dark: "靛蓝",
+        graphite: "石墨",
+        crimson: "玫瑰",
+        custom: "自定义",
+      },
+      themeSummaries: {
+        default: "适合日常桌面工作的克制绿色强调色。",
+        light: "适合安静操作视图的柔和蓝色强调色。",
+        dark: "适合结构化专注的低饱和靛蓝强调色。",
+        graphite: "适合长时间会话的低饱和灰蓝强调色。",
+        crimson: "适合编辑型工作区的温暖玫瑰强调色。",
+        custom: "用户定义的个人强调色主题。",
+      },
     },
   };
   const existing = document.getElementById(hostId);
@@ -88,6 +120,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     return navigator.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
   };
   const t = (key) => copy[resolveLanguage()][key];
+  const themeDisplay = (theme) => {
+    const dictionary = copy[resolveLanguage()];
+    return {
+      name: theme.id === "custom"
+        ? theme.name || dictionary.themeNames?.custom || "Custom"
+        : dictionary.themeNames?.[theme.id] || theme.name,
+      summary: dictionary.themeSummaries?.[theme.id] || theme.summary,
+    };
+  };
   const themeVarNames = [
     "--desktop-canvas",
     "--desktop-surface",
@@ -101,6 +142,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const syncHostTheme = () => {
     const theme = themes.find((candidate) => candidate.id === activeThemeId) || themes[0];
     if (!theme) return;
+    host.style.colorScheme = activeMode === "system" ? "light dark" : activeMode;
 
     if (activeMode === "system") {
       themeVarNames.forEach((name) => host.style.removeProperty(name));
@@ -119,6 +161,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
   const css = `
     :host {
+      color-scheme: light dark;
       --desktop-canvas: #f7f7f5;
       --desktop-toolbar: #ecede8;
       --desktop-sidebar: #ecede8;
@@ -328,24 +371,30 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 7px;
     }
 
-    .mode-list {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
+    .quick-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 14px 14px;
     }
 
+    .mode-list,
     .language-list {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
+      display: inline-flex;
+      gap: 4px;
+      padding: 3px;
+      border: 1px solid var(--desktop-line);
+      border-radius: 14px;
+      background: var(--desktop-surface-secondary);
     }
 
     .language-option,
     .mode-option {
-      min-height: 32px;
-      border: 1px solid var(--desktop-line);
-      border-radius: 12px;
-      background: var(--desktop-surface-secondary);
+      min-width: 34px;
+      min-height: 30px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
       color: var(--desktop-text);
       font-size: 12px;
       font-weight: 600;
@@ -353,8 +402,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     .language-option.active,
     .mode-option.active {
-      background: var(--desktop-selection);
-      border-color: color-mix(in srgb, var(--desktop-accent) 24%, var(--desktop-line));
+      background: var(--desktop-surface);
+      color: var(--desktop-accent);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     }
 
     .theme-option {
@@ -518,7 +568,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     panel.className = "panel";
     panel.hidden = !open;
     panel.setAttribute("role", "dialog");
-    panel.setAttribute("aria-label", "Desktop settings");
+    panel.setAttribute("aria-label", t("title"));
 
     const inner = document.createElement("div");
     inner.className = "panel-inner";
@@ -528,19 +578,19 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         <h2>${t("title")}</h2>
         <p class="description">${t("description")}</p>
       </div>
+      <div class="quick-controls">
+        <div class="mode-list" role="radiogroup" aria-label="${t("mode")}"></div>
+        <div class="language-list" role="radiogroup" aria-label="${t("language")}"></div>
+      </div>
       <div class="settings-grid">
-        <nav class="nav" aria-label="Desktop settings sections">
+        <nav class="nav" aria-label="${t("settingsSections")}">
           <div class="nav-item active">${t("appearance")}</div>
           <div class="nav-item">${t("service")}</div>
           <div class="nav-item">${t("updates")}</div>
         </nav>
         <div class="content">
-          <p class="setting-title">${t("mode")}</p>
-          <div class="mode-list" role="radiogroup" aria-label="Theme mode"></div>
           <p class="setting-title">${t("theme")}</p>
           <div class="theme-list" role="radiogroup" aria-label="Workspace theme"></div>
-          <p class="setting-title">${t("language")}</p>
-          <div class="language-list" role="radiogroup" aria-label="Language"></div>
           <div class="status">
             <span>${t("saved")}</span>
             <span>${themes.length} ${t("themes")}</span>
@@ -560,7 +610,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       option.type = "button";
       option.setAttribute("role", "radio");
       option.setAttribute("aria-checked", String(selected));
-      option.textContent = mode.name;
+      option.title = t(mode.key);
+      option.textContent = mode.icon;
       option.addEventListener("click", () => setMode(mode.id));
       modeList.appendChild(option);
     });
@@ -572,13 +623,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       option.type = "button";
       option.setAttribute("role", "radio");
       option.setAttribute("aria-checked", String(selected));
-      option.textContent = language.name;
+      option.title = t(language.key);
+      option.textContent = language.icon;
       option.addEventListener("click", () => setLanguage(language.id));
       languageList.appendChild(option);
     });
 
     themes.forEach((theme) => {
       const selected = theme.id === activeThemeId;
+      const display = themeDisplay(theme);
       const option = document.createElement("button");
       option.className = `theme-option${selected ? " active" : ""}`;
       option.type = "button";
@@ -600,11 +653,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
       const name = document.createElement("span");
       name.className = "theme-name";
-      name.textContent = theme.name;
+      name.textContent = display.name;
 
       const summary = document.createElement("span");
       summary.className = "theme-summary";
-      summary.textContent = theme.summary;
+      summary.textContent = display.summary;
 
       const check = document.createElement("span");
       check.className = "check";
@@ -683,19 +736,34 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     window.__slockDesktopSettingsEscapeBound = true;
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && window.__slockDesktopSettingsOpen) {
-        open = false;
-        window.__slockDesktopSettingsOpen = false;
-        const activeHost = document.getElementById(hostId);
-        if (activeHost) {
-          const activeDock = activeHost.shadowRoot?.querySelector(".dock");
-          const activePanel = activeHost.shadowRoot?.querySelector(".panel");
-          const activeLauncher = activeHost.shadowRoot?.querySelector(".launcher");
-          if (activeDock) activeDock.dataset.open = "false";
-          if (activePanel) activePanel.hidden = true;
-          if (activeLauncher) activeLauncher.setAttribute("aria-expanded", "false");
-        }
+        closePanel();
       }
     });
+  }
+
+  if (!window.__slockDesktopSettingsPointerBound) {
+    window.__slockDesktopSettingsPointerBound = true;
+    document.addEventListener("pointerdown", (event) => {
+      if (!window.__slockDesktopSettingsOpen) return;
+      const activeHost = document.getElementById(hostId);
+      const path = event.composedPath ? event.composedPath() : [];
+      if (activeHost && path.includes(activeHost)) return;
+      closePanel();
+    });
+  }
+
+  function closePanel() {
+    open = false;
+    window.__slockDesktopSettingsOpen = false;
+    const activeHost = document.getElementById(hostId);
+    if (activeHost) {
+      const activeDock = activeHost.shadowRoot?.querySelector(".dock");
+      const activePanel = activeHost.shadowRoot?.querySelector(".panel");
+      const activeLauncher = activeHost.shadowRoot?.querySelector(".launcher");
+      if (activeDock) activeDock.dataset.open = "false";
+      if (activePanel) activePanel.hidden = true;
+      if (activeLauncher) activeLauncher.setAttribute("aria-expanded", "false");
+    }
   }
 
   render();

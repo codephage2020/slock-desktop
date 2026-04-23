@@ -43,10 +43,10 @@ impl Default for UpdateSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-    #[serde(default = "default_active_theme")]
-    pub active_theme: String,
-    #[serde(default = "default_theme_mode")]
-    pub theme_mode: String,
+    #[serde(default = "default_color_scheme", alias = "activeTheme")]
+    pub color_scheme: String,
+    #[serde(default = "default_appearance_mode", alias = "themeMode")]
+    pub appearance_mode: String,
     #[serde(default)]
     pub custom_theme: CustomThemeSettings,
     #[serde(default = "default_language")]
@@ -58,8 +58,8 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            active_theme: default_active_theme(),
-            theme_mode: default_theme_mode(),
+            color_scheme: default_color_scheme(),
+            appearance_mode: default_appearance_mode(),
             custom_theme: CustomThemeSettings::default(),
             language: default_language(),
             service: ServiceSettings::default(),
@@ -84,11 +84,11 @@ impl Default for CustomThemeSettings {
     }
 }
 
-fn default_active_theme() -> String {
+fn default_color_scheme() -> String {
     "default".to_string()
 }
 
-fn default_theme_mode() -> String {
+fn default_appearance_mode() -> String {
     "system".to_string()
 }
 
