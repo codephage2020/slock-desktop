@@ -4,6 +4,7 @@ pub fn settings_overlay_script(
     active_theme_id: &str,
     active_theme_mode: &str,
     active_language: &str,
+    resolved_language: &str,
     themes: &[theme::ThemeMeta],
 ) -> String {
     let themes = serde_json::to_string(themes).unwrap_or_else(|_| "[]".into());
@@ -13,12 +14,15 @@ pub fn settings_overlay_script(
         serde_json::to_string(active_theme_mode).unwrap_or_else(|_| "\"system\"".into());
     let active_language =
         serde_json::to_string(active_language).unwrap_or_else(|_| "\"system\"".into());
+    let resolved_language =
+        serde_json::to_string(resolved_language).unwrap_or_else(|_| "\"en-US\"".into());
 
     WORKSPACE_SETTINGS_SCRIPT
         .replace("__SLOCK_DESKTOP_THEMES__", &themes)
         .replace("__SLOCK_DESKTOP_ACTIVE_THEME__", &active_theme)
         .replace("__SLOCK_DESKTOP_ACTIVE_MODE__", &active_mode)
         .replace("__SLOCK_DESKTOP_ACTIVE_LANGUAGE__", &active_language)
+        .replace("__SLOCK_DESKTOP_RESOLVED_LANGUAGE__", &resolved_language)
 }
 
 const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
@@ -28,15 +32,16 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const initialThemeId = __SLOCK_DESKTOP_ACTIVE_THEME__;
   const initialMode = __SLOCK_DESKTOP_ACTIVE_MODE__;
   const initialLanguage = __SLOCK_DESKTOP_ACTIVE_LANGUAGE__;
+  const initialResolvedLanguage = __SLOCK_DESKTOP_RESOLVED_LANGUAGE__;
   const modes = [
     { id: "light", icon: "☼", key: "modeLight" },
     { id: "dark", icon: "◐", key: "modeDark" },
     { id: "system", icon: "◌", key: "modeSystem" },
   ];
   const languages = [
-    { id: "en-US", icon: "EN", key: "languageEnglish" },
-    { id: "zh-CN", icon: "中", key: "languageChinese" },
-    { id: "system", icon: "A", key: "languageSystem" },
+    { id: "en-US", shortKey: "languageEnglishShort", key: "languageEnglish" },
+    { id: "zh-CN", shortKey: "languageChineseShort", key: "languageChinese" },
+    { id: "system", shortKey: "languageSystemShort", key: "languageSystem" },
   ];
   const copy = {
     "en-US": {
@@ -57,6 +62,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       languageEnglish: "English",
       languageChinese: "Chinese",
       languageSystem: "System",
+      languageEnglishShort: "EN",
+      languageChineseShort: "中",
+      languageSystemShort: "System",
       saved: "Saved in desktop config",
       themes: "themes",
       dragHint: "Drag to move",
@@ -81,6 +89,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       languageEnglish: "英文",
       languageChinese: "中文",
       languageSystem: "系统",
+      languageEnglishShort: "EN",
+      languageChineseShort: "中",
+      languageSystemShort: "跟随系统",
       saved: "已保存到桌面配置",
       themes: "个主题",
       dragHint: "拖动移动",
@@ -119,6 +130,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     if (activeLanguage === "zh-CN" || activeLanguage === "en-US") {
       return activeLanguage;
     }
+    if (initialResolvedLanguage === "zh-CN" || initialResolvedLanguage === "en-US") {
+      return initialResolvedLanguage;
+    }
     return navigator.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
   };
   const t = (key) => copy[resolveLanguage()][key];
@@ -149,6 +163,19 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       replyLower: "reply",
       repliesLower: "replies",
       activeLower: "active",
+      process: "Process",
+      processes: "Processes",
+      processStatus: "Process status",
+      running: "Running",
+      idle: "Idle",
+      stopped: "Stopped",
+      starting: "Starting",
+      stopping: "Stopping",
+      failed: "Failed",
+      healthy: "Healthy",
+      online: "Online",
+      offline: "Offline",
+      queued: "Queued",
       settings: "Settings",
       account: "Account",
       browser: "Browser",
@@ -356,6 +383,19 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       replyLower: "条回复",
       repliesLower: "条回复",
       activeLower: "活跃",
+      process: "进程",
+      processes: "进程",
+      processStatus: "进程状态",
+      running: "运行中",
+      idle: "空闲",
+      stopped: "已停止",
+      starting: "启动中",
+      stopping: "停止中",
+      failed: "失败",
+      healthy: "健康",
+      online: "在线",
+      offline: "离线",
+      queued: "排队中",
       settings: "设置",
       account: "账号",
       browser: "浏览器",
@@ -617,6 +657,19 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       "replyLower",
       "repliesLower",
       "activeLower",
+      "process",
+      "processes",
+      "processStatus",
+      "running",
+      "idle",
+      "stopped",
+      "starting",
+      "stopping",
+      "failed",
+      "healthy",
+      "online",
+      "offline",
+      "queued",
       "settings",
       "account",
       "browser",
@@ -693,6 +746,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         "[data-radix-collection-item] *",
         "[class*='uppercase']",
         "[class*='tracking-widest']",
+        "[class*='status']",
+        "[class*='status'] *",
+        "[class*='badge']",
+        "[class*='badge'] *",
+        "[class*='chip']",
+        "[class*='chip'] *",
+        "[data-state]",
+        "[data-state] *",
       ].join(",")) || element.hasAttribute("title") || element.hasAttribute("aria-label");
     };
 
@@ -763,6 +824,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       "main [class*='font-bold'] span",
       "main [class*='font-semibold']",
       "main [class*='font-semibold'] span",
+      "main [class*='status']",
+      "main [class*='status'] span",
+      "main [class*='badge']",
+      "main [class*='badge'] span",
+      "main [class*='chip']",
+      "main [class*='chip'] span",
+      "main [data-state]",
+      "main [data-state] span",
       "[class*='font-bold']",
       "[class*='font-bold'] span",
       "[class*='font-semibold']",
@@ -1158,7 +1227,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       background: var(--desktop-surface-secondary);
     }
 
-    .language-option,
     .mode-option {
       min-width: 34px;
       min-height: 30px;
@@ -1168,6 +1236,19 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       color: var(--desktop-text);
       font-size: 12px;
       font-weight: 600;
+    }
+
+    .language-option {
+      min-width: 72px;
+      min-height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: var(--desktop-radius-sm);
+      background: transparent;
+      color: var(--desktop-text);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
     }
 
     .language-option.active,
@@ -1394,7 +1475,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       option.setAttribute("role", "radio");
       option.setAttribute("aria-checked", String(selected));
       option.title = t(language.key);
-      option.textContent = language.icon;
+      option.textContent = t(language.shortKey);
       option.addEventListener("click", () => setLanguage(language.id));
       languageList.appendChild(option);
     });

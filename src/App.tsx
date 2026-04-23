@@ -53,9 +53,9 @@ const THEME_MODES = [
 ] as const
 
 const LANGUAGE_OPTIONS = [
-  { id: 'en-US', icon: 'EN', labelKey: 'languageEnglish' },
-  { id: 'zh-CN', icon: '中', labelKey: 'languageChinese' },
-  { id: 'system', icon: 'A', labelKey: 'languageSystem' },
+  { id: 'en-US', labelKey: 'languageEnglish', shortLabelKey: 'languageEnglishShort' },
+  { id: 'zh-CN', labelKey: 'languageChinese', shortLabelKey: 'languageChineseShort' },
+  { id: 'system', labelKey: 'languageSystem', shortLabelKey: 'languageSystemShort' },
 ] as const
 
 const COPY = {
@@ -104,6 +104,9 @@ const COPY = {
     languageEnglish: 'English',
     languageChinese: 'Chinese',
     languageSystem: 'System',
+    languageEnglishShort: 'EN',
+    languageChineseShort: '中',
+    languageSystemShort: 'System',
     launchStack: 'Launch Stack',
     focusWorkspace: 'Focus Workspace',
     openWorkspaceHere: 'Open Workspace Here',
@@ -200,6 +203,9 @@ const COPY = {
     languageEnglish: '英文',
     languageChinese: '中文',
     languageSystem: '系统',
+    languageEnglishShort: 'EN',
+    languageChineseShort: '中',
+    languageSystemShort: '跟随系统',
     launchStack: '启动工作栈',
     focusWorkspace: '聚焦工作区',
     openWorkspaceHere: '打开工作区',
@@ -554,8 +560,8 @@ function App() {
   const activeTheme =
     snapshot.themes.find((theme) => theme.id === snapshot.colorScheme) ??
     snapshot.themes[0]
-  const copy = getCopy(snapshot.language)
-  const activeThemeDisplay = getThemeDisplay(activeTheme, snapshot.language)
+  const copy = getCopy(snapshot.language, snapshot.resolvedLanguage)
+  const activeThemeDisplay = getThemeDisplay(activeTheme, snapshot.language, snapshot.resolvedLanguage)
 
   const shellStyle = buildShellStyle(activeTheme)
   const stackButtonLabel =
@@ -659,7 +665,7 @@ function App() {
                     onClick={() => handleLanguageChange(language.id)}
                     disabled={busyAction === `language:${language.id}`}
                   >
-                    <span aria-hidden="true">{language.icon}</span>
+                    <span aria-hidden="true">{copy[language.shortLabelKey]}</span>
                     <span className="sr-only">{copy[language.labelKey]}</span>
                   </button>
                 )
@@ -676,7 +682,7 @@ function App() {
             <div className="theme-picker" role="radiogroup" aria-label={copy.themeColor}>
               {snapshot.themes.map((theme) => {
                 const selected = theme.id === snapshot.colorScheme
-                const themeDisplay = getThemeDisplay(theme, snapshot.language)
+                const themeDisplay = getThemeDisplay(theme, snapshot.language, snapshot.resolvedLanguage)
                 return (
                   <button
                     key={theme.id}
@@ -940,7 +946,13 @@ function App() {
                       {releaseState.latest.name || releaseState.latest.tagName}
                     </p>
                     <p className="theme-summary">
-                      {copy.published} {formatDate(releaseState.latest.publishedAt, snapshot.language, copy.unknownDate)}
+                      {copy.published}{' '}
+                      {formatDate(
+                        releaseState.latest.publishedAt,
+                        snapshot.language,
+                        snapshot.resolvedLanguage,
+                        copy.unknownDate,
+                      )}
                     </p>
                   </div>
                   {releaseState.latest.prerelease ? (
@@ -1038,8 +1050,9 @@ function buildThemeOptionStyle(theme: ThemeDefinition) {
 function getThemeDisplay(
   theme: ThemeDefinition,
   language: BootstrapPayload['language'],
+  resolvedLanguage: BootstrapPayload['resolvedLanguage'] = 'en-US',
 ) {
-  if (getResolvedLanguage(language) !== 'zh-CN') {
+  if (getResolvedLanguage(language, resolvedLanguage) !== 'zh-CN') {
     return {
       name: theme.name,
       summary: theme.summary,
@@ -1053,18 +1066,26 @@ function getThemeDisplay(
   }
 }
 
-function getCopy(language: BootstrapPayload['language']) {
-  return COPY[getResolvedLanguage(language)]
+function getCopy(
+  language: BootstrapPayload['language'],
+  resolvedLanguage: BootstrapPayload['resolvedLanguage'] = 'en-US',
+) {
+  return COPY[getResolvedLanguage(language, resolvedLanguage)]
 }
 
-function getResolvedLanguage(language: BootstrapPayload['language']): keyof typeof COPY {
+function getResolvedLanguage(
+  language: BootstrapPayload['language'],
+  resolvedLanguage: BootstrapPayload['resolvedLanguage'] = 'en-US',
+): keyof typeof COPY {
   if (language === 'zh-CN' || language === 'en-US') {
     return language
   }
 
-  const systemLanguage =
-    typeof navigator === 'undefined' ? 'en-US' : navigator.language
+  if (resolvedLanguage === 'zh-CN' || resolvedLanguage === 'en-US') {
+    return resolvedLanguage
+  }
 
+  const systemLanguage = typeof navigator === 'undefined' ? 'en-US' : navigator.language
   return systemLanguage.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
 }
 
@@ -1143,13 +1164,14 @@ function mapReleasePayload(payload: unknown, currentVersion: string): ReleaseInf
 function formatDate(
   value: string,
   language: BootstrapPayload['language'],
+  resolvedLanguage: BootstrapPayload['resolvedLanguage'],
   fallback: string,
 ) {
   if (!value) {
     return fallback
   }
 
-  return new Intl.DateTimeFormat(getResolvedLanguage(language), {
+  return new Intl.DateTimeFormat(getResolvedLanguage(language, resolvedLanguage), {
     dateStyle: 'medium',
   }).format(new Date(value))
 }

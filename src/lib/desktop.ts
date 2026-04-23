@@ -46,6 +46,7 @@ export interface BootstrapPayload {
   appearanceMode: 'light' | 'dark' | 'system'
   customTheme: CustomThemeSnapshot
   language: 'en-US' | 'zh-CN' | 'system'
+  resolvedLanguage: 'en-US' | 'zh-CN'
   workspaceOpen: boolean
   themes: ThemeDefinition[]
   service: ServiceSnapshot

@@ -36,6 +36,7 @@ struct BootstrapPayload {
     appearance_mode: String,
     custom_theme: CustomThemeSettings,
     language: String,
+    resolved_language: String,
     workspace_open: bool,
     themes: Vec<theme::ThemeMeta>,
     service: ServiceSnapshot,
@@ -314,6 +315,7 @@ fn build_bootstrap(
         appearance_mode: appearance_mode.clone(),
         custom_theme: settings.custom_theme.clone(),
         language: sanitize_language(&settings.language).to_string(),
+        resolved_language: resolve_desktop_language(&settings.language).to_string(),
         workspace_open: main_window_is_workspace(app),
         themes: meta_catalog(
             &appearance_mode,
@@ -332,6 +334,7 @@ fn enter_workspace_in_main_window(
     custom_theme: &CustomThemeInput,
 ) -> Result<(), String> {
     let theme = resolve_theme(theme_id, theme_mode, custom_theme);
+    let resolved_language = resolve_desktop_language(language);
     let window = app
         .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "Main window is unavailable".to_string())?;
@@ -348,6 +351,7 @@ fn enter_workspace_in_main_window(
             theme_id,
             theme_mode,
             language,
+            resolved_language,
             custom_theme,
         );
     }
@@ -380,6 +384,7 @@ fn apply_theme_to_workspace(
                 &active_theme_id,
                 theme_mode,
                 language,
+                resolve_desktop_language(language),
                 custom_theme,
             )?;
         }
@@ -543,6 +548,7 @@ fn apply_workspace_scripts_to_window(
     active_theme_id: &str,
     active_theme_mode: &str,
     active_language: &str,
+    resolved_language: &str,
     custom_theme: &CustomThemeInput,
 ) -> Result<(), String> {
     window
@@ -553,6 +559,7 @@ fn apply_workspace_scripts_to_window(
             active_theme_id,
             active_theme_mode,
             active_language,
+            resolved_language,
             &meta_catalog(active_theme_mode, custom_theme),
         ))
         .map_err(|err| err.to_string())
@@ -564,6 +571,7 @@ fn apply_workspace_scripts_to_webview(
     active_theme_id: &str,
     active_theme_mode: &str,
     active_language: &str,
+    resolved_language: &str,
     custom_theme: &CustomThemeInput,
 ) -> Result<(), String> {
     webview
@@ -574,6 +582,7 @@ fn apply_workspace_scripts_to_webview(
             active_theme_id,
             active_theme_mode,
             active_language,
+            resolved_language,
             &meta_catalog(active_theme_mode, custom_theme),
         ))
         .map_err(|err| err.to_string())
@@ -876,6 +885,7 @@ pub fn run() {
                 &color_scheme,
                 &appearance_mode,
                 &language,
+                resolve_desktop_language(&language),
                 &custom,
             ) {
                 log::error!("failed to apply workspace desktop scripts: {err}");
