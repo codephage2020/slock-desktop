@@ -272,6 +272,32 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         '[class*="h-"][class*="w-"][class*="items-center"][class*="justify-center"]'
       ].join(',');
 
+      const avatarStyleProps = [
+        "inline-size",
+        "block-size",
+        "width",
+        "height",
+        "min-width",
+        "min-height",
+        "max-width",
+        "max-height",
+        "flex-basis",
+        "aspect-ratio",
+        "writing-mode",
+        "transform",
+        "line-height"
+      ];
+
+      const clearAvatarElement = (element) => {{
+        delete element.dataset.slockDesktopAvatar;
+        avatarStyleProps.forEach((property) => element.style.removeProperty(property));
+      }};
+
+      const isThreadAvatarScope = (element) => (
+        element.closest('[class*="thread"],[class*="Thread"],[aria-label*="thread" i],[aria-label*="线程"],[href*="thread"]') ||
+        element.closest('button.relative.flex.items-start.gap-3.border-2')
+      );
+
       const markAvatarElement = (element) => {{
         element.dataset.slockDesktopAvatar = "true";
         element.style.setProperty("inline-size", "28px", "important");
@@ -312,17 +338,86 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         const looksSized =
           /(h-\[[0-9]+px\]|w-\[[0-9]+px\]|h-[2-9]|w-[2-9]|h-1[0-6]|w-1[0-6])/.test(className) &&
           /items-center|justify-center|inline-flex|flex|grid/.test(className);
-        const nearThread =
-          element.closest('[class*="thread"],[class*="Thread"],[aria-label*="thread" i],[aria-label*="线程"],[href*="thread"]') ||
-          element.closest('.max-w-sm,.max-w-md,.max-w-lg,.w-full.border-2');
+        const nearThread = isThreadAvatarScope(element);
 
         if (nearThread && (looksAvatar || looksSized) && (hasCompactText || looksSized)) {{
           markAvatarElement(element);
+        }} else if (element.dataset.slockDesktopAvatar === "true") {{
+          clearAvatarElement(element);
         }}
+      }});
+
+      document.querySelectorAll('[data-slock-desktop-avatar="true"]').forEach((element) => {{
+        if (element instanceof HTMLElement && !isThreadAvatarScope(element)) clearAvatarElement(element);
       }});
     }};
 
+    const markSemanticStatusTokens = () => {{
+      if (!document.body) return;
+
+      const brutalColors = ["yellow", "orange", "pink", "cyan", "lime", "lavender"];
+      const resolveBrutalColor = (className) =>
+        brutalColors.find((color) => className.includes(`brutal-${{color}}`)) || null;
+      const resolveTaskState = (text) => {{
+        const value = (text || "").trim().toLowerCase();
+        if (!value) return null;
+        if (/(^|[^a-z])(todo|to do)(?=$|[^a-z])/.test(value) || /待办/.test(value)) return "todo";
+        if (/(^|[^a-z])(in[\s_-]?progress|doing|open)(?=$|[^a-z])/.test(value) || /进行中|处理中/.test(value)) return "in-progress";
+        if (/(^|[^a-z])(in[\s_-]?review|review)(?=$|[^a-z])/.test(value) || /审核中|待审核|复核中/.test(value)) return "in-review";
+        if (/(^|[^a-z])(done|completed|closed)(?=$|[^a-z])/.test(value) || /已完成|完成/.test(value)) return "done";
+        return null;
+      }};
+
+      document
+        .querySelectorAll(
+          [
+            '[class*="bg-brutal"]',
+            '[class*="text-brutal"]',
+            '[class*="border-brutal"]',
+            '[data-state]',
+            '[aria-label*="task" i]',
+            '[aria-label*="任务"]'
+          ].join(",")
+        )
+        .forEach((element) => {{
+          if (!(element instanceof HTMLElement)) return;
+          if (element.closest('#slock-desktop-settings-host')) return;
+
+          const className = String(element.className || "");
+          const text = (element.textContent || "").trim();
+          const rect = element.getBoundingClientRect();
+          const tinyDot = rect.width > 0 && rect.width <= 18 && rect.height > 0 && rect.height <= 18;
+          const smallChip = rect.width > 0 && rect.width <= 144 && rect.height > 0 && rect.height <= 32;
+          const badgeLike =
+            tinyDot ||
+            (
+              smallChip &&
+              (
+                /badge|Badge|status|Status|presence|Presence|inline-flex|shrink-0|ml-auto/.test(className) ||
+                text.length <= 24
+              )
+            );
+
+          const brutalColor = resolveBrutalColor(className);
+          if (brutalColor && badgeLike) {{
+            element.dataset.slockDesktopSemanticColor = brutalColor;
+            element.dataset.slockDesktopSemanticShape = tinyDot ? "dot" : "chip";
+          }} else {{
+            delete element.dataset.slockDesktopSemanticColor;
+            delete element.dataset.slockDesktopSemanticShape;
+          }}
+
+          const taskState = resolveTaskState(text);
+          if (taskState && badgeLike) {{
+            element.dataset.slockDesktopTaskState = taskState;
+          }} else {{
+            delete element.dataset.slockDesktopTaskState;
+          }}
+        }});
+    }};
+
     markAvatarInitials();
+    markSemanticStatusTokens();
     if (!window.__slockDesktopAvatarObserver && document.body) {{
       let avatarPending = false;
       window.__slockDesktopAvatarObserver = new MutationObserver(() => {{
@@ -331,6 +426,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         requestAnimationFrame(() => {{
           avatarPending = false;
           markAvatarInitials();
+          markSemanticStatusTokens();
         }});
       }});
       window.__slockDesktopAvatarObserver.observe(document.body, {{
@@ -414,6 +510,12 @@ fn remote_css(theme: &ThemeDefinition) -> String {
   --color-brutal-lime: {surface};
   --color-brutal-lavender: {line};
   --color-brutal-orange: {accent_soft};
+  --slock-semantic-yellow: #f2c86b;
+  --slock-semantic-orange: #eb9d61;
+  --slock-semantic-pink: #ef6f9b;
+  --slock-semantic-cyan: #53c0df;
+  --slock-semantic-lime: #79b56a;
+  --slock-semantic-lavender: #9e90de;
 }}
 
 @media (prefers-color-scheme: dark) {{
@@ -888,6 +990,8 @@ aside,
 nav button,
 aside button,
 .group.flex.items-center,
+[class*="border-transparent"].mb-1.flex.w-full.items-center.gap-1\.5,
+.mb-1.flex.w-full.items-center.gap-1\.5,
 [class*="channel"],
 [class*="Channel"],
 [class*="thread"],
@@ -898,6 +1002,22 @@ aside button,
   justify-content: flex-start !important;
   text-align: left !important;
   min-width: 0 !important;
+}}
+
+.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink),
+button.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink),
+a.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink) {{
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}}
+
+.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink):hover,
+button.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink):hover,
+a.mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink):hover {{
+  background: var(--slock-desktop-hover) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }}
 
 nav button:hover,
@@ -1017,6 +1137,61 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   background: var(--slock-desktop-selection) !important;
 }}
 
+[data-slock-desktop-semantic-color="yellow"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-yellow);
+}}
+
+[data-slock-desktop-semantic-color="orange"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-orange);
+}}
+
+[data-slock-desktop-semantic-color="pink"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-pink);
+}}
+
+[data-slock-desktop-semantic-color="cyan"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-cyan);
+}}
+
+[data-slock-desktop-semantic-color="lime"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-lime);
+}}
+
+[data-slock-desktop-semantic-color="lavender"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-lavender);
+}}
+
+[data-slock-desktop-task-state="todo"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-cyan);
+}}
+
+[data-slock-desktop-task-state="in-progress"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-orange);
+}}
+
+[data-slock-desktop-task-state="in-review"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-yellow);
+}}
+
+[data-slock-desktop-task-state="done"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-lime);
+}}
+
+[data-slock-desktop-semantic-color][data-slock-desktop-semantic-shape="dot"] {{
+  background: var(--slock-desktop-semantic-current) !important;
+  border-color: color-mix(in srgb, var(--slock-desktop-surface) 72%, var(--slock-desktop-semantic-current)) !important;
+  color: transparent !important;
+  box-shadow: 0 0 0 2px var(--slock-desktop-surface) !important;
+}}
+
+[data-slock-desktop-semantic-color][data-slock-desktop-semantic-shape="chip"],
+[data-slock-desktop-task-state] {{
+  background: color-mix(in srgb, var(--slock-desktop-semantic-current) 18%, var(--slock-desktop-surface)) !important;
+  border-color: color-mix(in srgb, var(--slock-desktop-semantic-current) 38%, var(--slock-desktop-line)) !important;
+  color: color-mix(in srgb, var(--slock-desktop-semantic-current) 78%, var(--slock-desktop-text)) !important;
+  box-shadow: none !important;
+}}
+
 [data-slock-desktop-avatar="true"],
 [class*="thread"] [class*="avatar"],
 [class*="Thread"] [class*="avatar"],
@@ -1024,15 +1199,24 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 [class*="Thread"] [class*="Avatar"],
 [class*="thread"] [class*="rounded-full"][class*="h-"][class*="w-"],
 [class*="Thread"] [class*="rounded-full"][class*="h-"][class*="w-"],
-img[class*="avatar"],
-img[class*="Avatar"],
-img[class*="rounded-full"][class*="h-"][class*="w-"],
-img[alt*="avatar" i],
-img[alt*="头像"],
-img[title*="avatar" i],
-img[title*="头像"],
-img[data-avatar],
-[data-avatar] img {{
+[class*="thread"] img[class*="avatar"],
+[class*="Thread"] img[class*="avatar"],
+[class*="thread"] img[class*="Avatar"],
+[class*="Thread"] img[class*="Avatar"],
+[class*="thread"] img[class*="rounded-full"][class*="h-"][class*="w-"],
+[class*="Thread"] img[class*="rounded-full"][class*="h-"][class*="w-"],
+[class*="thread"] img[alt*="avatar" i],
+[class*="Thread"] img[alt*="avatar" i],
+[class*="thread"] img[alt*="头像"],
+[class*="Thread"] img[alt*="头像"],
+[class*="thread"] img[title*="avatar" i],
+[class*="Thread"] img[title*="avatar" i],
+[class*="thread"] img[title*="头像"],
+[class*="Thread"] img[title*="头像"],
+[class*="thread"] img[data-avatar],
+[class*="Thread"] img[data-avatar],
+[class*="thread"] [data-avatar] img,
+[class*="Thread"] [data-avatar] img {{
   width: 28px !important;
   min-width: 28px !important;
   max-width: 28px !important;
@@ -1051,6 +1235,26 @@ img[data-avatar],
   line-height: 1 !important;
   white-space: nowrap !important;
   text-align: center !important;
+}}
+
+button.relative.flex.items-start.gap-3.border-2 .inline-flex.h-\[14px\].w-\[14px\],
+button.relative.flex.items-start.gap-3.border-2 [data-slock-desktop-avatar="true"] {{
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  flex: 0 0 28px !important;
+  flex-basis: 28px !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: var(--slock-desktop-radius-pill) !important;
+  display: grid !important;
+  place-items: center !important;
+  line-height: 28px !important;
+  writing-mode: horizontal-tb !important;
+  transform: none !important;
+  overflow: hidden !important;
 }}
 
 [data-slock-desktop-avatar="true"] > svg,
@@ -1108,9 +1312,10 @@ img[data-slock-desktop-avatar="true"] {{
   position: relative !important;
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
-  border-radius: var(--slock-desktop-radius-lg) var(--slock-desktop-radius-lg) 0 0 !important;
-  box-shadow: var(--slock-desktop-soft-shadow) !important;
-  padding: 8px 12px !important;
+  border-width: 1px 0 0 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 10px 12px !important;
   gap: 10px !important;
   overflow: visible !important;
 }}
@@ -1122,9 +1327,9 @@ img[data-slock-desktop-avatar="true"] {{
 [class*="composer"] [contenteditable="true"],
 [class*="Composer"] [contenteditable="true"] {{
   min-height: 44px !important;
-  padding: 10px 56px 10px 12px !important;
+  padding: 8px 12px !important;
   border: 0 !important;
-  border-radius: var(--slock-desktop-radius-md) !important;
+  border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
   line-height: 1.55 !important;
@@ -1166,6 +1371,51 @@ img[data-slock-desktop-avatar="true"] {{
   background: var(--slock-desktop-accent) !important;
   color: var(--slock-desktop-surface) !important;
   border-color: transparent !important;
+  box-shadow: none !important;
+}}
+
+form:has(textarea[placeholder*="Message" i]),
+form:has(textarea[placeholder*="消息"]),
+form:has(button[title*="Attach image" i]),
+form:has(button[title*="附加图片"]) {{
+  background: var(--slock-desktop-surface) !important;
+  border-color: var(--slock-desktop-line) !important;
+  border-width: 1px 0 0 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 12px !important;
+  overflow: visible !important;
+}}
+
+form:has(textarea[placeholder*="Message" i]) .flex.items-center.justify-between.gap-3,
+form:has(textarea[placeholder*="消息"]) .flex.items-center.justify-between.gap-3,
+form:has(button[title*="Attach image" i]) .flex.items-center.justify-between.gap-3,
+form:has(button[title*="附加图片"]) .flex.items-center.justify-between.gap-3 {{
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative !important;
+  min-height: 36px !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+}}
+
+form:has(textarea[placeholder*="Message" i]) button[title*="Attach" i],
+form:has(textarea[placeholder*="消息"]) button[title*="附加"],
+form:has(button[title*="Attach image" i]) button[title*="Attach" i],
+form:has(button[title*="附加图片"]) button[title*="附加"],
+form:has(textarea[placeholder*="Message" i]) button[type="submit"],
+form:has(textarea[placeholder*="消息"]) button[type="submit"],
+form:has(button[title*="Attach image" i]) button[type="submit"],
+form:has(button[title*="附加图片"]) button[type="submit"] {{
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  border-radius: var(--slock-desktop-radius-md) !important;
   box-shadow: none !important;
 }}
 
@@ -1479,6 +1729,21 @@ button,
 .border-brutal-orange,
 .border-brutal-pink {{
   border-color: var(--slock-desktop-line) !important;
+}}
+
+[data-slock-desktop-semantic-color][data-slock-desktop-semantic-shape="dot"] {{
+  background: var(--slock-desktop-semantic-current) !important;
+  border-color: color-mix(in srgb, var(--slock-desktop-surface) 72%, var(--slock-desktop-semantic-current)) !important;
+  color: transparent !important;
+  box-shadow: 0 0 0 2px var(--slock-desktop-surface) !important;
+}}
+
+[data-slock-desktop-semantic-color][data-slock-desktop-semantic-shape="chip"],
+[data-slock-desktop-task-state] {{
+  background: color-mix(in srgb, var(--slock-desktop-semantic-current) 18%, var(--slock-desktop-surface)) !important;
+  border-color: color-mix(in srgb, var(--slock-desktop-semantic-current) 38%, var(--slock-desktop-line)) !important;
+  color: color-mix(in srgb, var(--slock-desktop-semantic-current) 78%, var(--slock-desktop-text)) !important;
+  box-shadow: none !important;
 }}
 
 :focus-visible {{

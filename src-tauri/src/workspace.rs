@@ -127,6 +127,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       channels: "Channels",
       channelsUpper: "CHANNELS",
       newChannel: "New channel",
+      createChannel: "Create Channel",
+      createChannelUpper: "CREATE CHANNEL",
+      createChannelPage: "Create channel",
       directMessages: "Direct messages",
       directMessagesTitle: "Direct Messages",
       directMessagesUpper: "DIRECT MESSAGES",
@@ -174,6 +177,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       onboardingAgent: "Onboarding Agent",
       invite: "Invite",
       search: "Search",
+      optional: "optional",
+      optionalWrapped: "(optional)",
+      channelNameExample: "e.g. ai-research",
+      channelAboutPlaceholder: "What is this channel about?",
+      searchMembersByName: "Search members by name",
+      agentsUpper: "AGENTS",
       tasks: "Tasks",
       tasksUpper: "TASKS",
       saved: "Saved",
@@ -212,6 +221,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       uploading: "Uploading...",
       viewParticipants: "View participants",
       viewParticipantsTitle: "View Participants",
+      viewInChannel: "View in channel",
+      closeThread: "Close thread",
+      messageThread: "Message thread",
       edit: "Edit",
       delete: "Delete",
       reply: "Reply",
@@ -322,6 +334,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       channels: "频道",
       channelsUpper: "频道",
       newChannel: "新建频道",
+      createChannel: "创建频道",
+      createChannelUpper: "创建频道",
+      createChannelPage: "创建频道",
       directMessages: "私信",
       directMessagesTitle: "私信",
       directMessagesUpper: "私信",
@@ -369,6 +384,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       onboardingAgent: "入门 Agent",
       invite: "邀请",
       search: "搜索",
+      optional: "可选",
+      optionalWrapped: "（可选）",
+      channelNameExample: "例如：ai-research",
+      channelAboutPlaceholder: "这个频道是做什么的？",
+      searchMembersByName: "按名称搜索成员",
+      agentsUpper: "智能体",
       tasks: "任务",
       tasksUpper: "任务",
       saved: "已保存",
@@ -407,6 +428,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       uploading: "上传中...",
       viewParticipants: "查看参与者",
       viewParticipantsTitle: "查看参与者",
+      viewInChannel: "在频道中查看",
+      closeThread: "关闭线程",
+      messageThread: "发送线程消息",
       edit: "编辑",
       delete: "删除",
       reply: "回复",
@@ -608,6 +632,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       "planBilling",
       "dangerZone",
       "integrations",
+      "optionalWrapped",
+      "optional",
     ];
     const partialTranslations = [];
 
@@ -623,9 +649,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     });
     partialTranslations.sort((a, b) => b[0].length - a[0].length);
 
-    const isExcludedTranslationTarget = (element) => {
+    const isControlElement = (element) => !!element.closest("input, textarea, select, [contenteditable='true']");
+    const isExcludedTranslationTarget = (element, options = {}) => {
       if (host.contains(element)) return true;
-      if (element.closest("input, textarea, pre, code, [contenteditable='true']")) return true;
+      if (isControlElement(element)) return options.attribute !== true;
+      if (element.closest("pre, code")) return true;
       if (element.closest("[data-slock-message-content], [data-message-content], [class*='message-content'], [class*='MessageContent']")) return true;
       if (element.closest("article") && !element.closest("header, nav, aside, [role='menu'], [role='menuitem'], [role='heading'], [data-radix-collection-item]")) return true;
 
@@ -691,7 +719,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     };
 
     const translateAttribute = (element, attribute) => {
-      if (isExcludedTranslationTarget(element)) return;
+      if (isExcludedTranslationTarget(element, { attribute: true })) return;
       const value = element.getAttribute(attribute)?.trim();
       if (!value) return;
       const translated = translateText(value, attribute !== "placeholder");
