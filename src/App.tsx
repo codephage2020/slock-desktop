@@ -63,14 +63,10 @@ const COPY = {
     header: 'Desktop Console',
     loadingTitle: 'Desktop Console is booting.',
     loadingDescription: 'Preparing the local shell and reading your desktop preferences.',
-    kicker: 'Desktop control surface',
-    title: 'Slock workspace launcher',
     lede:
       'Open the original Slock workspace, choose a theme color, and keep the desktop shell aligned with light, dark, or system mode.',
     workspaceActive: 'Workspace active',
     workspaceParked: 'Workspace parked',
-    target: 'Target',
-    localService: 'Local service',
     settings: 'Settings',
     settingsSections: 'Desktop settings sections',
     appearance: 'Appearance',
@@ -107,18 +103,17 @@ const COPY = {
     languageEnglishShort: 'EN',
     languageChineseShort: '中',
     languageSystemShort: 'System',
-    launchStack: 'Launch Stack',
-    focusWorkspace: 'Focus Workspace',
-    openWorkspaceHere: 'Open Workspace Here',
+    focusSlock: 'Focus Slock',
+    openSlock: 'Open Slock',
     launching: 'Launching…',
     running: 'Running',
     configuredIdle: 'Configured / idle',
     notConfigured: 'Not configured',
     desktopStateError: 'Desktop state error',
     previewLabel: 'preview',
-    previewUserText: 'Theme settings should feel native.',
-    previewAssistantSuffix: 'keeps the workspace quiet and readable.',
-    previewing: 'Previewing',
+    previewUserText: 'Messages, tasks, and threads keep the same visual rhythm.',
+    previewAssistantText: 'The workspace stays clear for long daily sessions.',
+    previewing: 'Interface preview',
     previewSendButton: 'Preview send button',
     localServiceEyebrow: 'Local Service',
     serviceStartup: 'Service startup',
@@ -165,13 +160,9 @@ const COPY = {
     header: '桌面控制台',
     loadingTitle: '桌面控制台正在启动。',
     loadingDescription: '正在准备本地外壳并读取你的桌面偏好。',
-    kicker: '桌面控制面板',
-    title: 'Slock 工作区启动器',
     lede: '打开原始 Slock 工作区，选择主题色，并让桌面壳在亮色、暗黑或跟随系统模式下保持一致。',
     workspaceActive: '工作区已打开',
     workspaceParked: '工作区待启动',
-    target: '目标地址',
-    localService: '本地服务',
     settings: '设置',
     settingsSections: '桌面设置分区',
     appearance: '外观',
@@ -206,18 +197,17 @@ const COPY = {
     languageEnglishShort: 'EN',
     languageChineseShort: '中',
     languageSystemShort: '跟随系统',
-    launchStack: '启动工作栈',
-    focusWorkspace: '聚焦工作区',
-    openWorkspaceHere: '打开工作区',
+    focusSlock: '聚焦 Slock',
+    openSlock: '打开 Slock',
     launching: '启动中…',
     running: '运行中',
     configuredIdle: '已配置 / 空闲',
     notConfigured: '未配置',
     desktopStateError: '桌面状态错误',
     previewLabel: '预览',
-    previewUserText: '主题设置应该像原生桌面工具一样安静。',
-    previewAssistantSuffix: '让工作区保持清晰且易读。',
-    previewing: '正在预览',
+    previewUserText: '消息、任务和线程保持一致的阅读节奏。',
+    previewAssistantText: '工作区保持清晰，适合长时间使用。',
+    previewing: '界面预览',
     previewSendButton: '预览发送按钮',
     localServiceEyebrow: '本地服务',
     serviceStartup: '服务启动',
@@ -564,12 +554,7 @@ function App() {
   const activeThemeDisplay = getThemeDisplay(activeTheme, snapshot.language, snapshot.resolvedLanguage)
 
   const shellStyle = buildShellStyle(activeTheme)
-  const stackButtonLabel =
-    snapshot.service.autoStartWithWorkspace && snapshot.service.configured
-      ? copy.launchStack
-      : snapshot.workspaceOpen
-        ? copy.focusWorkspace
-        : copy.openWorkspaceHere
+  const stackButtonLabel = snapshot.workspaceOpen ? copy.focusSlock : copy.openSlock
 
   return (
     <main className="studio-shell" data-mode={activeTheme.mode} style={shellStyle}>
@@ -583,16 +568,11 @@ function App() {
         </section>
       ) : null}
 
-      <section className="launch-board" aria-labelledby="workspace-launch-title">
+      <section className="launch-board" aria-label={copy.openSlock}>
         <section className="launch-center-card">
           <div className="status-row">
             <span className="status-dot" />
             <span>{snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}</span>
-          </div>
-
-          <div className="launch-copy">
-            <p className="eyebrow">{snapshot.appName}</p>
-            <h1 id="workspace-launch-title">{copy.title}</h1>
           </div>
 
           <button
@@ -603,22 +583,6 @@ function App() {
             {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
           </button>
 
-          <dl className="launch-meta-list">
-            <div>
-              <dt>{copy.target}</dt>
-              <dd>{snapshot.workspaceUrl}</dd>
-            </div>
-            <div>
-              <dt>{copy.localService}</dt>
-              <dd>
-                {snapshot.service.running
-                  ? `${copy.running}${snapshot.service.pid ? ` / PID ${snapshot.service.pid}` : ''}`
-                  : snapshot.service.configured
-                    ? copy.configuredIdle
-                    : copy.notConfigured}
-              </dd>
-            </div>
-          </dl>
         </section>
 
         <section className="appearance-card launch-panel" aria-labelledby="appearance-settings-title">
@@ -773,10 +737,10 @@ function App() {
               </div>
               <div className="preview-message assistant">
                 <span />
-                <p>{activeThemeDisplay.name} {copy.previewAssistantSuffix}</p>
+                <p>{copy.previewAssistantText}</p>
               </div>
               <div className="preview-composer">
-                <span>{copy.previewing} {activeThemeDisplay.name}</span>
+                <span>{copy.previewing}</span>
                 <button type="button" aria-label={copy.previewSendButton}>↵</button>
               </div>
             </div>

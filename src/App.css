@@ -149,28 +149,11 @@
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 24px;
+  gap: 28px;
   min-height: 100%;
   padding: clamp(28px, 5vw, 48px);
   border-radius: var(--slock-radius-xl);
   text-align: center;
-}
-
-.launch-copy {
-  display: grid;
-  gap: 10px;
-  justify-items: center;
-}
-
-.launch-copy h1 {
-  max-width: 12ch;
-  margin: 0;
-  color: var(--text);
-  font-size: clamp(2rem, 5vw, 3.4rem);
-  font-weight: 650;
-  letter-spacing: -0.045em;
-  line-height: 0.96;
-  text-wrap: balance;
 }
 
 .launch-center-card .status-row {
@@ -181,43 +164,13 @@
 }
 
 .launch-center-card .launch-button {
-  min-width: min(100%, 286px);
-  min-height: 58px;
-  padding: 0 28px;
+  min-width: min(100%, 340px);
+  min-height: 76px;
+  padding: 0 38px;
   border-radius: 999px;
-  font-size: 1rem;
+  font-size: clamp(1.08rem, 1.8vw, 1.26rem);
+  letter-spacing: -0.01em;
   box-shadow: none;
-}
-
-.launch-meta-list {
-  width: 100%;
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  text-align: left;
-}
-
-.launch-meta-list div {
-  display: grid;
-  gap: 5px;
-  padding-top: 12px;
-  border-top: 1px solid var(--slock-color-border);
-}
-
-.launch-meta-list dt {
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 650;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-}
-
-.launch-meta-list dd {
-  margin: 0;
-  color: var(--text);
-  font-size: 0.9rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
 }
 
 .appearance-card {
