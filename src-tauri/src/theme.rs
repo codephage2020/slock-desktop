@@ -346,7 +346,14 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         element.style.setProperty("transform", "none", "important");
         element.style.setProperty("line-height", `${{size}}px`, "important");
 
-        if (imageLayer instanceof HTMLElement) imageLayer.dataset.slockDesktopAvatarImageLayer = "true";
+        if (imageLayer instanceof HTMLElement) {{
+          let current = imageLayer;
+          while (current instanceof HTMLElement && current !== element) {{
+            current.dataset.slockDesktopAvatarImageLayer = "true";
+            current = current.parentElement;
+          }}
+          imageLayer.dataset.slockDesktopAvatarImageLayer = "true";
+        }}
 
         Array.from(element.children).slice(0, 4).forEach((child) => {{
           if (!(child instanceof HTMLElement)) return;
@@ -627,15 +634,31 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         }}
       }});
 
-      document.querySelectorAll('[data-slock-desktop-primary-list="true"] button,[data-slock-desktop-primary-list="true"] a,[data-slock-desktop-primary-list="true"] [role="button"]').forEach((row) => {{
+      const markPrimaryRow = (row) => {{
         if (!(row instanceof HTMLElement)) return;
         const text = (row.textContent || "").replace(/\s+/g, " ").trim();
+        if (!text) return;
         if (text) row.setAttribute("title", text);
         row.dataset.slockDesktopPrimaryRow = "true";
         row.dataset.slockDesktopPrimaryRowLayout = /^#\s*all\b/i.test(text)
           ? "hash-text"
           : detectPrimaryRowLayout(row);
         if (/^#\s*all\b/i.test(text)) row.dataset.slockDesktopPrimaryRowVariant = "root-channel";
+      }};
+
+      document.querySelectorAll('[data-slock-desktop-primary-list="true"]').forEach((list) => {{
+        if (!(list instanceof HTMLElement)) return;
+        Array.from(list.children).forEach((row) => {{
+          if (!(row instanceof HTMLElement)) return;
+          if (row.matches("h1,h2,h3,h4,h5,h6,p,span")) return;
+          const text = (row.textContent || "").replace(/\s+/g, " ").trim();
+          const looksRow =
+            row.matches("button,a,[role='button']") ||
+            /^#\s*\S+/.test(text) ||
+            !!row.querySelector(":scope > button,:scope > a,:scope > [role='button'],:scope > [class*='rounded-full'],:scope > img,:scope > svg");
+          if (!looksRow) return;
+          markPrimaryRow(row);
+        }});
       }});
 
       document.querySelectorAll(`${{sidebarSelector}} button,${{sidebarSelector}} a,${{sidebarSelector}} [role="button"]`).forEach((row) => {{
@@ -646,12 +669,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (!text) return;
         const isChannelRow = /^#\\s*\\S+/.test(text) || !!row.querySelector("svg,path,[data-slock-desktop-sidebar-avatar='true'],img");
         if (!isChannelRow) return;
-        if (text) row.setAttribute("title", text);
-        row.dataset.slockDesktopPrimaryRow = "true";
-        row.dataset.slockDesktopPrimaryRowLayout = /^#\s*all\b/i.test(text)
-          ? "hash-text"
-          : detectPrimaryRowLayout(row);
-        if (/^#\s*all\b/i.test(text)) row.dataset.slockDesktopPrimaryRowVariant = "root-channel";
+        markPrimaryRow(row);
       }});
 
       document.querySelectorAll('main button,main a,main [role="button"],main [class*="border-2"],main [class*="border"]').forEach((row) => {{
@@ -749,19 +767,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         actions.forEach((action) => {{
           const rect = action.getBoundingClientRect();
           if (rect.height <= 0 || rect.width <= 0) return;
-          if (rect.bottom < sidebarRect.bottom - 190) return;
-
-          const label = normalizeText([
-            action.textContent,
-            action.getAttribute("aria-label"),
-            action.getAttribute("title")
-          ].filter(Boolean).join(" "));
-          const hasAvatar =
-            !!action.querySelector('[data-slock-desktop-sidebar-avatar="true"],img,[class*="avatar"],[class*="Avatar"],[class*="rounded-full"]');
-          const looksSettingsAction =
-            /settings|setting|profile|account|user|设置|个人|账号|账户/.test(label) ||
-            (rect.width <= 68 && rect.height <= 68 && !!action.querySelector("svg"));
-          if (!hasAvatar && !looksSettingsAction) return;
+          if (rect.bottom < sidebarRect.bottom - 128) return;
 
           action.dataset.slockDesktopAccountAction = "true";
           let container = action.parentElement;
@@ -769,7 +775,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
             if (!(container instanceof HTMLElement)) continue;
             if (container.matches("nav,aside")) break;
             const containerRect = container.getBoundingClientRect();
-            if (containerRect.bottom < sidebarRect.bottom - 210) continue;
+            if (containerRect.bottom < sidebarRect.bottom - 128) continue;
             const interactiveCount = container.querySelectorAll("button,a,[role='button']").length;
             if (interactiveCount > 0 && interactiveCount <= 4) {{
               container.dataset.slockDesktopAccountDock = "true";
@@ -1243,6 +1249,9 @@ button[class*="size-"],
   border-radius: var(--slock-desktop-radius-sm) !important;
 }}
 
+button[data-slock-desktop-plus-action="true"],
+a[data-slock-desktop-plus-action="true"],
+[role="button"][data-slock-desktop-plus-action="true"],
 [data-slock-desktop-plus-action="true"] {{
   width: 30px !important;
   min-width: 30px !important;
@@ -1554,6 +1563,16 @@ nav [class*="bg-brutal"] {{
   background: transparent !important;
 }}
 
+button[data-slock-desktop-account-action="true"],
+a[data-slock-desktop-account-action="true"],
+[role="button"][data-slock-desktop-account-action="true"],
+[data-slock-desktop-account-dock="true"] :is(button,a,[role="button"]) {{
+  background: transparent !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+}}
+
 [class*="sidebar"] [aria-current="page"],
 [class*="Sidebar"] [aria-current="page"],
 [class*="sidebar"] [aria-selected="true"],
@@ -1672,9 +1691,12 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   max-height: 100% !important;
   border-radius: inherit !important;
   overflow: hidden !important;
+  background-color: transparent !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
   background-size: cover !important;
+  color: transparent !important;
+  font-size: 0 !important;
 }}
 
 [data-slock-desktop-avatar="true"],
