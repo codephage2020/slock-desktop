@@ -6,7 +6,7 @@ Tauri desktop shell for Slock. Phase 1 focuses on a persistent skin system and a
 
 - `Theme Studio` local control window built with React + Vite
 - `Workspace` remote Tauri window that loads `https://app.slock.ai`
-- Three built-in themes: `Default`, `Graphite`, `Crimson`
+- Five built-in themes: `Default`, `Light`, `Dark`, `Graphite`, `Crimson`
 - Theme persistence in the app config directory
 - Runtime theme injection into the remote workspace
 - Local service settings, start, stop, and workspace-coupled auto-start

@@ -35,7 +35,7 @@ pub struct ThemeMeta {
     pub preview: [&'static str; 3],
 }
 
-const THEMES: [ThemeDefinition; 3] = [
+const THEMES: [ThemeDefinition; 5] = [
     ThemeDefinition {
         id: "default",
         name: "Default",
@@ -50,6 +50,36 @@ const THEMES: [ThemeDefinition; 3] = [
         accent: "#c58a1f",
         accent_soft: "#f2ddb5",
         preview: ["#f3eee3", "#efe4d2", "#c58a1f"],
+    },
+    ThemeDefinition {
+        id: "light",
+        name: "Light",
+        summary: "Pure light workspace with crisp neutrals and blue focus cues.",
+        mode: "light",
+        canvas: "#eef2f6",
+        surface: "#fbfdff",
+        surface_strong: "#ffffff",
+        line: "#d5dde8",
+        text: "#111827",
+        muted: "#5f6b7a",
+        accent: "#2f6df6",
+        accent_soft: "#dbe7ff",
+        preview: ["#eef2f6", "#ffffff", "#2f6df6"],
+    },
+    ThemeDefinition {
+        id: "dark",
+        name: "Dark",
+        summary: "Pure dark workspace with neutral depth and cool blue signals.",
+        mode: "dark",
+        canvas: "#0f1319",
+        surface: "#171c24",
+        surface_strong: "#202734",
+        line: "#384254",
+        text: "#f5f7fb",
+        muted: "#9aa5b5",
+        accent: "#63a4ff",
+        accent_soft: "#263650",
+        preview: ["#0f1319", "#202734", "#63a4ff"],
     },
     ThemeDefinition {
         id: "graphite",
@@ -148,7 +178,8 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 fn remote_css(theme: ThemeDefinition) -> String {
     format!(
         r#"
-:root {{
+:root,
+:host {{
   color-scheme: {mode};
   --slock-desktop-canvas: {canvas};
   --slock-desktop-surface: {surface};
@@ -158,10 +189,24 @@ fn remote_css(theme: ThemeDefinition) -> String {
   --slock-desktop-muted: {muted};
   --slock-desktop-accent: {accent};
   --slock-desktop-accent-soft: {accent_soft};
+  --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --default-font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --default-mono-font-family: "Space Mono", ui-monospace, monospace;
+  --color-white: {surface};
+  --color-black: {text};
+  --color-gray-400: {muted};
+  --color-brutal-cream: {canvas};
+  --color-brutal-yellow: {accent};
+  --color-brutal-pink: {accent_soft};
+  --color-brutal-cyan: {surface_strong};
+  --color-brutal-lime: {surface};
+  --color-brutal-lavender: {line};
+  --color-brutal-orange: {accent};
 }}
 
 html,
-body {{
+body,
+#root {{
   background: var(--slock-desktop-canvas) !important;
   color: var(--slock-desktop-text) !important;
 }}
@@ -169,6 +214,10 @@ body {{
 body {{
   accent-color: var(--slock-desktop-accent) !important;
   font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}}
+
+#root {{
+  background-image: none !important;
 }}
 
 ::selection {{
@@ -179,6 +228,22 @@ body {{
 a,
 [role="link"] {{
   color: var(--slock-desktop-accent) !important;
+}}
+
+main,
+section,
+article,
+aside,
+nav,
+header,
+footer,
+[role="dialog"],
+[role="menu"],
+[role="menuitem"],
+[role="tabpanel"],
+[role="listitem"] {{
+  color: var(--slock-desktop-text) !important;
+  border-color: var(--slock-desktop-line) !important;
 }}
 
 input,
@@ -196,22 +261,6 @@ select {{
   background: var(--slock-desktop-surface) !important;
 }}
 
-button,
-[role="button"] {{
-  background: var(--slock-desktop-surface-strong) !important;
-}}
-
-header,
-aside,
-nav,
-section,
-article,
-main,
-footer,
-[role="dialog"],
-[role="menu"],
-[role="menuitem"],
-[role="tabpanel"],
 [class*="sidebar"],
 [class*="Sidebar"],
 [class*="panel"],
@@ -223,7 +272,12 @@ footer,
 [class*="composer"],
 [class*="Composer"],
 [class*="message"],
-[class*="Message"] {{
+[class*="Message"],
+.card-brutal,
+[data-radix-popper-content-wrapper],
+[data-state="open"],
+[data-slot="popover-content"] {{
+  color: var(--slock-desktop-text) !important;
   border-color: var(--slock-desktop-line) !important;
 }}
 
@@ -236,7 +290,11 @@ footer,
 [class*="card"],
 [class*="Card"],
 [class*="composer"],
-[class*="Composer"] {{
+[class*="Composer"],
+.card-brutal,
+[data-radix-popper-content-wrapper],
+[data-state="open"],
+[data-slot="popover-content"] {{
   background: var(--slock-desktop-surface) !important;
   border-radius: 18px !important;
   box-shadow: none !important;
@@ -250,10 +308,49 @@ footer,
   border-radius: 18px !important;
 }}
 
-[data-radix-popper-content-wrapper],
-[data-state="open"],
-[data-slot="popover-content"] {{
-  border-radius: 18px !important;
+[class*="message"],
+[class*="Message"] {{
+  background: var(--slock-desktop-surface-strong) !important;
+}}
+
+.input-brutal {{
+  background: var(--slock-desktop-surface) !important;
+  color: var(--slock-desktop-text) !important;
+  border-color: var(--slock-desktop-line) !important;
+}}
+
+.btn-brutal,
+.btn-brutal-sm {{
+  color: var(--slock-desktop-text) !important;
+  border-color: var(--slock-desktop-line) !important;
+}}
+
+.bg-white {{
+  background-color: var(--slock-desktop-surface) !important;
+}}
+
+.bg-brutal-cream {{
+  background-color: var(--slock-desktop-canvas) !important;
+}}
+
+.text-black {{
+  color: var(--slock-desktop-text) !important;
+}}
+
+.text-gray-400 {{
+  color: var(--slock-desktop-muted) !important;
+}}
+
+.border-black,
+.md\:border-black,
+.border-brutal-yellow,
+.border-brutal-orange,
+.border-brutal-pink {{
+  border-color: var(--slock-desktop-line) !important;
+}}
+
+:focus-visible {{
+  outline-color: var(--slock-desktop-accent) !important;
 }}
 
 svg {{
@@ -263,6 +360,10 @@ svg {{
 ::-webkit-scrollbar {{
   width: 10px;
   height: 10px;
+}}
+
+::-webkit-scrollbar-track {{
+  background: var(--slock-desktop-canvas) !important;
 }}
 
 ::-webkit-scrollbar-thumb {{

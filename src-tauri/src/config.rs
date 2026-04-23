@@ -70,10 +70,7 @@ pub fn load_settings<R: Runtime>(app: &AppHandle<R>) -> AppSettings {
     }
 }
 
-pub fn save_settings<R: Runtime>(
-    app: &AppHandle<R>,
-    settings: &AppSettings,
-) -> Result<(), String> {
+pub fn save_settings<R: Runtime>(app: &AppHandle<R>, settings: &AppSettings) -> Result<(), String> {
     let path = settings_path(app)?;
     let payload = serde_json::to_vec_pretty(settings).map_err(|err| err.to_string())?;
     fs::write(path, payload).map_err(|err| err.to_string())

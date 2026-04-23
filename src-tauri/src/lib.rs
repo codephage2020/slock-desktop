@@ -235,9 +235,7 @@ fn ensure_workspace_window(app: &AppHandle, theme_id: &str) -> Result<(), String
                         .unwrap_or_else(|_| "default".to_string())
                 };
 
-                if let Err(err) =
-                    apply_theme_to_workspace(&window, resolve_theme(&next_theme_id))
-                {
+                if let Err(err) = apply_theme_to_workspace(&window, resolve_theme(&next_theme_id)) {
                     log::error!("failed to apply workspace theme: {err}");
                 }
             }
@@ -297,10 +295,7 @@ fn collect_service_snapshot(
     })
 }
 
-fn maybe_start_service(
-    state: &DesktopState,
-    settings: &ServiceSettings,
-) -> Result<(), String> {
+fn maybe_start_service(state: &DesktopState, settings: &ServiceSettings) -> Result<(), String> {
     if settings.auto_start_with_workspace && !settings.command_path.trim().is_empty() {
         force_start_service(state, settings)?;
     }
@@ -308,10 +303,7 @@ fn maybe_start_service(
     Ok(())
 }
 
-fn force_start_service(
-    state: &DesktopState,
-    settings: &ServiceSettings,
-) -> Result<(), String> {
+fn force_start_service(state: &DesktopState, settings: &ServiceSettings) -> Result<(), String> {
     if settings.command_path.trim().is_empty() {
         return Err("Service command path is empty".to_string());
     }

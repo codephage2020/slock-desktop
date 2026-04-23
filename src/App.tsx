@@ -249,6 +249,7 @@ function App() {
     snapshot.themes.find((theme) => theme.id === snapshot.activeThemeId) ??
     snapshot.themes[0]
 
+  const themeHeadline = `${snapshot.themes.length} stable palettes. One stored choice.`
   const shellStyle = buildShellStyle(activeTheme)
   const stackButtonLabel =
     snapshot.service.autoStartWithWorkspace && snapshot.service.configured
@@ -320,7 +321,7 @@ function App() {
       <section className="theme-headline">
         <div>
           <p className="eyebrow">Theme catalog</p>
-          <h2>Three stable palettes. One stored choice.</h2>
+          <h2>{themeHeadline}</h2>
         </div>
         <p className="theme-note">
           The shell stays consistent locally. The remote Slock workspace keeps
