@@ -290,7 +290,11 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 
       const clearMarkedAvatar = (element, key) => {{
         delete element.dataset[key];
+        delete element.dataset.slockDesktopAvatarHasImage;
         avatarStyleProps.forEach((property) => element.style.removeProperty(property));
+        Array.from(element.children).slice(0, 3).forEach((child) => {{
+          if (child instanceof HTMLElement) delete child.dataset.slockDesktopAvatarFallback;
+        }});
       }};
 
       const isThreadAvatarScope = (element) => (
@@ -301,7 +305,10 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         !!element.closest('nav,aside,[class*="sidebar"],[class*="Sidebar"]');
 
       const markAvatarElement = (element, key, size) => {{
+        const hasImage = element.matches("img") || !!element.querySelector("img");
         element.dataset[key] = "true";
+        if (hasImage) element.dataset.slockDesktopAvatarHasImage = "true";
+        else delete element.dataset.slockDesktopAvatarHasImage;
         element.style.setProperty("inline-size", `${{size}}px`, "important");
         element.style.setProperty("block-size", `${{size}}px`, "important");
         element.style.setProperty("width", `${{size}}px`, "important");
@@ -320,6 +327,10 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           if (!(child instanceof HTMLElement)) return;
           if (child.matches("path,defs,clipPath,mask")) return;
           child.dataset[key] = "true";
+          delete child.dataset.slockDesktopAvatarFallback;
+          if (hasImage && !child.matches("img,picture,svg") && !child.querySelector("img,picture")) {{
+            child.dataset.slockDesktopAvatarFallback = "true";
+          }}
           child.style.setProperty("writing-mode", "horizontal-tb", "important");
           child.style.setProperty("transform", "none", "important");
           child.style.setProperty("line-height", `${{size}}px`, "important");
@@ -722,9 +733,10 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           action.getAttribute("aria-label"),
           action.getAttribute("title")
         ].filter(Boolean).join(" "));
+        const containsPlusGlyph = /[+＋]/.test(action.textContent || "");
         const iconOnly = text === "" || text === "+" || text === "＋";
-        const looksAddAction = /(add|new|create|plus|invite|添加|新建|创建|新增)/.test(label);
-        if (iconOnly && looksAddAction && action.querySelector("svg")) {{
+        const looksAddAction = /(add|new|create|plus|invite|添加|新建|创建|新增)/.test(label) || containsPlusGlyph;
+        if ((iconOnly || containsPlusGlyph) && looksAddAction) {{
           action.dataset.slockDesktopPlusAction = "true";
         }}
       }});
@@ -1550,6 +1562,17 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   font-weight: 650 !important;
 }}
 
+[data-slock-desktop-avatar="true"][data-slock-desktop-avatar-has-image="true"],
+[data-slock-desktop-sidebar-avatar="true"][data-slock-desktop-avatar-has-image="true"] {{
+  background: transparent !important;
+  color: transparent !important;
+}}
+
+[data-slock-desktop-avatar-fallback="true"] {{
+  opacity: 0 !important;
+  pointer-events: none !important;
+}}
+
 [data-slock-desktop-avatar="true"],
 [data-slock-desktop-sidebar-avatar="true"],
 [class*="thread"] [class*="avatar"],
@@ -1619,6 +1642,7 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 }}
 
 [data-slock-desktop-sidebar-avatar="true"] > img,
+[data-slock-desktop-sidebar-avatar="true"] img,
 img[data-slock-desktop-sidebar-avatar="true"] {{
   width: 100% !important;
   min-width: 100% !important;
@@ -1661,6 +1685,7 @@ svg[data-slock-desktop-avatar="true"] {{
 }}
 
 [data-slock-desktop-avatar="true"] > img,
+[data-slock-desktop-avatar="true"] img,
 img[data-slock-desktop-avatar="true"] {{
   width: 100% !important;
   min-width: 100% !important;
@@ -1669,6 +1694,9 @@ img[data-slock-desktop-avatar="true"] {{
   min-height: 100% !important;
   max-height: 100% !important;
   object-fit: cover !important;
+  display: block !important;
+  position: relative !important;
+  z-index: 1 !important;
 }}
 
 [id^="message-"],
