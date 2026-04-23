@@ -807,6 +807,8 @@ aside .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 [class*="sidebar"] .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 [class*="Sidebar"] .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 .group.flex.items-center.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+.flex.w-full.items-center.gap-1\.5.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 .flex.w-full.items-center.gap-2.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold {{
   background: var(--slock-desktop-selection) !important;
   color: var(--slock-desktop-text) !important;
@@ -873,7 +875,9 @@ nav [data-state="active"],
 nav .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 aside .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 [class*="sidebar"] .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
-[class*="Sidebar"] .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold {{
+[class*="Sidebar"] .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
+.flex.w-full.items-center.gap-1\.5.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold {{
   background: var(--slock-desktop-selection) !important;
 }}
 
