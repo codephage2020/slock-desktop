@@ -732,6 +732,26 @@ fn sanitize_custom_theme(custom_theme: CustomThemeSettings) -> CustomThemeSettin
     }
 }
 
+fn normalize_app_settings(settings: AppSettings) -> AppSettings {
+    let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
+    let custom_theme = sanitize_custom_theme(settings.custom_theme);
+    let color_scheme = resolve_theme(
+        &settings.color_scheme,
+        &appearance_mode,
+        &custom_theme_input(&custom_theme),
+    )
+    .id;
+
+    AppSettings {
+        color_scheme,
+        appearance_mode,
+        custom_theme,
+        language: sanitize_language(&settings.language).to_string(),
+        service: sanitize_service_settings(settings.service),
+        updates: sanitize_update_settings(settings.updates),
+    }
+}
+
 fn sanitize_language(language: &str) -> &'static str {
     match language {
         "zh-CN" => "zh-CN",
@@ -860,7 +880,8 @@ pub fn run() {
             }
 
             {
-                let settings = load_settings(app.handle());
+                let settings = normalize_app_settings(load_settings(app.handle()));
+                save_settings(app.handle(), &settings).map_err(std::io::Error::other)?;
                 let state = app.state::<DesktopState>();
                 let mut current = state
                     .settings

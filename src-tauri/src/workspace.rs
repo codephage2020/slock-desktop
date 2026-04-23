@@ -590,7 +590,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         </nav>
         <div class="content">
           <p class="setting-title">${t("theme")}</p>
-          <div class="theme-list" role="radiogroup" aria-label="Workspace theme"></div>
+          <div class="theme-list" role="radiogroup" aria-label="${t("theme")}"></div>
           <div class="status">
             <span>${t("saved")}</span>
             <span>${themes.length} ${t("themes")}</span>
@@ -662,7 +662,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       const check = document.createElement("span");
       check.className = "check";
       check.setAttribute("aria-hidden", "true");
-      check.textContent = selected ? "OK" : "";
+      check.textContent = selected ? "✓" : "";
 
       copy.append(name, summary);
       option.append(swatch, copy, check);
@@ -678,6 +678,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     launcher.setAttribute("aria-expanded", String(open));
     launcher.innerHTML = `<span class="launcher-dot"></span><span>${t("launcher")}</span>`;
     launcher.addEventListener("click", () => {
+      open = window.__slockDesktopSettingsOpen === true;
       open = !open;
       window.__slockDesktopSettingsOpen = open;
       render();
@@ -732,11 +733,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
   };
 
+  window.__slockDesktopSettingsClosePanel = closePanel;
+
   if (!window.__slockDesktopSettingsEscapeBound) {
     window.__slockDesktopSettingsEscapeBound = true;
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && window.__slockDesktopSettingsOpen) {
-        closePanel();
+        window.__slockDesktopSettingsClosePanel?.();
       }
     });
   }
@@ -748,7 +751,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       const activeHost = document.getElementById(hostId);
       const path = event.composedPath ? event.composedPath() : [];
       if (activeHost && path.includes(activeHost)) return;
-      closePanel();
+      window.__slockDesktopSettingsClosePanel?.();
     });
   }
 
