@@ -573,6 +573,97 @@ function App() {
           </section>
         ) : null}
 
+        <details className="control-card compact-control service-card">
+          <summary className="control-card-head">
+            <h2>{copy.serviceStartup}</h2>
+            <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
+              {serviceStatusLabel}
+            </span>
+          </summary>
+
+          <div className="control-body">
+            <label className="field">
+              <span>{copy.commandPath}</span>
+              <input
+                value={snapshot.service.commandPath}
+                onChange={(event) =>
+                  patchService({ commandPath: event.target.value })
+                }
+                placeholder={copy.commandPathPlaceholder}
+              />
+            </label>
+
+            <label className="field">
+              <span>{copy.workingDirectory}</span>
+              <input
+                value={snapshot.service.workingDirectory}
+                onChange={(event) =>
+                  patchService({ workingDirectory: event.target.value })
+                }
+                placeholder={copy.workingDirectoryPlaceholder}
+              />
+            </label>
+
+            <label className="field">
+              <span>{copy.arguments}</span>
+              <textarea
+                value={snapshot.service.args.join('\n')}
+                onChange={(event) =>
+                  patchService({ args: splitArgs(event.target.value) })
+                }
+                placeholder={copy.argumentsPlaceholder}
+              />
+            </label>
+
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={snapshot.service.autoStartWithWorkspace}
+                onChange={(event) =>
+                  patchService({ autoStartWithWorkspace: event.target.checked })
+                }
+              />
+              <span>{copy.autoStartService}</span>
+            </label>
+
+            {snapshot.service.lastError ? (
+              <p className="inline-note error">{snapshot.service.lastError}</p>
+            ) : (
+              <p className="inline-note">
+                {snapshot.service.configured
+                  ? copy.serviceSaved
+                  : copy.cloudWorkspaceOnly}
+              </p>
+            )}
+
+            <div className="button-row">
+              <button
+                className="theme-button"
+                onClick={handleServiceSave}
+                disabled={busyAction === 'save-service'}
+              >
+                {busyAction === 'save-service'
+                  ? copy.savingServiceSettings
+                  : copy.saveServiceSettings}
+              </button>
+              <button
+                className="theme-button"
+                onClick={handleServiceStart}
+                disabled={busyAction === 'start-service'}
+              >
+                {busyAction === 'start-service' ? copy.startingService : copy.startService}
+              </button>
+              <button
+                className="theme-button muted-button"
+                onClick={handleServiceStop}
+                disabled={busyAction === 'stop-service' || !snapshot.service.running}
+              >
+                {busyAction === 'stop-service' ? copy.stoppingService : copy.stopService}
+              </button>
+            </div>
+          </div>
+        </details>
+
         <section className="control-card settings-card" aria-labelledby="appearance-settings-title">
           <div className="control-card-head">
             <h2 id="appearance-settings-title">{copy.desktopSettings}</h2>
@@ -713,97 +804,6 @@ function App() {
             </div>
           </div>
         </section>
-
-        <details className="control-card compact-control service-card">
-          <summary className="control-card-head">
-            <h2>{copy.serviceStartup}</h2>
-            <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
-              {serviceStatusLabel}
-            </span>
-          </summary>
-
-          <div className="control-body">
-            <label className="field">
-              <span>{copy.commandPath}</span>
-              <input
-                value={snapshot.service.commandPath}
-                onChange={(event) =>
-                  patchService({ commandPath: event.target.value })
-                }
-                placeholder={copy.commandPathPlaceholder}
-              />
-            </label>
-
-            <label className="field">
-              <span>{copy.workingDirectory}</span>
-              <input
-                value={snapshot.service.workingDirectory}
-                onChange={(event) =>
-                  patchService({ workingDirectory: event.target.value })
-                }
-                placeholder={copy.workingDirectoryPlaceholder}
-              />
-            </label>
-
-            <label className="field">
-              <span>{copy.arguments}</span>
-              <textarea
-                value={snapshot.service.args.join('\n')}
-                onChange={(event) =>
-                  patchService({ args: splitArgs(event.target.value) })
-                }
-                placeholder={copy.argumentsPlaceholder}
-              />
-            </label>
-
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={snapshot.service.autoStartWithWorkspace}
-                onChange={(event) =>
-                  patchService({ autoStartWithWorkspace: event.target.checked })
-                }
-              />
-              <span>{copy.autoStartService}</span>
-            </label>
-
-            {snapshot.service.lastError ? (
-              <p className="inline-note error">{snapshot.service.lastError}</p>
-            ) : (
-              <p className="inline-note">
-                {snapshot.service.configured
-                  ? copy.serviceSaved
-                  : copy.cloudWorkspaceOnly}
-              </p>
-            )}
-
-            <div className="button-row">
-              <button
-                className="theme-button"
-                onClick={handleServiceSave}
-                disabled={busyAction === 'save-service'}
-              >
-                {busyAction === 'save-service'
-                  ? copy.savingServiceSettings
-                  : copy.saveServiceSettings}
-              </button>
-              <button
-                className="theme-button"
-                onClick={handleServiceStart}
-                disabled={busyAction === 'start-service'}
-              >
-                {busyAction === 'start-service' ? copy.startingService : copy.startService}
-              </button>
-              <button
-                className="theme-button muted-button"
-                onClick={handleServiceStop}
-                disabled={busyAction === 'stop-service' || !snapshot.service.running}
-              >
-                {busyAction === 'stop-service' ? copy.stoppingService : copy.stopService}
-              </button>
-            </div>
-          </div>
-        </details>
 
         <details className="control-card compact-control update-card">
           <summary className="control-card-head">

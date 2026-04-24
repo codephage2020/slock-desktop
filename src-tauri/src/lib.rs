@@ -21,10 +21,10 @@ use theme::{meta_catalog, resolve_theme, CustomThemeInput};
 
 const MAIN_LABEL: &str = "main";
 const WORKSPACE_URL: &str = "https://app.slock.ai";
-const LAUNCHER_WINDOW_WIDTH: f64 = 720.0;
-const LAUNCHER_WINDOW_HEIGHT: f64 = 760.0;
-const LAUNCHER_WINDOW_MIN_WIDTH: f64 = 680.0;
-const LAUNCHER_WINDOW_MIN_HEIGHT: f64 = 720.0;
+const LAUNCHER_WINDOW_WIDTH: f64 = 980.0;
+const LAUNCHER_WINDOW_HEIGHT: f64 = 720.0;
+const LAUNCHER_WINDOW_MIN_WIDTH: f64 = 920.0;
+const LAUNCHER_WINDOW_MIN_HEIGHT: f64 = 680.0;
 const WORKSPACE_WINDOW_WIDTH: f64 = 1480.0;
 const WORKSPACE_WINDOW_HEIGHT: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_WIDTH: f64 = 980.0;
