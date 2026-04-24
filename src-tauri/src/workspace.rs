@@ -258,9 +258,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const serviceStatusText = () => {
     const service = serviceSnapshot;
     if (!service) return t("loadingService");
-    if (service.running) return t("serviceRunning");
-    if (!service.authenticated) return t("serviceSignInRequired");
     const selected = selectedServiceServer();
+    const selectedServerSlug = selected?.slug || service.selectedServerSlug || "";
+    const selectedRunning =
+      service.running &&
+      selectedServerSlug &&
+      (!service.activeServerSlug || service.activeServerSlug === selectedServerSlug);
+    if (selectedRunning) return t("serviceRunning");
+    if (!service.authenticated) return t("serviceSignInRequired");
     if (selected) return service.configured ? t("serviceIdle") : t("serviceNotLinked");
     return service.configured ? t("serviceIdle") : t("serviceNotLinked");
   };
@@ -2210,10 +2215,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         } else if (serviceAction === "stop") {
           const selected = selectedServiceServer();
           const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug || "";
-          const runtimeRunning =
-            serviceSnapshot?.running &&
-            (!serviceSnapshot?.activeServerSlug || serviceSnapshot.activeServerSlug === selectedServerSlug);
-          if (!selectedServerSlug || !runtimeRunning) {
+          if (!selectedServerSlug) {
             serviceError = t("serviceNotRunning");
             render();
             return;
@@ -2539,7 +2541,9 @@ mod tests {
         let script = settings_overlay_script("default", "system", "zh-CN", "zh-CN", &[]);
 
         assert!(!script.contains("machineStatusCountsAsStarted"));
-        assert!(script.contains("if (!selectedServerSlug || !runtimeRunning)"));
+        assert!(!script.contains("runtimeRunning"));
+        assert!(script.contains("const selectedRunning ="));
+        assert!(script.contains("if (!selectedServerSlug)"));
         assert!(
             script.contains("service.configured ? t(\"serviceIdle\") : t(\"serviceNotLinked\")")
         );

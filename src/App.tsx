@@ -429,11 +429,8 @@ function App() {
       snapshot.service.servers.find((server) => server.selected) ??
       snapshot.service.servers[0]
     const selectedSlug = selectedServer?.slug ?? snapshot.service.selectedServerSlug
-    const runtimeRunning =
-      snapshot.service.running &&
-      (!snapshot.service.activeServerSlug || snapshot.service.activeServerSlug === selectedSlug)
 
-    if (!selectedSlug || !runtimeRunning) {
+    if (!selectedSlug) {
       setErrorMessage(currentCopy.serviceNotRunning)
       return
     }
@@ -1085,7 +1082,13 @@ function getServiceStatusLabel(
   selectedServer: BootstrapPayload['service']['servers'][number] | null,
   copy: UiCopy,
 ) {
-  if (service.running) {
+  const selectedSlug = selectedServer?.slug ?? service.selectedServerSlug
+  const selectedRunning =
+    service.running &&
+    Boolean(selectedSlug) &&
+    (!service.activeServerSlug || service.activeServerSlug === selectedSlug)
+
+  if (selectedRunning) {
     return copy.serviceRunning
   }
 

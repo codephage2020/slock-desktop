@@ -1591,6 +1591,7 @@ fn stop_service_process(
         .as_deref()
         .map(|slug| active_server_slug.as_deref() == Some(slug))
         .unwrap_or(true);
+    let mut stopped_tracked_child = false;
 
     if should_stop_tracked_child {
         if let Some(child) = runtime.child.as_mut() {
@@ -1602,6 +1603,7 @@ fn stop_service_process(
                 child
                     .kill()
                     .map_err(|err| format!("Failed to stop service: {err}"))?;
+                stopped_tracked_child = true;
             }
             let _ = child.wait();
         }
@@ -1672,12 +1674,22 @@ fn stop_service_process(
     {
         daemon_pids = unique_untagged_daemon_process_ids(target_server_url)?;
     }
+    let stopped_daemon_process = !daemon_pids.is_empty();
     terminate_daemon_processes(daemon_pids)?;
 
     let should_clear_runtime = requested_server_slug
         .as_deref()
         .map(|slug| active_server_slug.as_deref() == Some(slug))
         .unwrap_or(true);
+    if requested_server_slug.is_some() && !stopped_tracked_child && !stopped_daemon_process {
+        if should_clear_runtime {
+            runtime.last_error = Some("Selected server service is not running.".to_string());
+            runtime.active_server_slug = None;
+            runtime.active_machine_id = None;
+        }
+        return Err("Selected server service is not running.".to_string());
+    }
+
     if should_clear_runtime {
         runtime.last_error = None;
         runtime.active_server_slug = None;
