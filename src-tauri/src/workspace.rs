@@ -314,6 +314,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       replyLower: "reply",
       repliesLower: "replies",
       activeLower: "active",
+      yesterday: "Yesterday",
+      today: "Today",
       process: "Process",
       processes: "Processes",
       processStatus: "Process status",
@@ -581,6 +583,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       replyLower: "条回复",
       repliesLower: "条回复",
       activeLower: "活跃",
+      yesterday: "昨天",
+      today: "今天",
       process: "进程",
       processes: "进程",
       processStatus: "进程状态",
@@ -1196,6 +1200,33 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         translateElementTextNodes(element, allowPartial);
       });
     });
+
+    const messageTimestampReplacements = [];
+    ["yesterday", "today"].forEach((key) => {
+      const replacement = target[key];
+      if (!replacement) return;
+      Object.values(slockMenuCopy).forEach((dictionary) => {
+        const source = dictionary[key];
+        if (source && source !== replacement) {
+          messageTimestampReplacements.push([source, replacement]);
+        }
+      });
+    });
+    if (messageTimestampReplacements.length > 0) {
+      collectSearchRoots().forEach((root) => {
+        root.querySelectorAll("[class*='text-xs']").forEach((element) => {
+          if (element.childElementCount !== 0) return;
+          const text = element.textContent || "";
+          if (!text) return;
+          for (const [source, replacement] of messageTimestampReplacements) {
+            if (text === source || text.startsWith(source + " ")) {
+              element.textContent = text.replace(source, replacement);
+              break;
+            }
+          }
+        });
+      });
+    }
   };
 
   const bindSlockMenuTranslator = () => {
