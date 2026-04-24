@@ -568,10 +568,12 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopAccountDock",
         "slockDesktopAccountAction",
         "slockDesktopProfileControl",
-        "slockDesktopTaskToolbar"
+        "slockDesktopTaskToolbar",
+        "slockDesktopCanvasChrome",
+        "slockDesktopSearchInput"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-profile-control],[data-slock-desktop-task-toolbar]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-profile-control],[data-slock-desktop-task-toolbar],[data-slock-desktop-canvas-chrome],[data-slock-desktop-search-input]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -604,6 +606,32 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           element.dataset.slockDesktopTaskToolbar = "true";
         }}
       }});
+
+      const canvasChromeSelectors = [
+        'main .relative > .flex > .flex > .flex',
+        'main .flex > .flex > .flex > .flex',
+        'main .relative > .absolute > .flex > .flex',
+        'main .flex > .relative > .absolute > .flex',
+        'main .relative > .flex > .flex > .shrink-0',
+        'main .flex.h-\\[62px\\]',
+        'main .flex.h-\\[62px\\].shrink-0'
+      ].join(',');
+      document.querySelectorAll(canvasChromeSelectors).forEach((element) => {{
+        if (!(element instanceof HTMLElement)) return;
+        if (element.closest('#slock-desktop-settings-host,nav,aside,form,button,a,[role="button"]')) return;
+        if (element.matches("input,textarea,select")) return;
+        const rect = element.getBoundingClientRect();
+        if (rect.width < 360 || rect.height < 32 || rect.height > 128) return;
+        element.dataset.slockDesktopCanvasChrome = "true";
+      }});
+
+      if (/\\/search(?:$|[/?#])/.test(window.location.pathname + window.location.search)) {{
+        document.querySelectorAll('main input.min-w-0, main input[type="search"], main input[placeholder]').forEach((element) => {{
+          if (!(element instanceof HTMLElement)) return;
+          if (element.closest('#slock-desktop-settings-host')) return;
+          element.dataset.slockDesktopSearchInput = "true";
+        }});
+      }}
 
       document
         .querySelectorAll(
@@ -1671,8 +1699,18 @@ header,
   background: var(--slock-desktop-canvas) !important;
 }}
 
+[data-slock-desktop-canvas-chrome="true"],
 [data-slock-desktop-task-toolbar="true"] {{
   background: var(--slock-desktop-canvas) !important;
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-search-input="true"] {{
+  border-radius: var(--slock-desktop-radius-xs) !important;
+  background-clip: padding-box !important;
+  box-shadow: none !important;
 }}
 
 .flex.w-full.items-center.gap-2,
@@ -1948,7 +1986,11 @@ mod tests {
         );
         assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex"));
         assert!(script.contains("slockDesktopTaskToolbar"));
+        assert!(script.contains("slockDesktopCanvasChrome"));
+        assert!(script.contains("slockDesktopSearchInput"));
         assert!(script.contains("data-slock-desktop-task-toolbar"));
+        assert!(script.contains("data-slock-desktop-canvas-chrome"));
+        assert!(script.contains("data-slock-desktop-search-input"));
         assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
     }
 }

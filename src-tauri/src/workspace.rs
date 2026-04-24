@@ -357,6 +357,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       onboardingAgent: "Onboarding Agent",
       invite: "Invite",
       search: "Search",
+      searchGlobalPlaceholder: "Search channels, DMs, messages...",
       optional: "optional",
       optionalWrapped: "(optional)",
       channelNameExample: "e.g. ai-research",
@@ -626,6 +627,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       onboardingAgent: "入门 Agent",
       invite: "邀请",
       search: "搜索",
+      searchGlobalPlaceholder: "搜索频道、私信、消息...",
       optional: "可选",
       optionalWrapped: "（可选）",
       channelNameExample: "例如：ai-research",
@@ -2444,3 +2446,17 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   bindSlockMenuTranslator();
 })();
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::settings_overlay_script;
+
+    #[test]
+    fn settings_overlay_translates_search_placeholder() {
+        let script = settings_overlay_script("default", "system", "zh-CN", "zh-CN", &[]);
+
+        assert!(script.contains("Search channels, DMs, messages..."));
+        assert!(script.contains("搜索频道、私信、消息..."));
+        assert!(script.contains("\"input[placeholder]\""));
+    }
+}
