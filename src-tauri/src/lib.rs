@@ -68,6 +68,13 @@ struct ServiceRuntime {
     cached_sync_error: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct ServiceDaemonProcess {
+    pid: u32,
+    server_slug: String,
+    machine_id: Option<String>,
+}
+
 #[derive(Default)]
 struct AppCloseRuntime {
     prompt_visible: bool,
@@ -1282,7 +1289,7 @@ fn collect_service_snapshot(
     }
 
     let last_error = runtime.last_error.clone();
-    let active_server_slug = runtime.active_server_slug.clone().unwrap_or_default();
+    let mut active_server_slug = runtime.active_server_slug.clone().unwrap_or_default();
     let cached_servers = runtime.cached_servers.clone();
     let cached_sync_error = runtime.cached_sync_error.clone();
     drop(runtime);
@@ -1344,6 +1351,22 @@ fn collect_service_snapshot(
         server.selected = server.slug == settings.selected_server_slug;
     }
 
+    if !running {
+        let selected_machine_started = servers
+            .iter()
+            .find(|server| server.selected)
+            .map(|server| machine_counts_as_started(&server.machine_status))
+            .unwrap_or(false);
+        if selected_machine_started {
+            if let Ok(Some(process)) = selected_service_daemon_process(settings) {
+                running = true;
+                pid = Some(process.pid);
+                active_server_slug = process.server_slug.clone();
+                let _ = mark_service_daemon_process_running(state, &process);
+            }
+        }
+    }
+
     let configured = servers
         .iter()
         .find(|server| server.selected)
@@ -1375,17 +1398,19 @@ fn maybe_start_service(
     settings: &ServiceSettings,
     force_for_workspace: bool,
 ) -> Result<(), String> {
-    let should_start = (!settings.selected_server_slug.trim().is_empty() && force_for_workspace)
-        || (settings.auto_start_with_workspace && !settings.selected_server_slug.trim().is_empty());
-
-    if should_start {
-        if selected_server_is_started(app, state, settings)? {
-            return Ok(());
-        }
+    if should_start_service_for_workspace(settings, force_for_workspace) {
         force_start_service(app, state, settings)?;
     }
 
     Ok(())
+}
+
+fn should_start_service_for_workspace(
+    settings: &ServiceSettings,
+    force_for_workspace: bool,
+) -> bool {
+    !settings.selected_server_slug.trim().is_empty()
+        && (force_for_workspace || settings.auto_start_with_workspace)
 }
 
 fn start_workspace_service_in_background(app: AppHandle, settings: ServiceSettings) {
@@ -1410,6 +1435,15 @@ fn force_start_service(
     settings: &ServiceSettings,
 ) -> Result<(), String> {
     let selected_server = resolve_selected_server(app, state, settings)?;
+    if let Some(existing_binding) =
+        find_service_binding(settings, &selected_server.id, &selected_server.slug)
+    {
+        let daemon_pids = service_daemon_pids_for_binding(settings, &existing_binding)?;
+        for pid in daemon_pids {
+            terminate_daemon_process(pid)?;
+        }
+    }
+
     let binding = ensure_machine_binding(app, state, settings, &selected_server)?;
 
     let mut runtime = state
@@ -1437,6 +1471,14 @@ fn force_start_service(
         runtime.child = None;
     }
 
+    if !service_daemon_pids_for_binding(settings, &binding)?.is_empty() {
+        runtime.last_error = None;
+        runtime.active_server_slug = Some(selected_server.slug);
+        runtime.active_machine_id = Some(binding.machine_id);
+        runtime.child = None;
+        return Ok(());
+    }
+
     let mut command = Command::new("npx");
     command
         .args([
@@ -1458,6 +1500,20 @@ fn force_start_service(
     runtime.active_server_slug = Some(selected_server.slug);
     runtime.active_machine_id = Some(binding.machine_id);
     runtime.child = Some(child);
+    Ok(())
+}
+
+fn mark_service_daemon_process_running(
+    state: &DesktopState,
+    process: &ServiceDaemonProcess,
+) -> Result<(), String> {
+    let mut runtime = state
+        .service
+        .lock()
+        .map_err(|_| "Unable to lock service runtime".to_string())?;
+    runtime.last_error = None;
+    runtime.active_server_slug = Some(process.server_slug.clone());
+    runtime.active_machine_id = process.machine_id.clone();
     Ok(())
 }
 
@@ -1606,6 +1662,78 @@ fn daemon_command_matches(
     }
 
     true
+}
+
+fn selected_service_daemon_process(
+    settings: &ServiceSettings,
+) -> Result<Option<ServiceDaemonProcess>, String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let output = Command::new("ps")
+            .args(["-axo", "pid=,command="])
+            .output()
+            .map_err(|err| format!("Failed to inspect daemon processes: {err}"))?;
+        if !output.status.success() {
+            return Err("Failed to inspect daemon processes".to_string());
+        }
+
+        let listing = String::from_utf8_lossy(&output.stdout);
+        Ok(selected_service_daemon_process_from_ps_output(
+            settings, &listing,
+        ))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = settings;
+        Ok(None)
+    }
+}
+
+fn selected_service_daemon_process_from_ps_output(
+    settings: &ServiceSettings,
+    output: &str,
+) -> Option<ServiceDaemonProcess> {
+    let target_slug = settings.selected_server_slug.trim();
+    if target_slug.is_empty() {
+        return None;
+    }
+
+    let binding = find_service_binding(settings, "", target_slug)?;
+    service_daemon_process_from_binding(settings, target_slug, &binding, output)
+}
+
+fn service_daemon_process_from_binding(
+    settings: &ServiceSettings,
+    server_slug: &str,
+    binding: &ServiceMachineBinding,
+    output: &str,
+) -> Option<ServiceDaemonProcess> {
+    let api_key = binding.api_key.trim();
+    if api_key.is_empty() {
+        return None;
+    }
+
+    daemon_pids_from_ps_output(output, Some(api_key), &settings.server_url)
+        .into_iter()
+        .next()
+        .map(|pid| ServiceDaemonProcess {
+            pid,
+            server_slug: server_slug.to_string(),
+            machine_id: Some(binding.machine_id.trim().to_string())
+                .filter(|machine_id| !machine_id.is_empty()),
+        })
+}
+
+fn service_daemon_pids_for_binding(
+    settings: &ServiceSettings,
+    binding: &ServiceMachineBinding,
+) -> Result<Vec<u32>, String> {
+    let api_key = binding.api_key.trim();
+    if api_key.is_empty() {
+        return Ok(Vec::new());
+    }
+    find_daemon_process_ids(Some(api_key), &settings.server_url)
 }
 
 fn terminate_daemon_process(pid: u32) -> Result<(), String> {
@@ -2081,12 +2209,6 @@ fn ensure_machine_binding(
     server: &ApiServer,
 ) -> Result<ServiceMachineBinding, String> {
     let existing_binding = find_service_binding(settings, &server.id, &server.slug);
-    if let Some(binding) = existing_binding.as_ref() {
-        if !binding.api_key.trim().is_empty() {
-            return Ok(binding.clone());
-        }
-    }
-
     let server_url = settings.server_url.clone();
     let machines = fetch_server_machines(app, state, &server_url, &server.id)?;
     if let Some(machine) = select_existing_machine(existing_binding.as_ref(), &machines) {
@@ -2235,18 +2357,6 @@ fn machine_counts_as_started(status: &str) -> bool {
         normalize_machine_status(status).as_str(),
         "online" | "running" | "idle" | "healthy"
     )
-}
-
-fn selected_server_is_started(
-    app: &AppHandle,
-    state: &DesktopState,
-    settings: &ServiceSettings,
-) -> Result<bool, String> {
-    let selected_server = resolve_selected_server(app, state, settings)?;
-    let machines = fetch_server_machines(app, state, &settings.server_url, &selected_server.id)?;
-    Ok(machines
-        .iter()
-        .any(|machine| machine_counts_as_started(&machine.status)))
 }
 
 fn persist_service_target_slug(
@@ -2604,8 +2714,10 @@ mod tests {
     use super::{
         app_close_prompt_script, close_app_behavior_from_action, close_app_behavior_from_id,
         close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
-        sanitize_service_settings, select_existing_machine, workspace_session_seed_script,
-        ApiMachine, CloseAppPromptCopy, CloseAppServiceBehavior, WorkspaceSessionSeed,
+        sanitize_service_settings, select_existing_machine,
+        selected_service_daemon_process_from_ps_output, should_start_service_for_workspace,
+        workspace_session_seed_script, ApiMachine, CloseAppPromptCopy, CloseAppServiceBehavior,
+        WorkspaceSessionSeed,
     };
     use crate::config::{ServiceMachineBinding, ServiceSettings};
 
@@ -2642,6 +2754,57 @@ mod tests {
             daemon_pids_from_ps_output(output, Some("sk_machine_current"), "https://api.slock.ai");
 
         assert_eq!(pids, vec![101]);
+    }
+
+    #[test]
+    fn workspace_launch_starts_selected_service_even_when_machine_appears_online() {
+        let settings = ServiceSettings {
+            selected_server_slug: "open-have".to_string(),
+            auto_start_with_workspace: false,
+            ..ServiceSettings::default()
+        };
+
+        assert!(should_start_service_for_workspace(&settings, true));
+    }
+
+    #[test]
+    fn selected_service_process_detection_uses_bound_api_key() {
+        let settings = ServiceSettings {
+            selected_server_slug: "open-have".to_string(),
+            machines: vec![
+                ServiceMachineBinding {
+                    server_id: "server-open".to_string(),
+                    server_slug: "open-have".to_string(),
+                    machine_id: "machine-open".to_string(),
+                    machine_name: "Open machine".to_string(),
+                    api_key: "sk_machine_open".to_string(),
+                },
+                ServiceMachineBinding {
+                    server_id: "server-tyan".to_string(),
+                    server_slug: "tyan-dyun".to_string(),
+                    machine_id: "machine-tyan".to_string(),
+                    machine_name: "Tyan machine".to_string(),
+                    api_key: "sk_machine_tyan".to_string(),
+                },
+            ],
+            ..ServiceSettings::default()
+        };
+        let output = r#"
+  101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_tyan
+  102 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_open
+"#;
+
+        let process = selected_service_daemon_process_from_ps_output(&settings, output);
+
+        assert_eq!(process.as_ref().map(|process| process.pid), Some(102));
+        assert_eq!(
+            process.as_ref().map(|process| process.server_slug.as_str()),
+            Some("open-have")
+        );
+        assert_eq!(
+            process.and_then(|process| process.machine_id),
+            Some("machine-open".to_string())
+        );
     }
 
     #[test]
