@@ -38,6 +38,7 @@ const WORKSPACE_WINDOW_MIN_WIDTH: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_HEIGHT: f64 = 760.0;
 const DAEMON_SERVER_SLUG_ARG: &str = "--slock-desktop-server-slug";
 const DAEMON_MACHINE_ID_ARG: &str = "--slock-desktop-machine-id";
+const DAEMON_DESKTOP_MANAGED_ARG: &str = "--slock-desktop-managed";
 
 pub struct DesktopState {
     settings: Mutex<AppSettings>,
@@ -1480,9 +1481,7 @@ fn force_start_service(
     if daemon_pids.is_empty() && machine_counts_as_started(&target.machine_status) {
         daemon_pids = unique_untagged_daemon_process_ids(&settings.server_url)?;
     }
-    for pid in daemon_pids {
-        terminate_daemon_process(pid)?;
-    }
+    terminate_daemon_processes(daemon_pids)?;
 
     let mut runtime = state
         .service
@@ -1544,6 +1543,7 @@ fn force_start_service(
             binding.server_slug.as_str(),
             DAEMON_MACHINE_ID_ARG,
             binding.machine_id.as_str(),
+            DAEMON_DESKTOP_MANAGED_ARG,
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -1672,9 +1672,7 @@ fn stop_service_process(
     {
         daemon_pids = unique_untagged_daemon_process_ids(target_server_url)?;
     }
-    for pid in daemon_pids {
-        terminate_daemon_process(pid)?;
-    }
+    terminate_daemon_processes(daemon_pids)?;
 
     let should_clear_runtime = requested_server_slug
         .as_deref()
@@ -1699,7 +1697,7 @@ fn find_daemon_process_ids(
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         let output = Command::new("ps")
-            .args(["-axo", "pid=,command="])
+            .args(["-axo", "pid=,ppid=,command="])
             .output()
             .map_err(|err| format!("Failed to inspect daemon processes: {err}"))?;
         if !output.status.success() {
@@ -1743,7 +1741,7 @@ fn find_untagged_daemon_process_ids(target_server_url: &str) -> Result<Vec<u32>,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         let output = Command::new("ps")
-            .args(["-axo", "pid=,command="])
+            .args(["-axo", "pid=,ppid=,command="])
             .output()
             .map_err(|err| format!("Failed to inspect daemon processes: {err}"))?;
         if !output.status.success() {
@@ -1773,16 +1771,15 @@ fn daemon_pids_from_ps_output(
     legacy_api_key: Option<&str>,
     include_untagged: bool,
 ) -> Vec<u32> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            let split_index = trimmed.find(char::is_whitespace)?;
-            let (pid_text, command_text) = trimmed.split_at(split_index);
-            let pid = pid_text.parse::<u32>().ok()?;
-            let command = command_text.trim();
+    let entries = process_entries_from_ps_output(output);
+    entries
+        .iter()
+        .filter_map(|entry| {
+            if process_entry_has_agent_descendant(entry.pid, &entries) {
+                return None;
+            }
             if daemon_command_matches(
-                command,
+                &entry.command,
                 target_server_url,
                 target_server_slug,
                 target_machine_id,
@@ -1790,7 +1787,7 @@ fn daemon_pids_from_ps_output(
                 legacy_api_key,
                 include_untagged,
             ) {
-                Some(pid)
+                Some(entry.pid)
             } else {
                 None
             }
@@ -1799,21 +1796,89 @@ fn daemon_pids_from_ps_output(
 }
 
 fn untagged_daemon_pids_from_ps_output(output: &str, target_server_url: &str) -> Vec<u32> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            let split_index = trimmed.find(char::is_whitespace)?;
-            let (pid_text, command_text) = trimmed.split_at(split_index);
-            let pid = pid_text.parse::<u32>().ok()?;
-            let command = command_text.trim();
-            if daemon_command_is_untagged(command, target_server_url) {
-                Some(pid)
+    let entries = process_entries_from_ps_output(output);
+    entries
+        .iter()
+        .filter_map(|entry| {
+            if process_entry_has_agent_descendant(entry.pid, &entries) {
+                return None;
+            }
+            if daemon_command_is_untagged(&entry.command, target_server_url) {
+                Some(entry.pid)
             } else {
                 None
             }
         })
         .collect()
+}
+
+#[derive(Debug)]
+struct ProcessEntry {
+    pid: u32,
+    ppid: Option<u32>,
+    command: String,
+}
+
+fn process_entries_from_ps_output(output: &str) -> Vec<ProcessEntry> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let mut parts = trimmed.splitn(3, char::is_whitespace);
+            let pid = parts.next()?.parse::<u32>().ok()?;
+            let second = parts.next()?.trim();
+            let third = parts.next().map(str::trim);
+            if let (Ok(ppid), Some(command)) = (second.parse::<u32>(), third) {
+                return Some(ProcessEntry {
+                    pid,
+                    ppid: Some(ppid),
+                    command: command.to_string(),
+                });
+            }
+
+            let command = if let Some(command_tail) = third {
+                format!("{second} {command_tail}")
+            } else {
+                second.to_string()
+            };
+            Some(ProcessEntry {
+                pid,
+                ppid: None,
+                command,
+            })
+        })
+        .collect()
+}
+
+fn process_entry_has_agent_descendant(pid: u32, entries: &[ProcessEntry]) -> bool {
+    let mut stack: Vec<u32> = entries
+        .iter()
+        .filter(|entry| entry.ppid == Some(pid))
+        .map(|entry| entry.pid)
+        .collect();
+
+    while let Some(child_pid) = stack.pop() {
+        if let Some(child) = entries.iter().find(|entry| entry.pid == child_pid) {
+            if process_command_is_agent_runtime(&child.command) {
+                return true;
+            }
+            stack.extend(
+                entries
+                    .iter()
+                    .filter(|entry| entry.ppid == Some(child_pid))
+                    .map(|entry| entry.pid),
+            );
+        }
+    }
+
+    false
+}
+
+fn process_command_is_agent_runtime(command: &str) -> bool {
+    command.contains("codex app-server")
+        || command.contains("/codex app-server")
+        || (command.contains("/claude ") && command.contains("You are \""))
+        || (command.contains(" claude ") && command.contains("You are \""))
 }
 
 fn daemon_command_matches(
@@ -1831,10 +1896,24 @@ fn daemon_command_matches(
     }
 
     if command.contains(DAEMON_MACHINE_ID_ARG) {
-        return target_machine_id
+        if target_machine_id
             .filter(|machine_id| !machine_id.trim().is_empty())
             .map(|machine_id| command_arg_value_matches(command, DAEMON_MACHINE_ID_ARG, machine_id))
-            .unwrap_or(false);
+            .unwrap_or(false)
+        {
+            return true;
+        }
+
+        if command_arg_value_matches(command, DAEMON_MACHINE_ID_ARG, "***") {
+            return target_server_slug
+                .filter(|server_slug| !server_slug.trim().is_empty())
+                .map(|server_slug| {
+                    command_arg_value_matches(command, DAEMON_SERVER_SLUG_ARG, server_slug)
+                })
+                .unwrap_or(false);
+        }
+
+        return false;
     }
 
     if command.contains(DAEMON_SERVER_SLUG_ARG) {
@@ -2008,6 +2087,17 @@ fn service_daemon_pids_for_binding(
     )
 }
 
+fn terminate_daemon_processes(mut pids: Vec<u32>) -> Result<(), String> {
+    pids.sort_unstable_by(|left, right| right.cmp(left));
+    pids.dedup();
+
+    for pid in pids {
+        terminate_daemon_process(pid)?;
+    }
+
+    Ok(())
+}
+
 fn terminate_daemon_process(pid: u32) -> Result<(), String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
@@ -2017,6 +2107,9 @@ fn terminate_daemon_process(pid: u32) -> Result<(), String> {
             .status()
             .map_err(|err| format!("Failed to stop daemon process {pid}: {err}"))?;
         if !status.success() {
+            if !process_is_alive(pid)? {
+                return Ok(());
+            }
             return Err(format!("Failed to stop daemon process {pid}"));
         }
 
@@ -2027,6 +2120,9 @@ fn terminate_daemon_process(pid: u32) -> Result<(), String> {
                 .status()
                 .map_err(|err| format!("Failed to force-stop daemon process {pid}: {err}"))?;
             if !kill_status.success() {
+                if !process_is_alive(pid)? {
+                    return Ok(());
+                }
                 return Err(format!("Failed to force-stop daemon process {pid}"));
             }
         }
@@ -3155,6 +3251,49 @@ mod tests {
         );
 
         assert_eq!(pids, vec![101]);
+    }
+
+    #[test]
+    fn daemon_pid_parser_includes_masked_npm_parent_for_marked_daemon() {
+        let output = r#"
+  101   1 npm exec @slock-ai/daemon@latest --server-url https://api.slock.ai --api-key sk_machine_current --slock-desktop-server-slug open-have --slock-desktop-machine-id ***
+  102 101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_current --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open
+  103   1 npm exec @slock-ai/daemon@latest --server-url https://api.slock.ai --api-key sk_machine_other --slock-desktop-server-slug tyan-dyun --slock-desktop-machine-id ***
+"#;
+
+        let pids = daemon_pids_from_ps_output(
+            output,
+            "https://api.slock.ai",
+            Some("open-have"),
+            Some("machine-open"),
+            None,
+            None,
+            false,
+        );
+
+        assert_eq!(pids, vec![101, 102]);
+    }
+
+    #[test]
+    fn daemon_pid_parser_excludes_agent_hosted_daemons() {
+        let output = r#"
+  101   1 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_agent --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open
+  201 101 node /opt/homebrew/bin/codex app-server --listen stdio://
+  102   1 npm exec @slock-ai/daemon@latest --server-url https://api.slock.ai --api-key sk_service --slock-desktop-server-slug open-have --slock-desktop-machine-id ***
+  103 102 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_service --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open --slock-desktop-managed
+"#;
+
+        let pids = daemon_pids_from_ps_output(
+            output,
+            "https://api.slock.ai",
+            Some("open-have"),
+            Some("machine-open"),
+            None,
+            None,
+            false,
+        );
+
+        assert_eq!(pids, vec![102, 103]);
     }
 
     #[test]
