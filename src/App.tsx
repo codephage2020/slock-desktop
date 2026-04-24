@@ -555,24 +555,24 @@ function App() {
     snapshot.themes.find((theme) => theme.id === snapshot.colorScheme) ??
     snapshot.themes[0]
   const copy = getCopy(snapshot.language, snapshot.resolvedLanguage)
-  const activeThemeDisplay = getThemeDisplay(activeTheme, snapshot.language, snapshot.resolvedLanguage)
-
   const shellStyle = buildShellStyle(activeTheme)
   const stackButtonLabel = snapshot.workspaceOpen ? copy.focusSlock : copy.openSlock
+  const serviceStatusLabel = snapshot.service.running
+    ? copy.serviceRunning
+    : snapshot.service.configured
+      ? copy.configuredIdle
+      : copy.notConfigured
 
   return (
     <main className="studio-shell" data-mode={activeTheme.mode} style={shellStyle}>
-      <div className="ambient ambient-left" />
-      <div className="ambient ambient-right" />
-
-      {errorMessage ? (
-        <section className="error-banner" role="alert">
-          <strong>{copy.desktopStateError}</strong>
-          <p>{errorMessage}</p>
-        </section>
-      ) : null}
-
       <section className="launch-board" aria-label={copy.openSlock}>
+        {errorMessage ? (
+          <section className="error-banner" role="alert">
+            <strong>{copy.desktopStateError}</strong>
+            <p>{errorMessage}</p>
+          </section>
+        ) : null}
+
         <section className="launch-center-card">
           <div className="status-row">
             <span className="status-dot" />
@@ -589,184 +589,156 @@ function App() {
 
         </section>
 
-        <section className="appearance-card launch-panel" aria-labelledby="appearance-settings-title">
-          <div className="launch-panel-head">
-            <div>
-              <p className="eyebrow">{copy.desktopSettings}</p>
-              <h2 id="appearance-settings-title">{copy.appearance}</h2>
-            </div>
+        <section className="control-card settings-card" aria-labelledby="appearance-settings-title">
+          <div className="control-card-head">
+            <h2 id="appearance-settings-title">{copy.desktopSettings}</h2>
             <span className="settings-save-state">{copy.savedLocally}</span>
           </div>
 
-          <div className="settings-quick-controls">
-            <div className="icon-segment" role="radiogroup" aria-label={copy.mode}>
-              {THEME_MODES.map((mode) => {
-                const selected = mode.id === snapshot.appearanceMode
-                return (
-                  <button
-                    key={mode.id}
-                    className={`icon-option${selected ? ' selected' : ''}`}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    title={copy[mode.labelKey]}
-                    onClick={() => handleThemeModeChange(mode.id)}
-                    disabled={busyAction === `mode:${mode.id}`}
-                  >
-                    <span aria-hidden="true">{mode.icon}</span>
-                    <span className="sr-only">{copy[mode.labelKey]}</span>
-                  </button>
-                )
-              })}
-            </div>
-            <div className="icon-segment" role="radiogroup" aria-label={copy.language}>
-              {LANGUAGE_OPTIONS.map((language) => {
-                const selected = language.id === snapshot.language
-                return (
-                  <button
-                    key={language.id}
-                    className={`icon-option text-icon${selected ? ' selected' : ''}`}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    title={copy[language.labelKey]}
-                    onClick={() => handleLanguageChange(language.id)}
-                    disabled={busyAction === `language:${language.id}`}
-                  >
-                    <span aria-hidden="true">{copy[language.shortLabelKey]}</span>
-                    <span className="sr-only">{copy[language.labelKey]}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          <div className="control-body settings-body">
+            <div className="settings-quick-controls">
+              <div className="compact-setting-group">
+                <div className="setting-copy compact-copy">
+                  <p className="setting-label">{copy.mode}</p>
+                </div>
+                <div className="icon-segment" role="radiogroup" aria-label={copy.mode}>
+                  {THEME_MODES.map((mode) => {
+                    const selected = mode.id === snapshot.appearanceMode
+                    return (
+                      <button
+                        key={mode.id}
+                        className={`icon-option${selected ? ' selected' : ''}`}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        title={copy[mode.labelKey]}
+                        onClick={() => handleThemeModeChange(mode.id)}
+                        disabled={busyAction === `mode:${mode.id}`}
+                      >
+                        <span aria-hidden="true">{mode.icon}</span>
+                        <span className="sr-only">{copy[mode.labelKey]}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
 
-          <div className="compact-setting-group">
-            <div className="setting-copy compact-copy">
-              <p className="setting-label">{copy.themeColor}</p>
-              <p>{copy.themeDescription}</p>
-            </div>
-
-            <div className="theme-picker" role="radiogroup" aria-label={copy.themeColor}>
-              {snapshot.themes.map((theme) => {
-                const selected = theme.id === snapshot.colorScheme
-                const themeDisplay = getThemeDisplay(theme, snapshot.language, snapshot.resolvedLanguage)
-                return (
-                  <button
-                    key={theme.id}
-                    className={`theme-option${selected ? ' selected' : ''}`}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => handleThemeChange(theme.id)}
-                    disabled={busyAction === theme.id}
-                    style={buildThemeOptionStyle(theme)}
-                  >
-                    <span className="theme-option-preview" aria-hidden="true">
-                      <span />
-                      <span />
-                      <span />
-                    </span>
-                    <span className="theme-option-copy">
-                      <span className="theme-option-name">{themeDisplay.name}</span>
-                      <span className="theme-option-summary">{themeDisplay.summary}</span>
-                    </span>
-                    <span className="theme-option-check" aria-hidden="true">
-                      {selected ? '✓' : ''}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div className="compact-setting-group">
-            <div className="setting-copy compact-copy">
-              <p className="setting-label">{copy.customTheme}</p>
-              <p>{copy.customThemeDescription}</p>
+              <div className="compact-setting-group">
+                <div className="setting-copy compact-copy">
+                  <p className="setting-label">{copy.language}</p>
+                </div>
+                <div className="icon-segment" role="radiogroup" aria-label={copy.language}>
+                  {LANGUAGE_OPTIONS.map((language) => {
+                    const selected = language.id === snapshot.language
+                    return (
+                      <button
+                        key={language.id}
+                        className={`icon-option text-icon${selected ? ' selected' : ''}`}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        title={copy[language.labelKey]}
+                        onClick={() => handleLanguageChange(language.id)}
+                        disabled={busyAction === `language:${language.id}`}
+                      >
+                        <span aria-hidden="true">{copy[language.shortLabelKey]}</span>
+                        <span className="sr-only">{copy[language.labelKey]}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
 
-            <div className="custom-theme-controls">
-              <label className="field compact-field">
-                <span>{copy.customThemeName}</span>
-                <input
-                  value={snapshot.customTheme.name}
-                  onChange={(event) =>
-                    patchCustomTheme({ name: event.target.value })
-                  }
-                  placeholder={copy.customThemeNamePlaceholder}
-                />
-              </label>
+            <div className="compact-setting-group">
+              <div className="setting-copy compact-copy">
+                <p className="setting-label">{copy.themeColor}</p>
+              </div>
 
-              <label className="field compact-field color-field">
-                <span>{copy.customThemeAccent}</span>
-                <input
-                  type="color"
-                  value={snapshot.customTheme.accent}
-                  onChange={(event) =>
-                    patchCustomTheme({ accent: event.target.value })
-                  }
-                  aria-label={copy.customThemeAccentAria}
-                />
-              </label>
+              <div className="theme-picker" role="radiogroup" aria-label={copy.themeColor}>
+                {snapshot.themes.map((theme) => {
+                  const selected = theme.id === snapshot.colorScheme
+                  const themeDisplay = getThemeDisplay(theme, snapshot.language, snapshot.resolvedLanguage)
+                  return (
+                    <button
+                      key={theme.id}
+                      className={`theme-option${selected ? ' selected' : ''}`}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => handleThemeChange(theme.id)}
+                      disabled={busyAction === theme.id}
+                      style={buildThemeOptionStyle(theme)}
+                    >
+                      <span className="theme-option-preview" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </span>
+                      <span className="theme-option-copy">
+                        <span className="theme-option-name">{themeDisplay.name}</span>
+                        <span className="theme-option-summary">{themeDisplay.summary}</span>
+                      </span>
+                      <span className="theme-option-check" aria-hidden="true">
+                        {selected ? '✓' : ''}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
 
-              <button
-                className="theme-button"
-                type="button"
-                onClick={handleCustomThemeSave}
-                disabled={busyAction === 'custom-theme'}
-              >
-                {busyAction === 'custom-theme' ? copy.saving : copy.saveCustomTheme}
-              </button>
+            <div className="compact-setting-group">
+              <div className="setting-copy compact-copy">
+                <p className="setting-label">{copy.customTheme}</p>
+              </div>
+
+              <div className="custom-theme-controls">
+                <label className="field compact-field">
+                  <span>{copy.customThemeName}</span>
+                  <input
+                    value={snapshot.customTheme.name}
+                    onChange={(event) =>
+                      patchCustomTheme({ name: event.target.value })
+                    }
+                    placeholder={copy.customThemeNamePlaceholder}
+                  />
+                </label>
+
+                <label className="field compact-field color-field">
+                  <span>{copy.customThemeAccent}</span>
+                  <input
+                    type="color"
+                    value={snapshot.customTheme.accent}
+                    onChange={(event) =>
+                      patchCustomTheme({ accent: event.target.value })
+                    }
+                    aria-label={copy.customThemeAccentAria}
+                  />
+                </label>
+
+                <button
+                  className="theme-button"
+                  type="button"
+                  onClick={handleCustomThemeSave}
+                  disabled={busyAction === 'custom-theme'}
+                >
+                  {busyAction === 'custom-theme' ? copy.saving : copy.saveCustomTheme}
+                </button>
+              </div>
             </div>
           </div>
         </section>
 
-        <aside className="appearance-preview" aria-label={`${activeThemeDisplay.name} ${copy.previewLabel}`}>
-          <div className="preview-toolbar">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div className="preview-workspace">
-            <div className="preview-sidebar">
-              <span className="preview-pill wide" />
-              <span className="preview-pill" />
-              <span className="preview-pill short" />
-            </div>
-            <div className="preview-thread">
-              <div className="preview-message user">
-                <span />
-                <p>{copy.previewUserText}</p>
-              </div>
-              <div className="preview-message assistant">
-                <span />
-                <p>{copy.previewAssistantText}</p>
-              </div>
-              <div className="preview-composer">
-                <span>{copy.previewing}</span>
-                <button type="button" aria-label={copy.previewSendButton}>↵</button>
-              </div>
-            </div>
-          </div>
-        </aside>
-
         <details className="control-card compact-control service-card">
           <summary className="control-card-head">
-            <div>
-              <p className="eyebrow">{copy.localServiceEyebrow}</p>
-              <h2>{copy.serviceStartup}</h2>
-            </div>
+            <h2>{copy.serviceStartup}</h2>
             <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
-              {snapshot.service.running ? copy.serviceRunning : copy.serviceIdle}
+              {serviceStatusLabel}
             </span>
           </summary>
 
           <div className="control-body">
-            <p className="control-copy">
-              {copy.serviceCopy}
-            </p>
-
             <label className="field">
               <span>{copy.commandPath}</span>
               <input
@@ -851,10 +823,7 @@ function App() {
 
         <details className="control-card compact-control update-card">
           <summary className="control-card-head">
-            <div>
-              <p className="eyebrow">{copy.updateCenterEyebrow}</p>
-              <h2>{copy.releaseCheck}</h2>
-            </div>
+            <h2>{copy.releaseCheck}</h2>
             <span
               className={`status-chip ${
                 releaseState.latest?.updateAvailable ? 'warm' : ''
@@ -869,10 +838,6 @@ function App() {
           </summary>
 
           <div className="control-body">
-            <p className="control-copy">
-              {copy.releaseCopy}
-            </p>
-
             <label className="field">
               <span>{copy.repository}</span>
               <input
