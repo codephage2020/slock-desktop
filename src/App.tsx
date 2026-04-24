@@ -573,375 +573,381 @@ function App() {
           </section>
         ) : null}
 
-        <details className="control-card compact-control service-card">
-          <summary className="control-card-head">
-            <h2>{copy.serviceStartup}</h2>
-            <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
-              {serviceStatusLabel}
-            </span>
-          </summary>
-
-          <div className="control-body">
-            <label className="field">
-              <span>{copy.commandPath}</span>
-              <input
-                value={snapshot.service.commandPath}
-                onChange={(event) =>
-                  patchService({ commandPath: event.target.value })
-                }
-                placeholder={copy.commandPathPlaceholder}
-              />
-            </label>
-
-            <label className="field">
-              <span>{copy.workingDirectory}</span>
-              <input
-                value={snapshot.service.workingDirectory}
-                onChange={(event) =>
-                  patchService({ workingDirectory: event.target.value })
-                }
-                placeholder={copy.workingDirectoryPlaceholder}
-              />
-            </label>
-
-            <label className="field">
-              <span>{copy.arguments}</span>
-              <textarea
-                value={snapshot.service.args.join('\n')}
-                onChange={(event) =>
-                  patchService({ args: splitArgs(event.target.value) })
-                }
-                placeholder={copy.argumentsPlaceholder}
-              />
-            </label>
-
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={snapshot.service.autoStartWithWorkspace}
-                onChange={(event) =>
-                  patchService({ autoStartWithWorkspace: event.target.checked })
-                }
-              />
-              <span>{copy.autoStartService}</span>
-            </label>
-
-            {snapshot.service.lastError ? (
-              <p className="inline-note error">{snapshot.service.lastError}</p>
-            ) : (
-              <p className="inline-note">
-                {snapshot.service.configured
-                  ? copy.serviceSaved
-                  : copy.cloudWorkspaceOnly}
-              </p>
-            )}
-
-            <div className="button-row">
-              <button
-                className="theme-button"
-                onClick={handleServiceSave}
-                disabled={busyAction === 'save-service'}
-              >
-                {busyAction === 'save-service'
-                  ? copy.savingServiceSettings
-                  : copy.saveServiceSettings}
-              </button>
-              <button
-                className="theme-button"
-                onClick={handleServiceStart}
-                disabled={busyAction === 'start-service'}
-              >
-                {busyAction === 'start-service' ? copy.startingService : copy.startService}
-              </button>
-              <button
-                className="theme-button muted-button"
-                onClick={handleServiceStop}
-                disabled={busyAction === 'stop-service' || !snapshot.service.running}
-              >
-                {busyAction === 'stop-service' ? copy.stoppingService : copy.stopService}
-              </button>
-            </div>
-          </div>
-        </details>
-
-        <section className="control-card settings-card" aria-labelledby="appearance-settings-title">
-          <div className="control-card-head">
-            <h2 id="appearance-settings-title">{copy.desktopSettings}</h2>
-            <span className="settings-save-state">{copy.savedLocally}</span>
-          </div>
-
-          <div className="control-body settings-body">
-            <div className="settings-quick-controls">
-              <div className="compact-setting-group">
-                <div className="setting-copy compact-copy">
-                  <p className="setting-label">{copy.mode}</p>
-                </div>
-                <div className="icon-segment" role="radiogroup" aria-label={copy.mode}>
-                  {THEME_MODES.map((mode) => {
-                    const selected = mode.id === snapshot.appearanceMode
-                    return (
-                      <button
-                        key={mode.id}
-                        className={`icon-option${selected ? ' selected' : ''}`}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        title={copy[mode.labelKey]}
-                        onClick={() => handleThemeModeChange(mode.id)}
-                        disabled={busyAction === `mode:${mode.id}`}
-                      >
-                        <span aria-hidden="true">{mode.icon}</span>
-                        <span className="sr-only">{copy[mode.labelKey]}</span>
-                      </button>
-                    )
-                  })}
-                </div>
+        <section className="launch-layout">
+          <section className="launch-main-column">
+            <section className="control-card settings-card" aria-labelledby="appearance-settings-title">
+              <div className="control-card-head">
+                <h2 id="appearance-settings-title">{copy.desktopSettings}</h2>
+                <span className="settings-save-state">{copy.savedLocally}</span>
               </div>
 
-              <div className="compact-setting-group">
-                <div className="setting-copy compact-copy">
-                  <p className="setting-label">{copy.language}</p>
-                </div>
-                <div className="icon-segment" role="radiogroup" aria-label={copy.language}>
-                  {LANGUAGE_OPTIONS.map((language) => {
-                    const selected = language.id === snapshot.language
-                    return (
-                      <button
-                        key={language.id}
-                        className={`icon-option text-icon${selected ? ' selected' : ''}`}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        title={copy[language.labelKey]}
-                        onClick={() => handleLanguageChange(language.id)}
-                        disabled={busyAction === `language:${language.id}`}
-                      >
-                        <span aria-hidden="true">{copy[language.shortLabelKey]}</span>
-                        <span className="sr-only">{copy[language.labelKey]}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
+              <div className="control-body settings-body">
+                <div className="settings-quick-controls">
+                  <div className="compact-setting-group">
+                    <div className="setting-copy compact-copy">
+                      <p className="setting-label">{copy.mode}</p>
+                    </div>
+                    <div className="icon-segment" role="radiogroup" aria-label={copy.mode}>
+                      {THEME_MODES.map((mode) => {
+                        const selected = mode.id === snapshot.appearanceMode
+                        return (
+                          <button
+                            key={mode.id}
+                            className={`icon-option${selected ? ' selected' : ''}`}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            title={copy[mode.labelKey]}
+                            onClick={() => handleThemeModeChange(mode.id)}
+                            disabled={busyAction === `mode:${mode.id}`}
+                          >
+                            <span aria-hidden="true">{mode.icon}</span>
+                            <span className="sr-only">{copy[mode.labelKey]}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
 
-            <div className="compact-setting-group">
-              <div className="setting-copy compact-copy">
-                <p className="setting-label">{copy.themeColor}</p>
-              </div>
+                  <div className="compact-setting-group">
+                    <div className="setting-copy compact-copy">
+                      <p className="setting-label">{copy.language}</p>
+                    </div>
+                    <div className="icon-segment" role="radiogroup" aria-label={copy.language}>
+                      {LANGUAGE_OPTIONS.map((language) => {
+                        const selected = language.id === snapshot.language
+                        return (
+                          <button
+                            key={language.id}
+                            className={`icon-option text-icon${selected ? ' selected' : ''}`}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            title={copy[language.labelKey]}
+                            onClick={() => handleLanguageChange(language.id)}
+                            disabled={busyAction === `language:${language.id}`}
+                          >
+                            <span aria-hidden="true">{copy[language.shortLabelKey]}</span>
+                            <span className="sr-only">{copy[language.labelKey]}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
 
-              <div className="theme-picker" role="radiogroup" aria-label={copy.themeColor}>
-                {snapshot.themes.map((theme) => {
-                  const selected = theme.id === snapshot.colorScheme
-                  const themeDisplay = getThemeDisplay(theme, snapshot.language, snapshot.resolvedLanguage)
-                  return (
+                <div className="compact-setting-group">
+                  <div className="setting-copy compact-copy">
+                    <p className="setting-label">{copy.themeColor}</p>
+                  </div>
+
+                  <div className="theme-picker" role="radiogroup" aria-label={copy.themeColor}>
+                    {snapshot.themes.map((theme) => {
+                      const selected = theme.id === snapshot.colorScheme
+                      const themeDisplay = getThemeDisplay(theme, snapshot.language, snapshot.resolvedLanguage)
+                      return (
+                        <button
+                          key={theme.id}
+                          className={`theme-option${selected ? ' selected' : ''}`}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => handleThemeChange(theme.id)}
+                          disabled={busyAction === theme.id}
+                          style={buildThemeOptionStyle(theme)}
+                        >
+                          <span className="theme-option-preview" aria-hidden="true">
+                            <span />
+                            <span />
+                            <span />
+                          </span>
+                          <span className="theme-option-copy">
+                            <span className="theme-option-name">{themeDisplay.name}</span>
+                            <span className="theme-option-summary">{themeDisplay.summary}</span>
+                          </span>
+                          <span className="theme-option-check" aria-hidden="true">
+                            {selected ? '✓' : ''}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="compact-setting-group">
+                  <div className="setting-copy compact-copy">
+                    <p className="setting-label">{copy.customTheme}</p>
+                  </div>
+
+                  <div className="custom-theme-controls">
+                    <label className="field compact-field">
+                      <span>{copy.customThemeName}</span>
+                      <input
+                        value={snapshot.customTheme.name}
+                        onChange={(event) =>
+                          patchCustomTheme({ name: event.target.value })
+                        }
+                        placeholder={copy.customThemeNamePlaceholder}
+                      />
+                    </label>
+
+                    <label className="field compact-field color-field">
+                      <span>{copy.customThemeAccent}</span>
+                      <input
+                        type="color"
+                        value={snapshot.customTheme.accent}
+                        onChange={(event) =>
+                          patchCustomTheme({ accent: event.target.value })
+                        }
+                        aria-label={copy.customThemeAccentAria}
+                      />
+                    </label>
+
                     <button
-                      key={theme.id}
-                      className={`theme-option${selected ? ' selected' : ''}`}
+                      className="theme-button"
                       type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => handleThemeChange(theme.id)}
-                      disabled={busyAction === theme.id}
-                      style={buildThemeOptionStyle(theme)}
+                      onClick={handleCustomThemeSave}
+                      disabled={busyAction === 'custom-theme'}
                     >
-                      <span className="theme-option-preview" aria-hidden="true">
-                        <span />
-                        <span />
-                        <span />
-                      </span>
-                      <span className="theme-option-copy">
-                        <span className="theme-option-name">{themeDisplay.name}</span>
-                        <span className="theme-option-summary">{themeDisplay.summary}</span>
-                      </span>
-                      <span className="theme-option-check" aria-hidden="true">
-                        {selected ? '✓' : ''}
-                      </span>
+                      {busyAction === 'custom-theme' ? copy.saving : copy.saveCustomTheme}
                     </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="compact-setting-group">
-              <div className="setting-copy compact-copy">
-                <p className="setting-label">{copy.customTheme}</p>
-              </div>
-
-              <div className="custom-theme-controls">
-                <label className="field compact-field">
-                  <span>{copy.customThemeName}</span>
-                  <input
-                    value={snapshot.customTheme.name}
-                    onChange={(event) =>
-                      patchCustomTheme({ name: event.target.value })
-                    }
-                    placeholder={copy.customThemeNamePlaceholder}
-                  />
-                </label>
-
-                <label className="field compact-field color-field">
-                  <span>{copy.customThemeAccent}</span>
-                  <input
-                    type="color"
-                    value={snapshot.customTheme.accent}
-                    onChange={(event) =>
-                      patchCustomTheme({ accent: event.target.value })
-                    }
-                    aria-label={copy.customThemeAccentAria}
-                  />
-                </label>
-
-                <button
-                  className="theme-button"
-                  type="button"
-                  onClick={handleCustomThemeSave}
-                  disabled={busyAction === 'custom-theme'}
-                >
-                  {busyAction === 'custom-theme' ? copy.saving : copy.saveCustomTheme}
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <details className="control-card compact-control update-card">
-          <summary className="control-card-head">
-            <h2>{copy.releaseCheck}</h2>
-            <span
-              className={`status-chip ${
-                releaseState.latest?.updateAvailable ? 'warm' : ''
-              }`}
-            >
-              {releaseState.latest
-                ? releaseState.latest.updateAvailable
-                  ? copy.updateAvailable
-                  : copy.current
-                : copy.notChecked}
-            </span>
-          </summary>
-
-          <div className="control-body">
-            <label className="field">
-              <span>{copy.repository}</span>
-              <input
-                value={snapshot.updates.repositorySlug}
-                onChange={(event) =>
-                  patchUpdates({ repositorySlug: event.target.value })
-                }
-                placeholder="owner/repo"
-              />
-            </label>
-
-            <label className="field">
-              <span>{copy.releasesPage}</span>
-              <input
-                value={snapshot.updates.releasesUrl}
-                onChange={(event) => patchUpdates({ releasesUrl: event.target.value })}
-                placeholder="https://github.com/owner/repo/releases"
-              />
-            </label>
-
-            <div className="token-stack">
-              <div className="token-row">
-                <span>{copy.installed}</span>
-                <span>{snapshot.updates.currentVersion}</span>
-              </div>
-              <div className="token-row">
-                <span>{copy.latestCheckApi}</span>
-                <span className="truncate">{snapshot.updates.latestReleaseApiUrl}</span>
-              </div>
-            </div>
-
-            {releaseState.error ? (
-              <p className="inline-note error">{releaseState.error}</p>
-            ) : releaseState.latest ? (
-              <div className="release-panel">
-                <div className="release-head">
-                  <div>
-                    <p className="theme-name">
-                      {releaseState.latest.name || releaseState.latest.tagName}
-                    </p>
-                    <p className="theme-summary">
-                      {copy.published}{' '}
-                      {formatDate(
-                        releaseState.latest.publishedAt,
-                        snapshot.language,
-                        snapshot.resolvedLanguage,
-                        copy.unknownDate,
-                      )}
-                    </p>
                   </div>
-                  {releaseState.latest.prerelease ? (
-                    <span className="mode-chip">{copy.prerelease}</span>
-                  ) : null}
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section className="launch-side-column">
+            <details className="control-card compact-control service-card">
+              <summary className="control-card-head">
+                <h2>{copy.serviceStartup}</h2>
+                <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
+                  {serviceStatusLabel}
+                </span>
+              </summary>
+
+              <div className="control-body">
+                <label className="field">
+                  <span>{copy.commandPath}</span>
+                  <input
+                    value={snapshot.service.commandPath}
+                    onChange={(event) =>
+                      patchService({ commandPath: event.target.value })
+                    }
+                    placeholder={copy.commandPathPlaceholder}
+                  />
+                </label>
+
+                <label className="field">
+                  <span>{copy.workingDirectory}</span>
+                  <input
+                    value={snapshot.service.workingDirectory}
+                    onChange={(event) =>
+                      patchService({ workingDirectory: event.target.value })
+                    }
+                    placeholder={copy.workingDirectoryPlaceholder}
+                  />
+                </label>
+
+                <label className="field">
+                  <span>{copy.arguments}</span>
+                  <textarea
+                    value={snapshot.service.args.join('\n')}
+                    onChange={(event) =>
+                      patchService({ args: splitArgs(event.target.value) })
+                    }
+                    placeholder={copy.argumentsPlaceholder}
+                  />
+                </label>
+
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={snapshot.service.autoStartWithWorkspace}
+                    onChange={(event) =>
+                      patchService({ autoStartWithWorkspace: event.target.checked })
+                    }
+                  />
+                  <span>{copy.autoStartService}</span>
+                </label>
+
+                {snapshot.service.lastError ? (
+                  <p className="inline-note error">{snapshot.service.lastError}</p>
+                ) : (
+                  <p className="inline-note">
+                    {snapshot.service.configured
+                      ? copy.serviceSaved
+                      : copy.cloudWorkspaceOnly}
+                  </p>
+                )}
+
+                <div className="button-row">
+                  <button
+                    className="theme-button"
+                    onClick={handleServiceSave}
+                    disabled={busyAction === 'save-service'}
+                  >
+                    {busyAction === 'save-service'
+                      ? copy.savingServiceSettings
+                      : copy.saveServiceSettings}
+                  </button>
+                  <button
+                    className="theme-button"
+                    onClick={handleServiceStart}
+                    disabled={busyAction === 'start-service'}
+                  >
+                    {busyAction === 'start-service' ? copy.startingService : copy.startService}
+                  </button>
+                  <button
+                    className="theme-button muted-button"
+                    onClick={handleServiceStop}
+                    disabled={busyAction === 'stop-service' || !snapshot.service.running}
+                  >
+                    {busyAction === 'stop-service' ? copy.stoppingService : copy.stopService}
+                  </button>
+                </div>
+              </div>
+            </details>
+
+            <section className="launch-center-card">
+              <div className="status-row">
+                <span className="status-dot" />
+                <span>{snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}</span>
+              </div>
+
+              <button
+                className="launch-button"
+                onClick={handleWorkspaceOpen}
+                disabled={busyAction === 'workspace'}
+              >
+                {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
+              </button>
+            </section>
+
+            <details className="control-card compact-control update-card">
+              <summary className="control-card-head">
+                <h2>{copy.releaseCheck}</h2>
+                <span
+                  className={`status-chip ${
+                    releaseState.latest?.updateAvailable ? 'warm' : ''
+                  }`}
+                >
+                  {releaseState.latest
+                    ? releaseState.latest.updateAvailable
+                      ? copy.updateAvailable
+                      : copy.current
+                    : copy.notChecked}
+                </span>
+              </summary>
+
+              <div className="control-body">
+                <label className="field">
+                  <span>{copy.repository}</span>
+                  <input
+                    value={snapshot.updates.repositorySlug}
+                    onChange={(event) =>
+                      patchUpdates({ repositorySlug: event.target.value })
+                    }
+                    placeholder="owner/repo"
+                  />
+                </label>
+
+                <label className="field">
+                  <span>{copy.releasesPage}</span>
+                  <input
+                    value={snapshot.updates.releasesUrl}
+                    onChange={(event) => patchUpdates({ releasesUrl: event.target.value })}
+                    placeholder="https://github.com/owner/repo/releases"
+                  />
+                </label>
+
+                <div className="token-stack">
+                  <div className="token-row">
+                    <span>{copy.installed}</span>
+                    <span>{snapshot.updates.currentVersion}</span>
+                  </div>
+                  <div className="token-row">
+                    <span>{copy.latestCheckApi}</span>
+                    <span className="truncate">{snapshot.updates.latestReleaseApiUrl}</span>
+                  </div>
                 </div>
 
-                <p className="release-body">
-                  {releaseState.latest.body || copy.noReleaseNotes}
-                </p>
+                {releaseState.error ? (
+                  <p className="inline-note error">{releaseState.error}</p>
+                ) : releaseState.latest ? (
+                  <div className="release-panel">
+                    <div className="release-head">
+                      <div>
+                        <p className="theme-name">
+                          {releaseState.latest.name || releaseState.latest.tagName}
+                        </p>
+                        <p className="theme-summary">
+                          {copy.published}{' '}
+                          {formatDate(
+                            releaseState.latest.publishedAt,
+                            snapshot.language,
+                            snapshot.resolvedLanguage,
+                            copy.unknownDate,
+                          )}
+                        </p>
+                      </div>
+                      {releaseState.latest.prerelease ? (
+                        <span className="mode-chip">{copy.prerelease}</span>
+                      ) : null}
+                    </div>
 
-                {releaseState.latest.assets.length > 0 ? (
-                  <div className="asset-list">
-                    {releaseState.latest.assets.slice(0, 3).map((asset) => (
-                      <button
-                        key={asset.browserDownloadUrl}
-                        className="asset-link"
-                        onClick={() => handleOpenExternal(asset.browserDownloadUrl)}
-                      >
-                        {asset.name}
-                      </button>
-                    ))}
+                    <p className="release-body">
+                      {releaseState.latest.body || copy.noReleaseNotes}
+                    </p>
+
+                    {releaseState.latest.assets.length > 0 ? (
+                      <div className="asset-list">
+                        {releaseState.latest.assets.slice(0, 3).map((asset) => (
+                          <button
+                            key={asset.browserDownloadUrl}
+                            className="asset-link"
+                            onClick={() => handleOpenExternal(asset.browserDownloadUrl)}
+                          >
+                            {asset.name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
+                ) : (
+                  <p className="inline-note">
+                    {copy.noReleaseCheck}
+                  </p>
+                )}
+
+                <div className="button-row">
+                  <button
+                    className="theme-button"
+                    onClick={handleUpdateSettingsSave}
+                    disabled={busyAction === 'save-updates'}
+                  >
+                    {busyAction === 'save-updates'
+                      ? copy.savingUpdateSettings
+                      : copy.saveUpdateSettings}
+                  </button>
+                  <button
+                    className="theme-button"
+                    onClick={handleReleaseCheck}
+                    disabled={releaseState.loading}
+                  >
+                    {releaseState.loading ? copy.checkingRelease : copy.checkGitHubRelease}
+                  </button>
+                  <button
+                    className="theme-button muted-button"
+                    onClick={() => handleOpenExternal(snapshot.updates.releasesUrl)}
+                    disabled={busyAction === `open:${snapshot.updates.releasesUrl}`}
+                  >
+                    {copy.openReleases}
+                  </button>
+                </div>
               </div>
-            ) : (
-              <p className="inline-note">
-                {copy.noReleaseCheck}
-              </p>
-            )}
-
-            <div className="button-row">
-              <button
-                className="theme-button"
-                onClick={handleUpdateSettingsSave}
-                disabled={busyAction === 'save-updates'}
-              >
-                {busyAction === 'save-updates'
-                  ? copy.savingUpdateSettings
-                  : copy.saveUpdateSettings}
-              </button>
-              <button
-                className="theme-button"
-                onClick={handleReleaseCheck}
-                disabled={releaseState.loading}
-              >
-                {releaseState.loading ? copy.checkingRelease : copy.checkGitHubRelease}
-              </button>
-              <button
-                className="theme-button muted-button"
-                onClick={() => handleOpenExternal(snapshot.updates.releasesUrl)}
-                disabled={busyAction === `open:${snapshot.updates.releasesUrl}`}
-              >
-                {copy.openReleases}
-              </button>
-            </div>
-          </div>
-        </details>
-
-        <section className="launch-center-card">
-          <div className="status-row">
-            <span className="status-dot" />
-            <span>{snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}</span>
-          </div>
-
-          <button
-            className="launch-button"
-            onClick={handleWorkspaceOpen}
-            disabled={busyAction === 'workspace'}
-          >
-            {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
-          </button>
+            </details>
+          </section>
         </section>
       </section>
     </main>
