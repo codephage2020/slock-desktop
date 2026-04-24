@@ -125,7 +125,6 @@ const COPY = {
     selectedServerPlaceholder: 'Choose a server',
     noServers: 'No servers available on this account yet.',
     refreshServers: 'Refresh Servers',
-    refreshServersShort: 'Refresh',
     refreshingServers: 'Refreshing…',
     serviceSelectionSaved: 'Selected server saved locally.',
     serviceSignInHint: 'Open Slock once, sign in, and the launcher will sync your server list automatically.',
@@ -227,7 +226,6 @@ const COPY = {
     selectedServerPlaceholder: '选择一个 server',
     noServers: '当前账号下还没有可用 server。',
     refreshServers: '刷新 Server 列表',
-    refreshServersShort: '刷新',
     refreshingServers: '刷新中…',
     serviceSelectionSaved: '所选 server 已保存到本地。',
     serviceSignInHint: '先打开一次 Slock 并完成登录，launcher 就会自动同步 server 列表。',
@@ -722,12 +720,18 @@ function App() {
                     {serviceStatusLabel}
                   </span>
                   <button
-                    className="theme-button muted-button compact-action-button"
+                    className="icon-action-button"
                     onClick={handleServiceRefresh}
                     disabled={busyAction === 'refresh-service'}
+                    aria-label={copy.refreshServers}
                     title={copy.refreshServers}
                   >
-                    {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServersShort}
+                    <span aria-hidden="true">
+                      {busyAction === 'refresh-service' ? '↻' : '⟳'}
+                    </span>
+                    <span className="sr-only">
+                      {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServers}
+                    </span>
                   </button>
                 </div>
               </div>

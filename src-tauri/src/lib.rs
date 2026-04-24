@@ -61,6 +61,8 @@ struct ServiceRuntime {
     last_error: Option<String>,
     active_server_slug: Option<String>,
     active_machine_id: Option<String>,
+    cached_servers: Vec<ServiceServerSnapshot>,
+    cached_sync_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -141,7 +143,7 @@ struct ApiRefreshSession {
 
 #[tauri::command]
 fn bootstrap(app: AppHandle, state: State<'_, DesktopState>) -> Result<BootstrapPayload, String> {
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, true)
 }
 
 #[tauri::command]
@@ -174,7 +176,7 @@ fn set_theme(
     let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
     apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, false)
 }
 
 #[tauri::command]
@@ -202,7 +204,7 @@ fn set_theme_mode(
     let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
     apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, false)
 }
 
 #[tauri::command]
@@ -230,7 +232,7 @@ fn save_custom_theme(
     let theme = resolve_theme("custom", &appearance_mode, &custom);
     apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, false)
 }
 
 #[tauri::command]
@@ -258,7 +260,7 @@ fn set_language(
     let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
     apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, false)
 }
 
 #[tauri::command]
@@ -286,7 +288,14 @@ fn save_session_tokens(
 
     settings.session.access_token = access_token;
     settings.session.refresh_token = refresh_token;
-    save_settings(&app, &settings)
+    save_settings(&app, &settings)?;
+    let mut runtime = state
+        .service
+        .lock()
+        .map_err(|_| "Unable to lock service runtime".to_string())?;
+    runtime.cached_servers.clear();
+    runtime.cached_sync_error = None;
+    Ok(())
 }
 
 #[tauri::command]
@@ -327,7 +336,7 @@ fn open_workspace(
         &custom_theme_input(&custom_theme),
         &selected_server_slug,
     )?;
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, false)
 }
 
 #[tauri::command]
@@ -344,7 +353,7 @@ fn save_service_settings(
     save_settings(&app, &settings)?;
     drop(settings);
 
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, true)
 }
 
 #[tauri::command]
@@ -361,7 +370,7 @@ fn start_service(
     };
 
     force_start_service(&app, &state, &service_settings)?;
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, true)
 }
 
 #[tauri::command]
@@ -370,7 +379,7 @@ fn stop_service(
     state: State<'_, DesktopState>,
 ) -> Result<BootstrapPayload, String> {
     stop_service_process(&state)?;
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, true)
 }
 
 #[tauri::command]
@@ -378,7 +387,7 @@ fn refresh_service_servers(
     app: AppHandle,
     state: State<'_, DesktopState>,
 ) -> Result<BootstrapPayload, String> {
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, true)
 }
 
 #[tauri::command]
@@ -398,7 +407,7 @@ fn update_service(
 
     stop_service_process(&state)?;
     force_start_service(&app, &state, &service_settings)?;
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, false)
 }
 
 #[tauri::command]
@@ -415,7 +424,7 @@ fn save_update_settings(
     save_settings(&app, &settings)?;
     drop(settings);
 
-    build_bootstrap(&app, &state)
+    build_bootstrap(&app, &state, false)
 }
 
 #[tauri::command]
@@ -426,6 +435,7 @@ fn open_external_url(url: String) -> Result<(), String> {
 fn build_bootstrap(
     app: &AppHandle,
     state: &State<'_, DesktopState>,
+    refresh_service: bool,
 ) -> Result<BootstrapPayload, String> {
     let settings = state
         .settings
@@ -433,7 +443,7 @@ fn build_bootstrap(
         .map_err(|_| "Unable to lock desktop settings".to_string())?
         .clone();
 
-    let service = collect_service_snapshot(app, state, &settings.service)?;
+    let service = collect_service_snapshot(app, state, &settings.service, refresh_service)?;
     let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
     let updates = UpdateSnapshot {
         current_version: app.package_info().version.to_string(),
@@ -794,6 +804,7 @@ fn collect_service_snapshot(
     app: &AppHandle,
     state: &DesktopState,
     settings: &ServiceSettings,
+    refresh_service: bool,
 ) -> Result<ServiceSnapshot, String> {
     let mut runtime = state
         .service
@@ -822,21 +833,63 @@ fn collect_service_snapshot(
 
     let last_error = runtime.last_error.clone();
     let active_server_slug = runtime.active_server_slug.clone().unwrap_or_default();
+    let cached_servers = runtime.cached_servers.clone();
+    let cached_sync_error = runtime.cached_sync_error.clone();
     drop(runtime);
 
     let authenticated = current_session_tokens(state)?.is_some();
-    let mut sync_error = None;
-    let servers = if authenticated {
+    if !authenticated {
+        let mut runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime.cached_servers.clear();
+        runtime.cached_sync_error = None;
+
+        return Ok(ServiceSnapshot {
+            server_url: settings.server_url.clone(),
+            selected_server_slug: settings.selected_server_slug.clone(),
+            active_server_slug,
+            auto_start_with_workspace: settings.auto_start_with_workspace,
+            authenticated,
+            configured: false,
+            running,
+            pid,
+            last_error,
+            sync_error: None,
+            servers: Vec::new(),
+        });
+    }
+
+    let refresh_needed = refresh_service || cached_servers.is_empty();
+    let (mut servers, sync_error) = if refresh_needed {
         match fetch_service_servers(app, state, settings) {
-            Ok(servers) => servers,
+            Ok(servers) => {
+                let mut runtime = state
+                    .service
+                    .lock()
+                    .map_err(|_| "Unable to lock service runtime".to_string())?;
+                runtime.cached_servers = servers.clone();
+                runtime.cached_sync_error = None;
+                (servers, None)
+            }
             Err(err) => {
-                sync_error = Some(err);
-                Vec::new()
+                let mut runtime = state
+                    .service
+                    .lock()
+                    .map_err(|_| "Unable to lock service runtime".to_string())?;
+                runtime.cached_sync_error = Some(err.clone());
+                (cached_servers, Some(err))
             }
         }
     } else {
-        Vec::new()
+        (cached_servers, cached_sync_error)
     };
+
+    for server in &mut servers {
+        server.selected = server.slug == settings.selected_server_slug;
+    }
+
     let configured = servers
         .iter()
         .find(|server| server.selected)
@@ -1520,6 +1573,8 @@ pub fn run() {
                 last_error: None,
                 active_server_slug: None,
                 active_machine_id: None,
+                cached_servers: Vec::new(),
+                cached_sync_error: None,
             }),
         })
         .on_page_load(|webview, payload| {

@@ -192,6 +192,36 @@
   flex: 0 0 auto;
 }
 
+.icon-action-button {
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 999px;
+  transition:
+    color 180ms ease,
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.icon-action-button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+  transform: translateY(-1px);
+}
+
+.icon-action-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+  transform: none;
+}
+
 .service-server-list {
   min-height: 0;
   display: grid;
