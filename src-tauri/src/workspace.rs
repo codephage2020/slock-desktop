@@ -1248,10 +1248,17 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       });
     }
 
+    const shouldTranslateSearchDescriptions = () =>
+      window.location.pathname.split("/").includes("search");
+
     collectSearchRoots().forEach((root) => {
-      root.querySelectorAll("main p, main p span, main [class*='empty-state'], main [class*='empty-state'] p").forEach((element) => {
+      if (!shouldTranslateSearchDescriptions()) return;
+      root.querySelectorAll("p, div, span, [class*='empty-state'], [class*='mt-1']").forEach((element) => {
         if (!(element instanceof Element)) return;
         if (host.contains(element)) return;
+        if (isControlElement(element)) return;
+        if (element.closest("pre, code")) return;
+        if (element.closest("[data-slock-message-content], [data-message-content], [class*='message-content'], [class*='MessageContent']")) return;
         if (element.childElementCount !== 0) return;
         const text = element.textContent?.trim();
         if (!text || text.length < 16) return;
@@ -2518,5 +2525,15 @@ mod tests {
         assert!(script.contains("const excludedForText = isExcludedTranslationTarget(element);"));
         assert!(script.contains("translateAttribute(element, \"placeholder\");"));
         assert!(script.contains("if (excludedForText) return;"));
+    }
+
+    #[test]
+    fn settings_overlay_translates_search_empty_state_description_outside_main() {
+        let script = settings_overlay_script("default", "system", "zh-CN", "zh-CN", &[]);
+
+        assert!(script.contains("shouldTranslateSearchDescriptions"));
+        assert!(script.contains("window.location.pathname.split(\"/\").includes(\"search\")"));
+        assert!(script.contains("p, div, span, [class*='empty-state'], [class*='mt-1']"));
+        assert!(script.contains("Search channels, DMs, people, agents, and message history."));
     }
 }
