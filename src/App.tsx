@@ -253,6 +253,10 @@ const COPY = {
 } as const
 
 const ZH_THEME_COPY: Record<string, { name: string; summary: string }> = {
+  original: {
+    name: '原主题',
+    summary: '保持 Slock 原生外观，不注入桌面主题样式。',
+  },
   default: {
     name: '默认',
     summary: '适合日常桌面工作的克制绿色强调色。',

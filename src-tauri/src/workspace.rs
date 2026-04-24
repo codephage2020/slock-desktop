@@ -99,8 +99,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       saved: "Saved in desktop config",
       themes: "themes",
       dragHint: "Drag to move",
-      themeNames: {},
-      themeSummaries: {},
+      themeNames: {
+        original: "Original",
+      },
+      themeSummaries: {
+        original: "Keep the native Slock look with no desktop theme injection.",
+      },
     },
     "zh-CN": {
       launcher: "桌面设置",
@@ -127,6 +131,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       themes: "个主题",
       dragHint: "拖动移动",
       themeNames: {
+        original: "原主题",
         default: "默认",
         light: "雾蓝",
         dark: "靛蓝",
@@ -135,6 +140,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         custom: "自定义",
       },
       themeSummaries: {
+        original: "保持 Slock 原生外观，不注入桌面主题样式。",
         default: "适合日常桌面工作的克制绿色强调色。",
         light: "适合安静操作视图的柔和蓝色强调色。",
         dark: "适合结构化专注的低饱和靛蓝强调色。",
