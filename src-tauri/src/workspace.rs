@@ -2462,6 +2462,20 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
   render();
   bindSlockMenuTranslator();
+
+  if (!window.__slockDesktopServicePrefetched) {
+    window.__slockDesktopServicePrefetched = true;
+    setTimeout(() => {
+      if (serviceBusyAction) return;
+      (async () => {
+        if (!serviceSnapshot) {
+          await loadServiceSnapshot("bootstrap", { refresh: false });
+        }
+        if (serviceBusyAction) return;
+        loadServiceSnapshot("refresh_service_servers", {}, "service-refresh");
+      })();
+    }, 1500);
+  }
 })();
 "#;
 
