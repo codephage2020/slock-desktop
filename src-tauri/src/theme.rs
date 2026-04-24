@@ -326,25 +326,12 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         }});
       }};
 
-      const markAvatarElement = (element, key, size) => {{
+      const markAvatarElement = (element, key) => {{
         const imageLayer = findAvatarImageLayer(element);
         const hasImage = !!imageLayer;
         element.dataset[key] = "true";
         if (hasImage) element.dataset.slockDesktopAvatarHasImage = "true";
         else delete element.dataset.slockDesktopAvatarHasImage;
-        element.style.setProperty("inline-size", `${{size}}px`, "important");
-        element.style.setProperty("block-size", `${{size}}px`, "important");
-        element.style.setProperty("width", `${{size}}px`, "important");
-        element.style.setProperty("height", `${{size}}px`, "important");
-        element.style.setProperty("min-width", `${{size}}px`, "important");
-        element.style.setProperty("min-height", `${{size}}px`, "important");
-        element.style.setProperty("max-width", `${{size}}px`, "important");
-        element.style.setProperty("max-height", `${{size}}px`, "important");
-        element.style.setProperty("flex-basis", `${{size}}px`, "important");
-        element.style.setProperty("aspect-ratio", "1 / 1", "important");
-        element.style.setProperty("writing-mode", "horizontal-tb", "important");
-        element.style.setProperty("transform", "none", "important");
-        element.style.setProperty("line-height", `${{size}}px`, "important");
 
         if (imageLayer instanceof HTMLElement) {{
           let current = imageLayer;
@@ -369,9 +356,6 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           ) {{
             child.dataset.slockDesktopAvatarFallback = "true";
           }}
-          child.style.setProperty("writing-mode", "horizontal-tb", "important");
-          child.style.setProperty("transform", "none", "important");
-          child.style.setProperty("line-height", `${{size}}px`, "important");
         }});
       }};
 
@@ -395,14 +379,14 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         const nearSidebar = isSidebarAvatarScope(element);
 
         if (nearThread && (looksAvatar || looksSized || isImage) && (hasCompactText || looksSized || isImage)) {{
-          markAvatarElement(element, "slockDesktopAvatar", 28);
+          markAvatarElement(element, "slockDesktopAvatar");
         }} else if (
           nearSidebar &&
           (looksAvatar || looksSized || isImage) &&
           (hasCompactText || hasGraphic || isImage) &&
           !/badge|Badge|status|Status|presence|Presence/.test(className)
         ) {{
-          markAvatarElement(element, "slockDesktopSidebarAvatar", 32);
+          markAvatarElement(element, "slockDesktopSidebarAvatar");
         }} else {{
           if (element.dataset.slockDesktopAvatar === "true") clearMarkedAvatar(element, "slockDesktopAvatar");
           if (element.dataset.slockDesktopSidebarAvatar === "true") clearMarkedAvatar(element, "slockDesktopSidebarAvatar");
@@ -492,23 +476,6 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
       if (!document.body) return;
 
       const normalizeText = (value) => (value || "").replace(/\s+/g, " ").trim().toLowerCase();
-      const moduleNames = new Set(["chat", "member", "members", "task", "tasks", "聊天", "成员", "任务"]);
-      const sectionNames = new Set([
-        "channels",
-        "channel",
-        "direct messages",
-        "direct message",
-        "threads",
-        "频道",
-        "直接消息",
-        "私信",
-        "线程",
-        "话题"
-      ]);
-      const isSectionLabel = (value) => {{
-        if (!value) return false;
-        return Array.from(sectionNames).some((name) => value === name || value.startsWith(`${{name}} `));
-      }};
       const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"]';
       const surfaceProps = [
         "slockDesktopModuleTabs",
@@ -531,183 +498,6 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
       document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-module-tabs-scope],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-primary-row-layout],[data-slock-desktop-primary-row-variant],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-task-state-chip],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-plus-action]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
-      }});
-
-      const moduleButtons = Array.from(
-        document.querySelectorAll("button,[role='tab'],[role='button']")
-      ).filter((element) => {{
-        if (!(element instanceof HTMLElement)) return false;
-        if (element.closest('#slock-desktop-settings-host')) return false;
-        return moduleNames.has(normalizeText(element.textContent));
-      }});
-
-      const moduleGroups = new Map();
-      moduleButtons.forEach((button) => {{
-        const group = button.parentElement;
-        if (!group) return;
-        const groupButtons = moduleGroups.get(group) || [];
-        groupButtons.push(button);
-        moduleGroups.set(group, groupButtons);
-      }});
-
-      moduleGroups.forEach((buttons, group) => {{
-        const labels = new Set(buttons.map((button) => normalizeText(button.textContent)));
-        const hasChat = labels.has("chat") || labels.has("聊天");
-        const hasSecondary = labels.has("member") || labels.has("members") || labels.has("task") || labels.has("tasks") || labels.has("成员") || labels.has("任务");
-        if (!hasChat || !hasSecondary || !(group instanceof HTMLElement)) return;
-
-        group.dataset.slockDesktopModuleTabs = "true";
-        group.dataset.slockDesktopModuleTabsScope = group.closest(sidebarSelector) ? "sidebar" : "content";
-        let selectedButtons = buttons.filter((button) => {{
-          const className = String(button.className || "");
-          return (
-            button.getAttribute("aria-selected") === "true" ||
-            button.getAttribute("aria-current") === "page" ||
-            button.dataset.state === "active" ||
-            button.dataset.active === "true" ||
-            /bg-brutal-(pink|lime|cyan|yellow|orange)|shadow-brutal/.test(className)
-          );
-        }});
-        if (selectedButtons.length != 1) {{
-          const currentUrl = new URL(window.location.href);
-          const chatTab = normalizeText(currentUrl.searchParams.get("chatTab") || "");
-          const path = normalizeText(currentUrl.pathname);
-          const resolvedKey =
-            chatTab ||
-            (path.includes("/tasks") ? "tasks" : "") ||
-            (path.includes("/members") ? "members" : "") ||
-            "chat";
-          selectedButtons = buttons.filter((button) => {{
-            const label = normalizeText(button.textContent);
-            if (/(member|members|成员)/.test(label)) return resolvedKey === "members";
-            if (/(task|tasks|任务)/.test(label)) return resolvedKey === "tasks";
-            return resolvedKey === "chat";
-          }});
-        }}
-        buttons.forEach((button) => {{
-          const selected = selectedButtons.length > 0 ? selectedButtons.includes(button) : button === buttons[0];
-
-          button.dataset.slockDesktopModuleTab = selected ? "selected" : "icon";
-          Array.from(button.querySelectorAll("span,div,p,strong")).forEach((child) => {{
-            if (!(child instanceof HTMLElement)) return;
-            const text = normalizeText(child.textContent);
-            if (moduleNames.has(text)) child.dataset.slockDesktopModuleTabLabel = "true";
-          }});
-        }});
-      }});
-
-      const detectPrimaryRowLayout = (row) => {{
-        const children = Array.from(row.children).filter((child) => child instanceof HTMLElement);
-        const text = (row.textContent || "").replace(/\s+/g, " ").trim();
-        const hasLeadingGraphic = children.slice(0, 2).some((child) => {{
-          if (!(child instanceof HTMLElement)) return false;
-          return (
-            child.matches('svg,img,[data-slock-desktop-sidebar-avatar="true"],[data-slock-desktop-avatar="true"],[class*="avatar"],[class*="Avatar"],[class*="rounded-full"]') ||
-            !!child.querySelector('svg,img,[data-slock-desktop-sidebar-avatar="true"],[data-slock-desktop-avatar="true"],[class*="avatar"],[class*="Avatar"],[class*="rounded-full"]')
-          );
-        }});
-
-        if (!hasLeadingGraphic && children.length <= 1 && /^#\s*\S+/.test(text)) return "hash-text";
-        return hasLeadingGraphic ? "icon" : "text";
-      }};
-
-      document.querySelectorAll(`${{sidebarSelector}} *`).forEach((element) => {{
-        if (!(element instanceof HTMLElement)) return;
-        if (element.closest('#slock-desktop-settings-host')) return;
-        const text = normalizeText(element.textContent);
-        if (!isSectionLabel(text)) return;
-        if (element.matches("button,a,[role='button'],[role='menuitem']")) return;
-
-        let container = element.parentElement;
-        for (let depth = 0; container && depth < 5; depth += 1, container = container.parentElement) {{
-          if (!(container instanceof HTMLElement)) continue;
-          if (container.matches("nav,aside")) break;
-          const interactiveCount = container.querySelectorAll("button,a,[role='button']").length;
-          const hasNestedSection = Array.from(container.querySelectorAll("span,div,p,h1,h2,h3,h4,h5,h6")).some((child) => {{
-            if (!(child instanceof HTMLElement) || child === element) return false;
-            return isSectionLabel(normalizeText(child.textContent));
-          }});
-          if (interactiveCount > 0 && interactiveCount <= 16 && !hasNestedSection) {{
-            container.dataset.slockDesktopPrimaryList = "true";
-            break;
-          }}
-        }}
-      }});
-
-      const markPrimaryRow = (row) => {{
-        if (!(row instanceof HTMLElement)) return;
-        const text = (row.textContent || "").replace(/\s+/g, " ").trim();
-        if (!text) return;
-        if (text) row.setAttribute("title", text);
-        row.dataset.slockDesktopPrimaryRow = "true";
-        row.dataset.slockDesktopPrimaryRowLayout = /^#\s*all\b/i.test(text)
-          ? "hash-text"
-          : detectPrimaryRowLayout(row);
-        if (/^#\s*all\b/i.test(text)) row.dataset.slockDesktopPrimaryRowVariant = "root-channel";
-      }};
-
-      document.querySelectorAll('[data-slock-desktop-primary-list="true"]').forEach((list) => {{
-        if (!(list instanceof HTMLElement)) return;
-        Array.from(list.children).forEach((row) => {{
-          if (!(row instanceof HTMLElement)) return;
-          if (row.matches("h1,h2,h3,h4,h5,h6,p,span")) return;
-          const text = (row.textContent || "").replace(/\s+/g, " ").trim();
-          const looksRow =
-            row.matches("button,a,[role='button']") ||
-            /^#\s*\S+/.test(text) ||
-            !!row.querySelector(":scope > button,:scope > a,:scope > [role='button'],:scope > [class*='rounded-full'],:scope > img,:scope > svg");
-          if (!looksRow) return;
-          markPrimaryRow(row);
-        }});
-      }});
-
-      document.querySelectorAll(`${{sidebarSelector}} button,${{sidebarSelector}} a,${{sidebarSelector}} [role="button"]`).forEach((row) => {{
-        if (!(row instanceof HTMLElement)) return;
-        if (row.closest('#slock-desktop-settings-host')) return;
-        if (row.closest('[data-slock-desktop-module-tabs="true"]')) return;
-        const text = (row.textContent || "").replace(/\s+/g, " ").trim();
-        if (!text) return;
-        const isChannelRow = /^#\\s*\\S+/.test(text) || !!row.querySelector("svg,path,[data-slock-desktop-sidebar-avatar='true'],img");
-        if (!isChannelRow) return;
-        markPrimaryRow(row);
-      }});
-
-      document.querySelectorAll('main button,main a,main [role="button"],main [class*="border-2"],main [class*="border"]').forEach((row) => {{
-        if (!(row instanceof HTMLElement)) return;
-        if (row.closest('#slock-desktop-settings-host,form,input,textarea,[contenteditable="true"]')) return;
-        const text = (row.textContent || "").replace(/\s+/g, " ").trim();
-        if (!text) return;
-        if (row.dataset.slockDesktopTaskState) return;
-        const rect = row.getBoundingClientRect();
-        if (rect.width > 0 && rect.width < 240) return;
-        const stateElement = row.dataset.slockDesktopTaskState
-          ? row
-          : row.querySelector("[data-slock-desktop-task-state]");
-        const hasTaskState =
-          !!stateElement ||
-          /\\b(todo|to do|in progress|in review|done)\\b/i.test(text) ||
-          /待办|进行中|待复核|完成/.test(text);
-        const hasTaskMarker =
-          /#\\d+/.test(text) ||
-          row.matches('[aria-label*="task" i],[aria-label*="任务"],[class*="task"],[class*="Task"]') ||
-          !!row.closest('[aria-label*="task" i],[aria-label*="任务"],[class*="task"],[class*="Task"]');
-        if (!hasTaskState || !hasTaskMarker) return;
-
-        row.dataset.slockDesktopTaskRow = "true";
-        if (stateElement instanceof HTMLElement) stateElement.dataset.slockDesktopTaskStateChip = "true";
-        const titleCandidate = Array.from(row.querySelectorAll("span,p,div,strong,button"))
-          .filter((element) => {{
-            if (!(element instanceof HTMLElement)) return false;
-            if (element.dataset.slockDesktopTaskState) return false;
-            if (element.closest('[data-slock-desktop-task-state]')) return false;
-            const value = (element.textContent || "").replace(/\s+/g, " ").trim();
-            if (!value || value.length < 3) return false;
-            if (/^#\\d+$/.test(value)) return false;
-            if (/\\b(todo|to do|in progress|in review|done)\\b/i.test(value) || /待办|进行中|待复核|完成/.test(value)) return false;
-            return true;
-          }})
-          .sort((a, b) => (b.textContent || "").trim().length - (a.textContent || "").trim().length)[0];
-        if (titleCandidate instanceof HTMLElement) titleCandidate.dataset.slockDesktopTaskTitle = "true";
       }});
 
       const markMenuItem = (element) => {{
@@ -785,48 +575,6 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         }});
       }});
 
-      document.querySelectorAll(`${{sidebarSelector}} *`).forEach((heading) => {{
-        if (!(heading instanceof HTMLElement)) return;
-        if (heading.closest('#slock-desktop-settings-host,[data-slock-desktop-account-dock="true"]')) return;
-        const label = normalizeText(heading.textContent);
-        if (!isSectionLabel(label)) return;
-        const headerRect = heading.getBoundingClientRect();
-        if (headerRect.width <= 0 || headerRect.height <= 0) return;
-        let container = heading.parentElement;
-        for (let depth = 0; container && depth < 3; depth += 1, container = container.parentElement) {{
-          if (!(container instanceof HTMLElement)) continue;
-          const actions = Array.from(container.querySelectorAll("button,a,[role='button']"))
-            .filter((action) => action instanceof HTMLElement)
-            .filter((action) => !action.matches('[data-slock-desktop-account-action="true"]'))
-            .filter((action) => {{
-              const rect = action.getBoundingClientRect();
-              const overlapsVertically = Math.abs(rect.top - headerRect.top) <= 18 || Math.abs(rect.bottom - headerRect.bottom) <= 18;
-              const sitsToRight = rect.left >= headerRect.right - 8;
-              return rect.width > 0 && rect.width <= 56 && rect.height > 0 && rect.height <= 56 && overlapsVertically && sitsToRight;
-            }});
-          if (actions.length === 1) {{
-            actions[0].dataset.slockDesktopPlusAction = "true";
-            break;
-          }}
-        }}
-      }});
-
-      document.querySelectorAll('button,a,[role="button"]').forEach((action) => {{
-        if (!(action instanceof HTMLElement)) return;
-        if (action.closest('#slock-desktop-settings-host')) return;
-        const text = normalizeText(action.textContent);
-        const label = normalizeText([
-          action.textContent,
-          action.getAttribute("aria-label"),
-          action.getAttribute("title")
-        ].filter(Boolean).join(" "));
-        const containsPlusGlyph = /[+＋]/.test(action.textContent || "");
-        const iconOnly = text === "" || text === "+" || text === "＋";
-        const looksAddAction = /(add|new|create|plus|invite|添加|新建|创建|新增)/.test(label) || containsPlusGlyph;
-        if ((iconOnly || containsPlusGlyph) && looksAddAction) {{
-          action.dataset.slockDesktopPlusAction = "true";
-        }}
-      }});
     }};
 
     markAvatarInitials();
@@ -1247,32 +995,6 @@ button[class*="size-"],
   min-height: 34px !important;
   padding: 0 !important;
   border-radius: var(--slock-desktop-radius-sm) !important;
-}}
-
-button[data-slock-desktop-plus-action="true"],
-a[data-slock-desktop-plus-action="true"],
-[role="button"][data-slock-desktop-plus-action="true"],
-[data-slock-desktop-plus-action="true"] {{
-  width: 30px !important;
-  min-width: 30px !important;
-  max-width: 30px !important;
-  inline-size: 30px !important;
-  height: 30px !important;
-  min-height: 30px !important;
-  max-height: 30px !important;
-  block-size: 30px !important;
-  flex: 0 0 30px !important;
-  flex-basis: 30px !important;
-  padding: 0 !important;
-  border-radius: var(--slock-desktop-radius-sm) !important;
-}}
-
-[data-slock-desktop-plus-action="true"] svg,
-[data-slock-desktop-plus-action="true"] span {{
-  width: 14px !important;
-  height: 14px !important;
-  font-size: 14px !important;
-  line-height: 14px !important;
 }}
 
 [class*="bg-brutal-yellow"],
@@ -1697,132 +1419,6 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   background-size: cover !important;
   color: transparent !important;
   font-size: 0 !important;
-}}
-
-[data-slock-desktop-avatar="true"],
-[data-slock-desktop-sidebar-avatar="true"],
-[class*="thread"] [class*="avatar"],
-[class*="Thread"] [class*="avatar"],
-[class*="thread"] [class*="Avatar"],
-[class*="Thread"] [class*="Avatar"],
-[class*="thread"] [class*="rounded-full"][class*="h-"][class*="w-"],
-[class*="Thread"] [class*="rounded-full"][class*="h-"][class*="w-"],
-[class*="thread"] img[class*="avatar"],
-[class*="Thread"] img[class*="avatar"],
-[class*="thread"] img[class*="Avatar"],
-[class*="Thread"] img[class*="Avatar"],
-[class*="thread"] img[class*="rounded-full"][class*="h-"][class*="w-"],
-[class*="Thread"] img[class*="rounded-full"][class*="h-"][class*="w-"],
-[class*="thread"] img[alt*="avatar" i],
-[class*="Thread"] img[alt*="avatar" i],
-[class*="thread"] img[alt*="头像"],
-[class*="Thread"] img[alt*="头像"],
-[class*="thread"] img[title*="avatar" i],
-[class*="Thread"] img[title*="avatar" i],
-[class*="thread"] img[title*="头像"],
-[class*="Thread"] img[title*="头像"],
-[class*="thread"] img[data-avatar],
-[class*="Thread"] img[data-avatar],
-[class*="thread"] [data-avatar] img,
-[class*="Thread"] [data-avatar] img {{
-  width: 28px !important;
-  min-width: 28px !important;
-  max-width: 28px !important;
-  height: 28px !important;
-  min-height: 28px !important;
-  max-height: 28px !important;
-  aspect-ratio: 1 / 1 !important;
-  flex: 0 0 28px !important;
-  flex-basis: 28px !important;
-  border-radius: var(--slock-desktop-radius-pill) !important;
-  object-fit: cover !important;
-  overflow: hidden !important;
-  display: grid !important;
-  place-items: center !important;
-  padding: 0 !important;
-  line-height: 1 !important;
-  white-space: nowrap !important;
-  text-align: center !important;
-}}
-
-[data-slock-desktop-sidebar-avatar="true"] {{
-  width: 32px !important;
-  min-width: 32px !important;
-  max-width: 32px !important;
-  height: 32px !important;
-  min-height: 32px !important;
-  max-height: 32px !important;
-  aspect-ratio: 1 / 1 !important;
-  flex: 0 0 32px !important;
-  flex-basis: 32px !important;
-  border-radius: var(--slock-desktop-radius-pill) !important;
-  object-fit: cover !important;
-  overflow: hidden !important;
-  display: grid !important;
-  place-items: center !important;
-  padding: 0 !important;
-  line-height: 1 !important;
-  text-align: center !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-}}
-
-[data-slock-desktop-sidebar-avatar="true"] > img,
-[data-slock-desktop-sidebar-avatar="true"] img,
-img[data-slock-desktop-sidebar-avatar="true"] {{
-  width: 100% !important;
-  min-width: 100% !important;
-  max-width: 100% !important;
-  height: 100% !important;
-  min-height: 100% !important;
-  max-height: 100% !important;
-  object-fit: cover !important;
-}}
-
-button.relative.flex.items-start.gap-3.border-2 .inline-flex.h-\[14px\].w-\[14px\],
-button.relative.flex.items-start.gap-3.border-2 [data-slock-desktop-avatar="true"] {{
-  width: 28px !important;
-  min-width: 28px !important;
-  max-width: 28px !important;
-  height: 28px !important;
-  min-height: 28px !important;
-  max-height: 28px !important;
-  flex: 0 0 28px !important;
-  flex-basis: 28px !important;
-  aspect-ratio: 1 / 1 !important;
-  border-radius: var(--slock-desktop-radius-pill) !important;
-  display: grid !important;
-  place-items: center !important;
-  line-height: 28px !important;
-  writing-mode: horizontal-tb !important;
-  transform: none !important;
-  overflow: hidden !important;
-}}
-
-[data-slock-desktop-avatar="true"] > svg,
-svg[data-slock-desktop-avatar="true"] {{
-  width: 16px !important;
-  min-width: 16px !important;
-  max-width: 16px !important;
-  height: 16px !important;
-  min-height: 16px !important;
-  max-height: 16px !important;
-  flex: 0 0 16px !important;
-}}
-
-[data-slock-desktop-avatar="true"] > img,
-[data-slock-desktop-avatar="true"] img,
-img[data-slock-desktop-avatar="true"] {{
-  width: 100% !important;
-  min-width: 100% !important;
-  max-width: 100% !important;
-  height: 100% !important;
-  min-height: 100% !important;
-  max-height: 100% !important;
-  object-fit: cover !important;
-  display: block !important;
-  position: relative !important;
-  z-index: 1 !important;
 }}
 
 [id^="message-"],
@@ -2380,69 +1976,6 @@ button,
   box-shadow: none !important;
 }}
 
-[data-slock-desktop-module-tabs="true"] {{
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 4px !important;
-  padding: 2px !important;
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-}}
-
-[data-slock-desktop-module-tabs-scope="content"] {{
-  margin-inline-start: 28px !important;
-}}
-
-[data-slock-desktop-module-tab] {{
-  min-height: 34px !important;
-  border-radius: var(--slock-desktop-radius-pill) !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  transition:
-    background 150ms ease,
-    color 150ms ease,
-    inline-size 150ms ease !important;
-}}
-
-[data-slock-desktop-module-tab="icon"] {{
-  width: 34px !important;
-  min-width: 34px !important;
-  max-width: 34px !important;
-  padding: 0 !important;
-  background: transparent !important;
-  color: var(--slock-desktop-muted) !important;
-  font-size: 0 !important;
-}}
-
-[data-slock-desktop-module-tab="icon"] svg {{
-  width: 17px !important;
-  height: 17px !important;
-  font-size: 17px !important;
-}}
-
-[data-slock-desktop-module-tab="icon"] [data-slock-desktop-module-tab-label="true"] {{
-  position: absolute !important;
-  inline-size: 1px !important;
-  block-size: 1px !important;
-  margin: -1px !important;
-  overflow: hidden !important;
-  clip: rect(0 0 0 0) !important;
-  white-space: nowrap !important;
-}}
-
-[data-slock-desktop-module-tab="selected"] {{
-  width: auto !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  padding-inline: 12px !important;
-  background: var(--slock-desktop-selection) !important;
-  border-color: color-mix(in srgb, var(--slock-desktop-accent) 24%, transparent) !important;
-  color: var(--slock-desktop-text) !important;
-  font-size: 13px !important;
-  font-weight: 650 !important;
-}}
-
 [data-slock-desktop-account-dock="true"] :is(button,a,[role="button"]),
 [data-slock-desktop-account-action="true"],
 nav [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"],
@@ -2459,233 +1992,6 @@ aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
   border-width: 0 !important;
   box-shadow: none !important;
   background: transparent !important;
-}}
-
-[data-slock-desktop-primary-list="true"] {{
-  background: color-mix(in srgb, var(--slock-desktop-surface) 78%, var(--slock-desktop-surface-strong)) !important;
-  border: 1px solid color-mix(in srgb, var(--slock-desktop-line) 72%, transparent) !important;
-  border-radius: var(--slock-desktop-radius-lg) !important;
-  box-shadow: none !important;
-  padding: 8px !important;
-}}
-
-[data-slock-desktop-primary-list="true"] :is(button,a,[role="button"]) {{
-  display: grid !important;
-  grid-template-columns: 28px minmax(0, 1fr) auto !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  column-gap: 8px !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  text-align: left !important;
-}}
-
-nav [data-slock-desktop-primary-row="true"],
-aside [data-slock-desktop-primary-row="true"],
-[class*="sidebar"] [data-slock-desktop-primary-row="true"],
-[class*="Sidebar"] [data-slock-desktop-primary-row="true"] {{
-  display: grid !important;
-  grid-template-columns: 28px minmax(0, 1fr) auto !important;
-  align-items: center !important;
-  justify-content: stretch !important;
-  column-gap: 8px !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  text-align: left !important;
-}}
-
-[data-slock-desktop-primary-row="true"] {{
-  position: relative !important;
-  overflow: hidden !important;
-  padding-inline: 0 !important;
-}}
-
-[data-slock-desktop-primary-row-layout="text"] {{
-  grid-template-columns: minmax(0, 1fr) auto !important;
-}}
-
-[data-slock-desktop-primary-row-layout="hash-text"] {{
-  grid-template-columns: minmax(0, 1fr) auto !important;
-  padding-inline-start: 36px !important;
-}}
-
-[data-slock-desktop-primary-row-variant="root-channel"] {{
-  grid-template-columns: minmax(0, 1fr) auto !important;
-  padding-inline-start: 36px !important;
-}}
-
-[data-slock-desktop-primary-row="true"]:hover {{
-  z-index: 2 !important;
-}}
-
-[data-slock-desktop-primary-row="true"]::before {{
-  content: none !important;
-}}
-
-[data-slock-desktop-primary-row="true"] > :first-child {{
-  grid-column: 1 !important;
-  justify-self: center !important;
-  min-width: 0 !important;
-}}
-
-[data-slock-desktop-primary-row-layout="text"] > :first-child {{
-  justify-self: start !important;
-  text-align: left !important;
-}}
-
-[data-slock-desktop-primary-row-layout="hash-text"] > :first-child {{
-  justify-self: start !important;
-  text-align: left !important;
-}}
-
-[data-slock-desktop-primary-row-variant="root-channel"] > :first-child {{
-  grid-column: 1 !important;
-  justify-self: start !important;
-  text-align: left !important;
-  margin-inline-start: 0 !important;
-  padding-inline-start: 0 !important;
-}}
-
-[data-slock-desktop-primary-row="true"]:not(:has(> :nth-child(2))) > :first-child {{
-  grid-column: 2 !important;
-  justify-self: start !important;
-}}
-
-[data-slock-desktop-primary-row-layout="text"]:not(:has(> :nth-child(2))) > :first-child {{
-  grid-column: 1 !important;
-}}
-
-[data-slock-desktop-primary-row-layout="hash-text"]:not(:has(> :nth-child(2))) > :first-child {{
-  grid-column: 1 !important;
-}}
-
-[data-slock-desktop-primary-row-variant="root-channel"]:not(:has(> :nth-child(2))) > :first-child {{
-  grid-column: 1 !important;
-}}
-
-[data-slock-desktop-primary-row="true"]:not(:has(> :nth-child(3))) > :last-child:not(:first-child) {{
-  grid-column: 2 !important;
-  justify-self: stretch !important;
-}}
-
-[data-slock-desktop-primary-row-layout="text"]:not(:has(> :nth-child(3))) > :last-child:not(:first-child) {{
-  grid-column: 2 !important;
-  justify-self: end !important;
-}}
-
-[data-slock-desktop-primary-row="true"]:has(> :nth-child(3)) > :last-child {{
-  grid-column: 3 !important;
-  justify-self: end !important;
-}}
-
-[data-slock-desktop-primary-row="true"]:has(> :nth-child(3)) > :not(:first-child):not(:last-child) {{
-  grid-column: 2 !important;
-  justify-self: stretch !important;
-}}
-
-[data-slock-desktop-primary-list="true"] :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
-[data-slock-desktop-primary-list="true"] :is(button,a,[role="button"]) > :first-child:last-child,
-nav :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
-aside :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
-[class*="sidebar"] :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
-[class*="Sidebar"] :is(button,a,[role="button"]) > :not(:first-child):not(:last-child),
-nav [data-slock-desktop-primary-row="true"] > :not(:first-child):not(:last-child),
-aside [data-slock-desktop-primary-row="true"] > :not(:first-child):not(:last-child),
-[class*="sidebar"] [data-slock-desktop-primary-row="true"] > :not(:first-child):not(:last-child),
-[class*="Sidebar"] [data-slock-desktop-primary-row="true"] > :not(:first-child):not(:last-child) {{
-  min-width: 0 !important;
-  flex: 1 1 auto !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-  text-align: left !important;
-}}
-
-[data-slock-desktop-primary-list="true"] :is(button,a,[role="button"]):hover > :not(:last-child) {{
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-}}
-
-[data-slock-desktop-primary-list="true"] :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]),
-nav :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]),
-aside :is(.ml-auto,[class*="ml-auto"],[class*="badge"],[class*="Badge"],[class*="count"],[class*="Count"]),
-nav [data-slock-desktop-primary-row="true"] > :last-child,
-aside [data-slock-desktop-primary-row="true"] > :last-child,
-[class*="sidebar"] [data-slock-desktop-primary-row="true"] > :last-child,
-[class*="Sidebar"] [data-slock-desktop-primary-row="true"] > :last-child {{
-  margin-left: auto !important;
-  flex: 0 0 auto !important;
-  text-align: right !important;
-}}
-
-[data-slock-desktop-task-state] {{
-  margin-left: 0 !important;
-  justify-self: start !important;
-  align-self: flex-start !important;
-  text-align: left !important;
-}}
-
-[data-slock-desktop-task-row="true"] {{
-  display: grid !important;
-  grid-template-columns: 36px minmax(0, 1fr) minmax(128px, 176px) 48px !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  column-gap: 12px !important;
-  text-align: left !important;
-}}
-
-[data-slock-desktop-task-row="true"] > * {{
-  min-width: 0 !important;
-  text-align: left !important;
-  justify-content: flex-start !important;
-}}
-
-[data-slock-desktop-task-row="true"] > :first-child {{
-  justify-self: center !important;
-  text-align: center !important;
-}}
-
-[data-slock-desktop-task-row="true"] > :not(:first-child):not(:last-child) {{
-  justify-self: start !important;
-  text-align: left !important;
-}}
-
-[data-slock-desktop-task-row="true"] > :last-child {{
-  justify-self: end !important;
-}}
-
-[data-slock-desktop-task-row="true"] :is(.text-center,[class*="text-center"],[class*="justify-center"]) {{
-  text-align: left !important;
-  justify-content: flex-start !important;
-}}
-
-[data-slock-desktop-task-title="true"] {{
-  flex: 1 1 auto !important;
-  min-width: 0 !important;
-  text-align: left !important;
-  justify-content: flex-start !important;
-  justify-self: start !important;
-}}
-
-[data-slock-desktop-task-row="true"] [data-slock-desktop-task-state] {{
-  flex: 0 0 auto !important;
-  margin-inline: 0 !important;
-  justify-self: start !important;
-  align-self: center !important;
-}}
-
-[data-slock-desktop-task-state-chip="true"] {{
-  align-self: center !important;
-  justify-self: start !important;
-  text-align: left !important;
-  line-height: 1 !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
 }}
 
 [class*="task"],
