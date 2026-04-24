@@ -1775,7 +1775,9 @@ fn daemon_pids_from_ps_output(
     entries
         .iter()
         .filter_map(|entry| {
-            if process_entry_has_agent_descendant(entry.pid, &entries) {
+            if process_entry_has_agent_descendant(entry.pid, &entries)
+                && !daemon_command_is_desktop_managed(&entry.command)
+            {
                 return None;
             }
             if daemon_command_matches(
@@ -1879,6 +1881,12 @@ fn process_command_is_agent_runtime(command: &str) -> bool {
         || command.contains("/codex app-server")
         || (command.contains("/claude ") && command.contains("You are \""))
         || (command.contains(" claude ") && command.contains("You are \""))
+}
+
+fn daemon_command_is_desktop_managed(command: &str) -> bool {
+    command
+        .split_whitespace()
+        .any(|part| part == DAEMON_DESKTOP_MANAGED_ARG)
 }
 
 fn daemon_command_matches(
@@ -2003,7 +2011,7 @@ fn selected_service_daemon_process_from_servers(
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         let output = Command::new("ps")
-            .args(["-axo", "pid=,command="])
+            .args(["-axo", "pid=,ppid=,command="])
             .output()
             .map_err(|err| format!("Failed to inspect daemon processes: {err}"))?;
         if !output.status.success() {
@@ -3297,6 +3305,26 @@ mod tests {
     }
 
     #[test]
+    fn daemon_pid_parser_keeps_desktop_managed_daemon_with_agent_descendants() {
+        let output = r#"
+  101   1 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_service --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open --slock-desktop-managed
+  201 101 node /opt/homebrew/bin/codex app-server --listen stdio://
+"#;
+
+        let pids = daemon_pids_from_ps_output(
+            output,
+            "https://api.slock.ai",
+            Some("open-have"),
+            Some("machine-open"),
+            None,
+            None,
+            false,
+        );
+
+        assert_eq!(pids, vec![101]);
+    }
+
+    #[test]
     fn untagged_daemon_parser_ignores_desktop_marked_processes() {
         let output = r#"
   101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_old
@@ -3384,6 +3412,42 @@ mod tests {
             process.and_then(|process| process.machine_id),
             Some("machine-open".to_string())
         );
+    }
+
+    #[test]
+    fn selected_service_process_detection_excludes_unmanaged_agent_host() {
+        let settings = ServiceSettings {
+            selected_server_slug: "open-have".to_string(),
+            machines: vec![ServiceMachineBinding {
+                server_id: "server-open".to_string(),
+                server_slug: "open-have".to_string(),
+                machine_id: "machine-open".to_string(),
+                machine_name: "Open machine".to_string(),
+                api_key: "sk_machine_open".to_string(),
+            }],
+            ..ServiceSettings::default()
+        };
+        let output = r#"
+  101   1 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_agent --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open
+  201 101 node /opt/homebrew/bin/codex app-server --listen stdio://
+"#;
+
+        let servers = vec![ServiceServerSnapshot {
+            id: "server-open".to_string(),
+            name: "Open".to_string(),
+            slug: "open-have".to_string(),
+            selected: true,
+            machine_id: Some("machine-open".to_string()),
+            machine_name: Some("Open machine".to_string()),
+            machine_status: "offline".to_string(),
+            api_key_ready: true,
+            api_key_prefix: None,
+        }];
+
+        let process =
+            selected_service_daemon_process_from_server_snapshots(&settings, &servers, output);
+
+        assert!(process.is_none());
     }
 
     #[test]
