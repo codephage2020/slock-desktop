@@ -280,21 +280,9 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
     "slockDesktopSemanticShape",
     "slockDesktopCountTone",
     "slockDesktopTaskState",
-    "slockDesktopModuleTabs",
-    "slockDesktopModuleTab",
-    "slockDesktopModuleTabLabel",
-    "slockDesktopModuleTabsScope",
-    "slockDesktopPrimaryList",
-    "slockDesktopPrimaryRow",
-    "slockDesktopPrimaryRowLayout",
-    "slockDesktopPrimaryRowVariant",
-    "slockDesktopTaskRow",
-    "slockDesktopTaskTitle",
-    "slockDesktopTaskStateChip",
     "slockDesktopMenuItem",
     "slockDesktopAccountDock",
-    "slockDesktopAccountAction",
-    "slockDesktopPlusAction"
+    "slockDesktopAccountAction"
   ];
 
   const style = document.getElementById(styleId);
@@ -569,27 +557,14 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
     const markWorkspaceModuleSurfaces = () => {{
       if (!document.body) return;
 
-      const normalizeText = (value) => (value || "").replace(/\s+/g, " ").trim().toLowerCase();
       const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"]';
       const surfaceProps = [
-        "slockDesktopModuleTabs",
-        "slockDesktopModuleTab",
-        "slockDesktopModuleTabLabel",
-        "slockDesktopModuleTabsScope",
-        "slockDesktopPrimaryList",
-        "slockDesktopPrimaryRow",
-        "slockDesktopPrimaryRowLayout",
-        "slockDesktopPrimaryRowVariant",
         "slockDesktopMenuItem",
-        "slockDesktopTaskRow",
-        "slockDesktopTaskTitle",
-        "slockDesktopTaskStateChip",
         "slockDesktopAccountDock",
-        "slockDesktopAccountAction",
-        "slockDesktopPlusAction"
+        "slockDesktopAccountAction"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-module-tabs],[data-slock-desktop-module-tab],[data-slock-desktop-module-tab-label],[data-slock-desktop-module-tabs-scope],[data-slock-desktop-primary-list],[data-slock-desktop-primary-row],[data-slock-desktop-primary-row-layout],[data-slock-desktop-primary-row-variant],[data-slock-desktop-menu-item],[data-slock-desktop-task-row],[data-slock-desktop-task-title],[data-slock-desktop-task-state-chip],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-plus-action]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -811,10 +786,6 @@ body,
 
 body {{
   accent-color: var(--slock-desktop-accent) !important;
-  font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif !important;
-  font-size: 14px !important;
-  letter-spacing: -0.01em !important;
-  text-rendering: optimizeLegibility !important;
 }}
 
 #root {{
@@ -909,23 +880,6 @@ select {{
   background: transparent !important;
 }}
 
-.font-display,
-.font-mono,
-code,
-pre {{
-  font-family: inherit !important;
-}}
-
-.font-mono,
-code,
-pre {{
-  font-family: "SFMono-Regular", "SF Mono", ui-monospace, monospace !important;
-}}
-
-.tilt-neg-2 {{
-  transform: none !important;
-}}
-
 [class*="shadow-brutal"],
 [class*="shadow-\["],
 .shadow-brutal,
@@ -946,39 +900,6 @@ pre {{
 [class*="border-brutal"],
 [class*="hover\:border-black"],
 [class*="hover\:border-brutal"] {{
-  border-color: var(--slock-desktop-line) !important;
-}}
-
-[class*="border-2"] {{
-  border-width: 1px !important;
-}}
-
-[class*="border-b-2"] {{
-  border-bottom-width: 1px !important;
-}}
-
-[class*="border-t-2"] {{
-  border-top-width: 1px !important;
-}}
-
-[class*="border-r-2"],
-[class*="border-r-3"] {{
-  border-right-width: 1px !important;
-}}
-
-[class*="border-l-2"],
-[class*="border-l-3"],
-[class*="border-l-4"],
-.md\:border-l-3 {{
-  border-left-width: 1px !important;
-}}
-
-.card-brutal,
-.input-brutal,
-.btn-brutal,
-.btn-brutal-sm,
-[class*="border-2"] {{
-  border-width: 1px !important;
   border-color: var(--slock-desktop-line) !important;
 }}
 
@@ -1027,20 +948,7 @@ select:focus,
 .btn-brutal-sm,
 button,
 [role="button"] {{
-  min-height: 34px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 8px !important;
-  padding-inline: 12px !important;
   border-radius: var(--slock-desktop-radius-md) !important;
-  line-height: 1.1 !important;
-  transform: none !important;
-  transition:
-    background 150ms ease,
-    border-color 150ms ease,
-    box-shadow 150ms ease,
-    transform 150ms ease !important;
 }}
 
 .btn-brutal,
@@ -1070,29 +978,6 @@ button,
 button:hover,
 [role="button"]:hover {{
   background: var(--slock-desktop-hover) !important;
-  transform: none !important;
-}}
-
-.btn-brutal:active,
-.btn-brutal-sm:active,
-button:active,
-[role="button"]:active {{
-  transform: scale(0.97) !important;
-}}
-
-button[class*="h-8"][class*="w-8"],
-button[class*="h-9"][class*="w-9"],
-button[class*="size-"],
-[role="button"][class*="h-8"][class*="w-8"],
-[aria-label*="channel" i]:is(button),
-[aria-label*="channel" i][role="button"],
-[aria-label*="频道" i]:is(button) {{
-  width: 34px !important;
-  min-width: 34px !important;
-  max-width: 34px !important;
-  min-height: 34px !important;
-  padding: 0 !important;
-  border-radius: var(--slock-desktop-radius-sm) !important;
 }}
 
 [class*="bg-brutal-yellow"],
@@ -1202,29 +1087,6 @@ header,
 [class*="border-b-2"].bg-white {{
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
-  border-width: 0 0 1px 0 !important;
-  border-bottom: 1px solid var(--slock-desktop-line) !important;
-  border-bottom-color: var(--slock-desktop-line) !important;
-  box-shadow: none !important;
-  min-height: var(--slock-desktop-topbar-height) !important;
-  height: var(--slock-desktop-topbar-height) !important;
-  max-height: var(--slock-desktop-topbar-height) !important;
-  align-items: center !important;
-  padding-block: 0 !important;
-}}
-
-.safe-top [class*="border-b-2"],
-.safe-top [class*="border-t-2"],
-[class*="safe-top"] [class*="border-b-2"],
-[class*="safe-top"] [class*="border-t-2"],
-header [class*="border-b-2"],
-header [class*="border-t-2"],
-.flex.h-\[62px\] [class*="border-b-2"],
-.flex.h-\[62px\] [class*="border-t-2"],
-.relative.flex.items-center.border-b-2 > [class*="border-b-2"],
-.relative.flex.items-center.border-b-2 > [class*="border-t-2"] {{
-  border-top-width: 0 !important;
-  border-bottom-width: 0 !important;
   box-shadow: none !important;
 }}
 
@@ -1257,9 +1119,6 @@ aside button,
   border-radius: 10px !important;
   background: transparent !important;
   box-shadow: none !important;
-  justify-content: flex-start !important;
-  text-align: left !important;
-  min-width: 0 !important;
 }}
 
 .mb-1.flex.w-full.items-center.gap-1\.5:not(.bg-brutal-pink),
@@ -1338,44 +1197,6 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slock-desktop-accent) 20%, transparent) !important;
 }}
 
-nav button > *,
-aside button > *,
-.group.flex.items-center > *,
-[class*="channel"] > *,
-[class*="Channel"] > *,
-[class*="thread"] > *,
-[class*="Thread"] > * {{
-  min-width: 0 !important;
-}}
-
-nav button > :first-child,
-aside button > :first-child,
-.group.flex.items-center > :first-child,
-[class*="channel"] > :first-child,
-[class*="Channel"] > :first-child,
-[class*="thread"] > :first-child,
-[class*="Thread"] > :first-child {{
-  text-align: left !important;
-}}
-
-nav button > :last-child,
-aside button > :last-child,
-.group.flex.items-center > :last-child,
-[class*="channel"] > :last-child,
-[class*="Channel"] > :last-child,
-[class*="thread"] > :last-child,
-[class*="Thread"] > :last-child,
-[class*="ml-auto"],
-.ml-auto,
-[class*="badge"],
-[class*="Badge"],
-[class*="count"],
-[class*="Count"] {{
-  margin-left: auto !important;
-  justify-self: end !important;
-  text-align: right !important;
-}}
-
 [class*="sidebar"] [class*="bg-brutal"],
 [class*="Sidebar"] [class*="bg-brutal"],
 aside [class*="bg-brutal"],
@@ -1389,7 +1210,6 @@ a[data-slock-desktop-account-action="true"],
 [data-slock-desktop-account-dock="true"] :is(button,a,[role="button"]) {{
   background: transparent !important;
   border-color: transparent !important;
-  border-width: 0 !important;
   box-shadow: none !important;
 }}
 
@@ -1472,10 +1292,7 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 [data-slock-desktop-count-tone] {{
   background: transparent !important;
   border-color: transparent !important;
-  border-width: 0 !important;
   box-shadow: none !important;
-  padding: 0 !important;
-  min-height: auto !important;
   border-radius: 0 !important;
 }}
 
@@ -1497,26 +1314,15 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 
 [data-slock-desktop-avatar-fallback="true"] {{
   opacity: 0 !important;
-  pointer-events: none !important;
 }}
 
 [data-slock-desktop-avatar-image-layer="true"] {{
-  position: relative !important;
-  z-index: 1 !important;
-  width: 100% !important;
-  min-width: 100% !important;
-  max-width: 100% !important;
-  height: 100% !important;
-  min-height: 100% !important;
-  max-height: 100% !important;
   border-radius: inherit !important;
-  overflow: hidden !important;
   background-color: transparent !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
   background-size: cover !important;
   color: transparent !important;
-  font-size: 0 !important;
 }}
 
 [id^="message-"],
@@ -1541,186 +1347,6 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 [class*="message"] .whitespace-pre-wrap,
 [class*="Message"] .whitespace-pre-wrap {{
   color: var(--slock-desktop-text) !important;
-  line-height: 1.58 !important;
-}}
-
-.relative.flex.items-center.border-t-2,
-.flex.items-center.border-t-2,
-.border-t-2.bg-white,
-form:has(textarea[placeholder*="Message" i]),
-form:has(textarea[placeholder*="消息"]),
-form:has(button[title*="Attach image" i]),
-form:has(button[title*="附加图片"]) {{
-  position: relative !important;
-  display: flex !important;
-  flex-direction: column !important;
-  flex: 0 0 auto !important;
-  background: var(--slock-desktop-surface) !important;
-  border-color: var(--slock-desktop-line) !important;
-  border-width: 1px 0 0 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  min-height: 96px !important;
-  max-height: 154px !important;
-  height: auto !important;
-  padding: 12px 14px !important;
-  gap: 8px !important;
-  overflow: visible !important;
-  align-self: stretch !important;
-  margin-top: 0 !important;
-}}
-
-.relative.flex.items-center.border-t-2 textarea,
-.flex.items-center.border-t-2 textarea,
-form:has(textarea[placeholder*="Message" i]) textarea,
-form:has(textarea[placeholder*="消息"]) textarea,
-form:has(button[title*="Attach image" i]) textarea,
-form:has(button[title*="附加图片"]) textarea,
-form:has(textarea[placeholder*="Message" i]) [contenteditable="true"],
-form:has(textarea[placeholder*="消息"]) [contenteditable="true"],
-form:has(button[title*="Attach image" i]) [contenteditable="true"],
-form:has(button[title*="附加图片"]) [contenteditable="true"] {{
-  min-height: 44px !important;
-  max-height: 86px !important;
-  padding: 8px 12px !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  line-height: 1.55 !important;
-  overflow-y: auto !important;
-  min-width: 0 !important;
-  flex: 1 1 auto !important;
-  width: auto !important;
-  resize: none !important;
-}}
-
-.relative.flex.items-center.border-t-2 button[aria-label*="send" i],
-.relative.flex.items-center.border-t-2 button[aria-label*="发送" i],
-.relative.flex.items-center.border-t-2 button[type="submit"],
-.flex.items-center.border-t-2 button[aria-label*="send" i],
-.flex.items-center.border-t-2 button[aria-label*="发送" i],
-.flex.items-center.border-t-2 button[type="submit"],
-form:has(textarea[placeholder*="Message" i]) button[aria-label*="send" i],
-form:has(textarea[placeholder*="消息"]) button[aria-label*="发送" i],
-form:has(button[title*="Attach image" i]) button[aria-label*="send" i],
-form:has(button[title*="附加图片"]) button[aria-label*="发送" i],
-form:has(textarea[placeholder*="Message" i]) button[type="submit"],
-form:has(textarea[placeholder*="消息"]) button[type="submit"],
-form:has(button[title*="Attach image" i]) button[type="submit"],
-form:has(button[title*="附加图片"]) button[type="submit"] {{
-  position: relative !important;
-  right: auto !important;
-  bottom: auto !important;
-  z-index: 3 !important;
-  flex: 0 0 36px !important;
-  width: 36px !important;
-  min-width: 36px !important;
-  max-width: 36px !important;
-  min-height: 36px !important;
-  padding: 0 !important;
-  border-radius: var(--slock-desktop-radius-md) !important;
-  background: var(--slock-desktop-accent) !important;
-  color: var(--slock-desktop-surface) !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-}}
-
-form:has(textarea[placeholder*="Message" i]),
-form:has(textarea[placeholder*="消息"]),
-form:has(button[title*="Attach image" i]),
-form:has(button[title*="附加图片"]) {{
-  background: var(--slock-desktop-surface) !important;
-  border-color: var(--slock-desktop-line) !important;
-  border-width: 1px 0 0 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  min-height: 96px !important;
-  max-height: 154px !important;
-  height: auto !important;
-  padding: 12px 14px !important;
-  overflow: visible !important;
-  align-self: stretch !important;
-  margin-top: 0 !important;
-}}
-
-form:has(textarea[placeholder*="Message" i]) .flex.items-center.justify-between.gap-3,
-form:has(textarea[placeholder*="消息"]) .flex.items-center.justify-between.gap-3,
-form:has(button[title*="Attach image" i]) .flex.items-center.justify-between.gap-3,
-form:has(button[title*="附加图片"]) .flex.items-center.justify-between.gap-3 {{
-  display: flex !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  position: relative !important;
-  min-height: 32px !important;
-  flex: 0 0 auto !important;
-  align-items: center !important;
-  width: 100% !important;
-  margin-top: 0 !important;
-  padding-inline: 2px !important;
-  gap: 6px !important;
-}}
-
-form:has(textarea[placeholder*="Message" i]) button[title*="Attach" i],
-form:has(textarea[placeholder*="消息"]) button[title*="附加"],
-form:has(button[title*="Attach image" i]) button[title*="Attach" i],
-form:has(button[title*="附加图片"]) button[title*="附加"],
-form:has(textarea[placeholder*="Message" i]) button[type="submit"],
-form:has(textarea[placeholder*="消息"]) button[type="submit"],
-form:has(button[title*="Attach image" i]) button[type="submit"],
-form:has(button[title*="附加图片"]) button[type="submit"] {{
-  display: inline-flex !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  align-items: center !important;
-  justify-content: center !important;
-  min-width: 32px !important;
-  min-height: 32px !important;
-  border-radius: var(--slock-desktop-radius-md) !important;
-  box-shadow: none !important;
-}}
-
-form:has(textarea[placeholder*="Message" i]) .flex.items-center.justify-between.gap-3 button,
-form:has(textarea[placeholder*="消息"]) .flex.items-center.justify-between.gap-3 button,
-form:has(button[title*="Attach image" i]) .flex.items-center.justify-between.gap-3 button,
-form:has(button[title*="附加图片"]) .flex.items-center.justify-between.gap-3 button {{
-  min-height: 32px !important;
-  max-height: 32px !important;
-  padding-inline: 8px !important;
-  border-radius: var(--slock-desktop-radius-sm) !important;
-  box-shadow: none !important;
-  white-space: nowrap !important;
-  max-width: 82px !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-}}
-
-form:has(textarea[placeholder*="Message" i]) .flex.items-center.justify-between.gap-3 button:is([title*="Attach" i],[aria-label*="Attach" i],[title*="image" i],[aria-label*="image" i],[title*="file" i],[aria-label*="file" i],[title*="附加"],[aria-label*="附加"],[title*="图片"],[aria-label*="图片"],[title*="文件"],[aria-label*="文件"]):not([type="submit"]),
-form:has(textarea[placeholder*="消息"]) .flex.items-center.justify-between.gap-3 button:is([title*="Attach" i],[aria-label*="Attach" i],[title*="image" i],[aria-label*="image" i],[title*="file" i],[aria-label*="file" i],[title*="附加"],[aria-label*="附加"],[title*="图片"],[aria-label*="图片"],[title*="文件"],[aria-label*="文件"]):not([type="submit"]),
-form:has(button[title*="Attach image" i]) .flex.items-center.justify-between.gap-3 button:is([title*="Attach" i],[aria-label*="Attach" i],[title*="image" i],[aria-label*="image" i],[title*="file" i],[aria-label*="file" i],[title*="附加"],[aria-label*="附加"],[title*="图片"],[aria-label*="图片"],[title*="文件"],[aria-label*="文件"]):not([type="submit"]),
-form:has(button[title*="附加图片"]) .flex.items-center.justify-between.gap-3 button:is([title*="Attach" i],[aria-label*="Attach" i],[title*="image" i],[aria-label*="image" i],[title*="file" i],[aria-label*="file" i],[title*="附加"],[aria-label*="附加"],[title*="图片"],[aria-label*="图片"],[title*="文件"],[aria-label*="文件"]):not([type="submit"]) {{
-  width: 32px !important;
-  min-width: 32px !important;
-  max-width: 32px !important;
-  padding: 0 !important;
-}}
-
-form:has(textarea[placeholder*="Message" i]) .border-2:has(textarea),
-form:has(textarea[placeholder*="消息"]) .border-2:has(textarea),
-form:has(button[title*="Attach image" i]) .border-2:has(textarea),
-form:has(button[title*="附加图片"]) .border-2:has(textarea),
-form:has(textarea[placeholder*="Message" i]) .border-2:has([contenteditable="true"]),
-form:has(textarea[placeholder*="消息"]) .border-2:has([contenteditable="true"]),
-form:has(button[title*="Attach image" i]) .border-2:has([contenteditable="true"]),
-form:has(button[title*="附加图片"]) .border-2:has([contenteditable="true"]) {{
-  background: var(--slock-desktop-surface-secondary) !important;
-  border: 1px solid var(--slock-desktop-line) !important;
-  border-radius: var(--slock-desktop-radius-lg) !important;
-  box-shadow: none !important;
-  min-height: 50px !important;
-  max-height: 96px !important;
-  padding: 0 !important;
-  overflow: hidden !important;
 }}
 
 .text-black,
@@ -1789,15 +1415,6 @@ h4,
 h5,
 h6 {{
   color: var(--slock-desktop-text) !important;
-  letter-spacing: -0.02em !important;
-  text-wrap: balance !important;
-}}
-
-p,
-li,
-dd,
-span {{
-  text-wrap: pretty;
 }}
 
 .rounded,
@@ -1842,20 +1459,6 @@ span {{
   background: var(--slock-desktop-canvas) !important;
 }}
 
-.flex.min-h-0.flex-1.items-center.justify-center .w-full.border-2,
-.flex.min-h-0.flex-1.overflow-y-auto .w-full.border-2 {{
-  max-width: 440px !important;
-  padding: 28px !important;
-}}
-
-.inline-block.tilt-neg-2,
-.relative.inline-flex.tilt-neg-2 {{
-  border-radius: var(--slock-desktop-radius-md) !important;
-  background: var(--slock-desktop-text) !important;
-  color: var(--slock-desktop-surface) !important;
-  box-shadow: var(--slock-desktop-soft-shadow) !important;
-}}
-
 .safe-top.safe-left.safe-right,
 .safe-top,
 [class*="safe-top"],
@@ -1876,23 +1479,7 @@ header,
 .flex.overflow-x-auto.border-b-2 {{
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
-  border-width: 0 0 1px 0 !important;
-  border-bottom: 1px solid var(--slock-desktop-line) !important;
-  border-bottom-color: var(--slock-desktop-line) !important;
   box-shadow: none !important;
-  min-height: var(--slock-desktop-topbar-height) !important;
-  height: var(--slock-desktop-topbar-height) !important;
-  max-height: var(--slock-desktop-topbar-height) !important;
-  align-items: center !important;
-  padding-block: 0 !important;
-}}
-
-.flex.w-full.items-center.gap-2,
-.group.flex.items-center,
-.inline-flex.items-center,
-.btn-brutal,
-.btn-brutal-sm {{
-  min-height: 34px;
 }}
 
 .flex.w-full.items-center.gap-2,
@@ -1905,25 +1492,10 @@ header,
   background: var(--slock-desktop-hover) !important;
 }}
 
-.grid-cols-1,
-.sm\:grid-cols-3,
-.md\:grid-cols-2 {{
-  gap: 12px !important;
-}}
-
-.space-y-1 > :not(:last-child),
-.space-y-1\.5 > :not(:last-child),
-.space-y-2 > :not(:last-child),
-.space-y-3 > :not(:last-child),
-.space-y-4 > :not(:last-child) {{
-  margin-block-end: 8px !important;
-}}
-
 .border-collapse,
 table {{
   border-color: var(--slock-desktop-line) !important;
   border-radius: var(--slock-desktop-radius-md) !important;
-  overflow: hidden !important;
 }}
 
 th,
@@ -1941,10 +1513,6 @@ code,
 .my-2.overflow-x-auto {{
   background: color-mix(in srgb, var(--slock-desktop-text) 7%, var(--slock-desktop-surface)) !important;
   color: var(--slock-desktop-text) !important;
-}}
-
-.max-w-\[70\%\] {{
-  max-width: min(var(--slock-desktop-readable-width), 86%) !important;
 }}
 
 .max-w-\[70\%\].border-2,
@@ -2003,51 +1571,15 @@ aside .h-12.w-12,
   color: var(--slock-desktop-text) !important;
 }}
 
-.fixed.z-50.card-brutal,
-.absolute.z-50.card-brutal,
-.absolute.left-0.top-\[calc\(100\%\+8px\)\],
-.absolute.top-full,
-.absolute.bottom-full {{
-  overflow: hidden !important;
-}}
-
 .animate-pulse {{
   background: var(--slock-desktop-accent-soft) !important;
   border-color: color-mix(in srgb, var(--slock-desktop-accent) 24%, var(--slock-desktop-line)) !important;
-}}
-
-.select-none,
-button,
-[role="button"] {{
-  touch-action: manipulation;
 }}
 
 @media (hover: hover) {{
   a:hover,
   [role="link"]:hover {{
     color: color-mix(in srgb, var(--slock-desktop-accent) 82%, var(--slock-desktop-text)) !important;
-  }}
-}}
-
-@media (max-width: 768px) {{
-  .max-w-\[70\%\] {{
-    max-width: 92% !important;
-  }}
-
-  .safe-top.safe-left.safe-right,
-  .relative.flex.items-center.border-t-2,
-  .flex.items-center.border-t-2 {{
-    border-radius: 0 !important;
-  }}
-}}
-
-@media (prefers-reduced-motion: reduce) {{
-  *,
-  *::before,
-  *::after {{
-    transition-duration: 1ms !important;
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
   }}
 }}
 
@@ -2079,7 +1611,6 @@ button,
 nav [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"],
 aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
   border-color: transparent !important;
-  border-width: 0 !important;
   box-shadow: none !important;
 }}
 
@@ -2087,27 +1618,15 @@ aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
 [data-slock-desktop-account-action="true"] :is(div,span)[class*="border"],
 [data-slock-desktop-account-action="true"] :is(div,span)[class*="btn-brutal"] {{
   border-color: transparent !important;
-  border-width: 0 !important;
   box-shadow: none !important;
   background: transparent !important;
 }}
 
-[class*="task"],
-[class*="Task"],
-[aria-label*="task" i],
-[aria-label*="任务"] {{
-  text-align: left !important;
-  justify-content: flex-start !important;
-}}
-
 [data-slock-desktop-menu-item="true"] {{
-  min-height: 32px !important;
-  justify-content: flex-start !important;
   border-color: transparent !important;
   border-radius: var(--slock-desktop-radius-sm) !important;
   background: transparent !important;
   box-shadow: none !important;
-  text-align: left !important;
 }}
 
 [data-slock-desktop-menu-item="true"]:hover,
@@ -2121,17 +1640,7 @@ aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
 }}
 
 [data-slock-desktop-menu-item="true"][data-slock-desktop-task-state] {{
-  position: relative !important;
   color: var(--slock-desktop-text) !important;
-}}
-
-[data-slock-desktop-menu-item="true"][data-slock-desktop-task-state]::before {{
-  content: "" !important;
-  width: 7px !important;
-  height: 7px !important;
-  border-radius: var(--slock-desktop-radius-pill) !important;
-  background: var(--slock-desktop-semantic-current) !important;
-  flex: 0 0 7px !important;
 }}
 
 [data-slock-desktop-account-dock="true"] {{
@@ -2154,28 +1663,12 @@ aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
   box-shadow: none !important;
 }}
 
-.safe-top :is(h1,h2,h3,span,p,button),
-[class*="safe-top"] :is(h1,h2,h3,span,p,button),
-[class*="topbar"] :is(h1,h2,h3,span,p,button),
-[class*="Topbar"] :is(h1,h2,h3,span,p,button),
-.flex.h-\[62px\] :is(h1,h2,h3,span,p,button),
-.relative.flex.items-center.border-b-2 :is(h1,h2,h3,span,p,button) {{
-  line-height: 1.28 !important;
-  overflow: visible !important;
-  padding-bottom: 1px !important;
-}}
-
 :focus-visible {{
   outline-color: var(--slock-desktop-accent) !important;
 }}
 
 svg {{
   color: inherit !important;
-}}
-
-::-webkit-scrollbar {{
-  width: 10px;
-  height: 10px;
 }}
 
 ::-webkit-scrollbar-track {{
