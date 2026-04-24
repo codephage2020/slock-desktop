@@ -1884,6 +1884,16 @@ aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
   border-radius: var(--slock-desktop-radius-md) !important;
 }}
 
+[data-slock-desktop-account-action="true"][class*="bg-brutal-pink"],
+[data-slock-desktop-account-action="true"][class*="bg-brutal-lime"],
+[data-slock-desktop-account-action="true"][class*="bg-brutal-cyan"],
+[data-slock-desktop-account-action="true"][class*="bg-brutal-yellow"],
+[data-slock-desktop-account-action="true"][class*="bg-brutal-orange"] {{
+  background: var(--slock-desktop-accent) !important;
+  color: var(--slock-desktop-surface) !important;
+  border-color: transparent !important;
+}}
+
 [data-slock-desktop-account-action="true"]:hover,
 [data-slock-desktop-account-action="true"]:focus-visible {{
   background: var(--slock-desktop-hover) !important;
