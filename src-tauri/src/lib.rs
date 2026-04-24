@@ -68,6 +68,7 @@ struct ServiceRuntime {
 struct ServiceSnapshot {
     server_url: String,
     selected_server_slug: String,
+    active_server_slug: String,
     auto_start_with_workspace: bool,
     authenticated: bool,
     configured: bool,
@@ -277,7 +278,8 @@ fn save_session_tokens(
         .settings
         .lock()
         .map_err(|_| "Unable to lock desktop settings".to_string())?;
-    if settings.session.access_token == access_token && settings.session.refresh_token == refresh_token
+    if settings.session.access_token == access_token
+        && settings.session.refresh_token == refresh_token
     {
         return Ok(());
     }
@@ -291,7 +293,9 @@ fn save_session_tokens(
 fn open_workspace(
     app: AppHandle,
     state: State<'_, DesktopState>,
+    selected_server_slug: Option<String>,
 ) -> Result<BootstrapPayload, String> {
+    persist_service_target_slug(&app, &state, selected_server_slug, false)?;
     let (color_scheme, appearance_mode, custom_theme, language, selected_server_slug) = {
         let settings = state
             .settings
@@ -373,7 +377,9 @@ fn refresh_service_servers(
 fn update_service(
     app: AppHandle,
     state: State<'_, DesktopState>,
+    selected_server_slug: Option<String>,
 ) -> Result<BootstrapPayload, String> {
+    persist_service_target_slug(&app, &state, selected_server_slug, true)?;
     let service_settings = {
         let settings = state
             .settings
@@ -807,6 +813,7 @@ fn collect_service_snapshot(
     }
 
     let last_error = runtime.last_error.clone();
+    let active_server_slug = runtime.active_server_slug.clone().unwrap_or_default();
     drop(runtime);
 
     let authenticated = current_session_tokens(state)?.is_some();
@@ -831,6 +838,7 @@ fn collect_service_snapshot(
     Ok(ServiceSnapshot {
         server_url: settings.server_url.clone(),
         selected_server_slug: settings.selected_server_slug.clone(),
+        active_server_slug,
         auto_start_with_workspace: settings.auto_start_with_workspace,
         authenticated,
         configured,
@@ -848,10 +856,8 @@ fn maybe_start_service(
     settings: &ServiceSettings,
     force_for_workspace: bool,
 ) -> Result<(), String> {
-    let should_start =
-        (!settings.selected_server_slug.trim().is_empty() && force_for_workspace)
-            || (settings.auto_start_with_workspace
-                && !settings.selected_server_slug.trim().is_empty());
+    let should_start = (!settings.selected_server_slug.trim().is_empty() && force_for_workspace)
+        || (settings.auto_start_with_workspace && !settings.selected_server_slug.trim().is_empty());
 
     if should_start {
         force_start_service(app, state, settings)?;
@@ -955,7 +961,8 @@ fn sanitize_service_settings(service: ServiceSettings) -> ServiceSettings {
             continue;
         }
         let duplicate = machines.iter().any(|existing: &ServiceMachineBinding| {
-            existing.server_id == normalized.server_id || existing.server_slug == normalized.server_slug
+            existing.server_id == normalized.server_id
+                || existing.server_slug == normalized.server_slug
         });
         if !duplicate {
             machines.push(normalized);
@@ -975,15 +982,10 @@ fn sanitize_service_server_url(server_url: &str) -> String {
     if trimmed.is_empty() {
         return DEFAULT_SERVER_URL.to_string();
     }
-    trimmed
-        .strip_suffix("/api")
-        .unwrap_or(trimmed)
-        .to_string()
+    trimmed.strip_suffix("/api").unwrap_or(trimmed).to_string()
 }
 
-fn current_session_tokens(
-    state: &DesktopState,
-) -> Result<Option<(String, String)>, String> {
+fn current_session_tokens(state: &DesktopState) -> Result<Option<(String, String)>, String> {
     let settings = state
         .settings
         .lock()
@@ -1055,7 +1057,10 @@ fn send_authenticated(
 ) -> Result<reqwest::blocking::Response, String> {
     let client = api_client()?;
     let Some((access_token, refresh_token)) = current_session_tokens(state)? else {
-        return Err("Open Slock once and sign in, then the desktop launcher can load your server list.".to_string());
+        return Err(
+            "Open Slock once and sign in, then the desktop launcher can load your server list."
+                .to_string(),
+        );
     };
 
     let mut response = request(&client, &access_token)
@@ -1063,7 +1068,8 @@ fn send_authenticated(
         .map_err(|err| format!("Desktop API request failed: {err}"))?;
 
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-        let (next_access_token, _) = refresh_session_tokens(app, state, server_url, &refresh_token)?;
+        let (next_access_token, _) =
+            refresh_session_tokens(app, state, server_url, &refresh_token)?;
         response = request(&client, &next_access_token)
             .send()
             .map_err(|err| format!("Desktop API retry failed: {err}"))?;
@@ -1097,11 +1103,16 @@ fn fetch_service_servers(
 ) -> Result<Vec<ServiceServerSnapshot>, String> {
     let server_url = settings.server_url.clone();
     let api_root = api_base_url(&server_url);
-    let servers = load_authenticated_json::<Vec<ApiServer>>(app, state, &server_url, |client, access_token| {
-        client
-            .get(format!("{api_root}/servers"))
-            .bearer_auth(access_token)
-    })?;
+    let servers = load_authenticated_json::<Vec<ApiServer>>(
+        app,
+        state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers"))
+                .bearer_auth(access_token)
+        },
+    )?;
 
     let mut snapshots = Vec::with_capacity(servers.len());
     for server in servers {
@@ -1118,10 +1129,12 @@ fn fetch_service_servers(
             slug: server.slug.clone(),
             selected: server.slug == settings.selected_server_slug,
             machine_id: binding.as_ref().map(|item| item.machine_id.clone()),
-            machine_name: machine
-                .as_ref()
-                .map(|item| item.name.clone())
-                .or_else(|| binding.as_ref().map(|item| item.machine_name.clone()).filter(|name| !name.is_empty())),
+            machine_name: machine.as_ref().map(|item| item.name.clone()).or_else(|| {
+                binding
+                    .as_ref()
+                    .map(|item| item.machine_name.clone())
+                    .filter(|name| !name.is_empty())
+            }),
             machine_status: machine
                 .map(|item| normalize_machine_status(&item.status))
                 .unwrap_or_else(|| {
@@ -1149,11 +1162,16 @@ fn fetch_bound_machine(
     machine_id: &str,
 ) -> Result<Option<ApiMachine>, String> {
     let api_root = api_base_url(server_url);
-    let payload = load_authenticated_json::<serde_json::Value>(app, state, server_url, |client, access_token| {
-        client
-            .get(format!("{api_root}/servers/{server_id}/machines"))
-            .bearer_auth(access_token)
-    })?;
+    let payload = load_authenticated_json::<serde_json::Value>(
+        app,
+        state,
+        server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers/{server_id}/machines"))
+                .bearer_auth(access_token)
+        },
+    )?;
 
     let machines = if payload.is_array() {
         serde_json::from_value::<Vec<ApiMachine>>(payload)
@@ -1164,7 +1182,9 @@ fn fetch_bound_machine(
             .machines
     };
 
-    Ok(machines.into_iter().find(|machine| machine.id == machine_id))
+    Ok(machines
+        .into_iter()
+        .find(|machine| machine.id == machine_id))
 }
 
 fn resolve_selected_server(
@@ -1174,11 +1194,16 @@ fn resolve_selected_server(
 ) -> Result<ApiServer, String> {
     let server_url = settings.server_url.clone();
     let api_root = api_base_url(&server_url);
-    let servers = load_authenticated_json::<Vec<ApiServer>>(app, state, &server_url, |client, access_token| {
-        client
-            .get(format!("{api_root}/servers"))
-            .bearer_auth(access_token)
-    })?;
+    let servers = load_authenticated_json::<Vec<ApiServer>>(
+        app,
+        state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers"))
+                .bearer_auth(access_token)
+        },
+    )?;
 
     if let Some(server) = servers
         .iter()
@@ -1211,12 +1236,17 @@ fn ensure_machine_binding(
 
     let server_url = settings.server_url.clone();
     let api_root = api_base_url(&server_url);
-    let payload = load_authenticated_json::<ApiMachineRegistration>(app, state, &server_url, |client, access_token| {
-        client
-            .post(format!("{api_root}/servers/{}/machines", server.id))
-            .bearer_auth(access_token)
-            .json(&serde_json::json!({ "name": DAEMON_MACHINE_NAME }))
-    })?;
+    let payload = load_authenticated_json::<ApiMachineRegistration>(
+        app,
+        state,
+        &server_url,
+        |client, access_token| {
+            client
+                .post(format!("{api_root}/servers/{}/machines", server.id))
+                .bearer_auth(access_token)
+                .json(&serde_json::json!({ "name": DAEMON_MACHINE_NAME }))
+        },
+    )?;
 
     let binding = ServiceMachineBinding {
         server_id: server.id.clone(),
@@ -1280,6 +1310,44 @@ fn normalize_machine_status(status: &str) -> String {
     } else {
         status.to_string()
     }
+}
+
+fn persist_service_target_slug(
+    app: &AppHandle,
+    state: &DesktopState,
+    selected_server_slug: Option<String>,
+    prefer_active_runtime: bool,
+) -> Result<(), String> {
+    let mut candidate = selected_server_slug
+        .map(|slug| slug.trim().to_string())
+        .filter(|slug| !slug.is_empty());
+
+    if candidate.is_none() && prefer_active_runtime {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        candidate = runtime
+            .active_server_slug
+            .as_ref()
+            .map(|slug| slug.trim().to_string())
+            .filter(|slug| !slug.is_empty());
+    }
+
+    let Some(candidate) = candidate else {
+        return Ok(());
+    };
+
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    if settings.service.selected_server_slug == candidate {
+        return Ok(());
+    }
+
+    settings.service.selected_server_slug = candidate;
+    save_settings(app, &settings)
 }
 
 fn sanitize_update_settings(updates: UpdateSettings) -> UpdateSettings {

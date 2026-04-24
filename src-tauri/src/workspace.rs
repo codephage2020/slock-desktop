@@ -1848,15 +1848,43 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
   };
 
+  const getCurrentServerSlug = () => {
+    const match = window.location.pathname.match(/^\/s\/([^/?#]+)/);
+    return match?.[1] || null;
+  };
+
+  const normalizeActionText = (value) =>
+    value?.replace(/\s+/g, " ").trim().toLowerCase() || "";
+
+  const isDaemonUpdateAction = (element) => {
+    const label = normalizeActionText(
+      [
+        element.textContent,
+        element.getAttribute("aria-label"),
+        element.getAttribute("title"),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    if (!label.includes("update") && !label.includes("更新")) return false;
+
+    const context = normalizeActionText(
+      element.closest("[role='alert'], [class*='bg-brutal-'], [class*='border-2'], [class*='rounded'], [class*='shadow-']")?.textContent ||
+        element.parentElement?.textContent ||
+        "",
+    );
+    if (!context) return true;
+
+    return /daemon|machine|computer|service|outdated|reconnect|offline|update|更新|服务|连接/.test(context);
+  };
+
   const handleDaemonUpdateClick = async (event) => {
-    const button = event.target instanceof Element ? event.target.closest("button") : null;
-    if (!button) return;
-
-    const label = button.textContent?.trim().toLowerCase();
-    if (label !== "update") return;
-
-    const context = button.closest("[class*='bg-brutal-'], [class*='border-2'], [role='alert']")?.textContent?.toLowerCase() || "";
-    if (!/daemon|outdated|reconnect|machine|computer/.test(context)) return;
+    const action =
+      event.target instanceof Element
+        ? event.target.closest("button, [role='button'], a")
+        : null;
+    if (!action || !isDaemonUpdateAction(action)) return;
+    if (action.dataset.slockDesktopBusy === "true") return;
 
     try {
       const invoke = window.__TAURI__?.core?.invoke;
@@ -1866,9 +1894,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
       event.preventDefault();
       event.stopPropagation();
-      await invoke("update_service");
+      action.dataset.slockDesktopBusy = "true";
+      await invoke("update_service", {
+        selectedServerSlug: getCurrentServerSlug(),
+      });
     } catch (error) {
       console.warn("[Slock Desktop] daemon update bridge failed", error);
+    } finally {
+      delete action.dataset.slockDesktopBusy;
     }
   };
 

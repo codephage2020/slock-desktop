@@ -10,11 +10,7 @@ import {
   openWorkspace,
   refreshServiceServers,
   saveCustomTheme,
-  saveServiceSettings,
   saveUpdateSettings,
-  startService,
-  stopService,
-  updateService,
   updateTheme,
   updateLanguage,
   updateThemeMode,
@@ -387,54 +383,11 @@ function App() {
     }
   }
 
-  async function handleWorkspaceOpen() {
+  async function handleWorkspaceOpen(selectedServerSlug?: string) {
     try {
       setBusyAction('workspace')
       setErrorMessage(null)
-      const next = await openWorkspace()
-      startTransition(() => setSnapshot(next))
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  async function handleServiceSave() {
-    if (!snapshot) {
-      return
-    }
-
-    try {
-      setBusyAction('save-service')
-      setErrorMessage(null)
-      const next = await saveServiceSettings(snapshot.service)
-      startTransition(() => setSnapshot(next))
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  async function handleServiceStart() {
-    try {
-      setBusyAction('start-service')
-      setErrorMessage(null)
-      const next = await startService()
-      startTransition(() => setSnapshot(next))
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  async function handleServiceStop() {
-    try {
-      setBusyAction('stop-service')
-      setErrorMessage(null)
-      const next = await stopService()
+      const next = await openWorkspace(selectedServerSlug)
       startTransition(() => setSnapshot(next))
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
@@ -448,19 +401,6 @@ function App() {
       setBusyAction('refresh-service')
       setErrorMessage(null)
       const next = await refreshServiceServers()
-      startTransition(() => setSnapshot(next))
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  async function handleServiceUpdate() {
-    try {
-      setBusyAction('update-service')
-      setErrorMessage(null)
-      const next = await updateService()
       startTransition(() => setSnapshot(next))
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
@@ -606,7 +546,9 @@ function App() {
       (server) => server.slug === snapshot.service.selectedServerSlug,
     ) ??
     snapshot.service.servers.find((server) => server.selected) ??
+    snapshot.service.servers[0] ??
     null
+  const selectedServiceSlug = selectedServiceServer?.slug
   const serviceStatusLabel = getServiceStatusLabel(
     snapshot.service,
     selectedServiceServer,
@@ -768,127 +710,103 @@ function App() {
           </section>
 
           <section className="launch-side-column">
-            <details className="control-card compact-control service-card">
-              <summary className="control-card-head">
-                <h2>{copy.serviceStartup}</h2>
+            <section className="control-card service-launch-card" aria-labelledby="service-launch-title">
+              <div className="control-card-head">
+                <h2 id="service-launch-title">{copy.serviceStartup}</h2>
                 <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
                   {serviceStatusLabel}
                 </span>
-              </summary>
+              </div>
 
-              <div className="control-body">
-                <label className="field">
-                  <span>{copy.selectedServer}</span>
-                  <select
-                    value={snapshot.service.selectedServerSlug}
-                    onChange={(event) =>
-                      patchService({ selectedServerSlug: event.target.value })
-                    }
-                  >
-                    <option value="">{copy.selectedServerPlaceholder}</option>
-                    {snapshot.service.servers.map((server) => (
-                      <option key={server.id} value={server.slug}>
-                        {server.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {snapshot.service.syncError ? (
+                <p className="inline-note error">{snapshot.service.syncError}</p>
+              ) : snapshot.service.lastError ? (
+                <p className="inline-note error">{snapshot.service.lastError}</p>
+              ) : !snapshot.service.authenticated ? (
+                <p className="inline-note">{copy.serviceSignInHint}</p>
+              ) : snapshot.service.servers.length === 0 ? (
+                <p className="inline-note">{copy.noServers}</p>
+              ) : (
+                <p className="inline-note">{copy.cloudWorkspaceOnly}</p>
+              )}
 
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={snapshot.service.autoStartWithWorkspace}
-                    onChange={(event) =>
-                      patchService({ autoStartWithWorkspace: event.target.checked })
-                    }
-                  />
-                  <span>{copy.autoStartService}</span>
-                </label>
+              <div className="service-launch-toolbar">
+                <button
+                  className="theme-button muted-button"
+                  onClick={handleServiceRefresh}
+                  disabled={busyAction === 'refresh-service'}
+                >
+                  {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServers}
+                </button>
+              </div>
 
-                {selectedServiceServer ? (
-                  <p className="inline-note">
-                    {copy.machineStatus}: {getMachineStatusLabel(selectedServiceServer.machineStatus, copy)}
-                    {selectedServiceServer.machineName ? ` · ${selectedServiceServer.machineName}` : ''}
-                  </p>
-                ) : null}
+              <div className="service-server-list" role="list" aria-label={copy.selectedServer}>
+                {snapshot.service.servers.map((server) => {
+                  const selected = server.slug === selectedServiceSlug
+                  const running =
+                    snapshot.service.running &&
+                    server.slug === snapshot.service.activeServerSlug
+                  const serverStatusLabel = getServiceServerStatusLabel(
+                    server,
+                    snapshot.service,
+                    copy,
+                    selectedServiceSlug,
+                  )
+                  const serverMeta = server.machineName
+                    ? `${copy.machineStatus}: ${server.machineName}`
+                    : `${copy.machineStatus}: ${serverStatusLabel}`
 
-                {snapshot.service.syncError ? (
-                  <p className="inline-note error">{snapshot.service.syncError}</p>
-                ) : snapshot.service.lastError ? (
-                  <p className="inline-note error">{snapshot.service.lastError}</p>
-                ) : !snapshot.service.authenticated ? (
-                  <p className="inline-note">{copy.serviceSignInHint}</p>
-                ) : snapshot.service.servers.length === 0 ? (
-                  <p className="inline-note">{copy.noServers}</p>
-                ) : (
-                  <p className="inline-note">
-                    {snapshot.service.configured ? copy.serviceSelectionSaved : copy.cloudWorkspaceOnly}
-                  </p>
-                )}
+                  return (
+                    <button
+                      key={server.id}
+                      className={`service-server-row${selected ? ' selected' : ''}${running ? ' running' : ''}`}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => patchService({ selectedServerSlug: server.slug })}
+                    >
+                      <span className="service-server-copy">
+                        <span className="service-server-name-line">
+                          <span className="service-server-name">{server.name}</span>
+                          <span className="service-server-slug">{server.slug}</span>
+                        </span>
+                        <span className="service-server-meta">{serverMeta}</span>
+                      </span>
+                      <span className={`status-chip${running ? ' live' : ''}`}>
+                        {serverStatusLabel}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
 
-                <div className="button-row">
-                  <button
-                    className="theme-button"
-                    onClick={handleServiceSave}
-                    disabled={busyAction === 'save-service'}
-                  >
-                    {busyAction === 'save-service'
-                      ? copy.savingServiceSettings
-                      : copy.saveServiceSettings}
-                  </button>
-                  <button
-                    className="theme-button"
-                    onClick={handleServiceRefresh}
-                    disabled={busyAction === 'refresh-service'}
-                  >
-                    {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServers}
-                  </button>
-                  <button
-                    className="theme-button"
-                    onClick={handleServiceStart}
-                    disabled={
-                      busyAction === 'start-service' ||
-                      !snapshot.service.authenticated ||
-                      !selectedServiceServer
-                    }
-                  >
-                    {busyAction === 'start-service' ? copy.startingService : copy.startService}
-                  </button>
-                  <button
-                    className="theme-button muted-button"
-                    onClick={handleServiceStop}
-                    disabled={busyAction === 'stop-service' || !snapshot.service.running}
-                  >
-                    {busyAction === 'stop-service' ? copy.stoppingService : copy.stopService}
-                  </button>
-                  <button
-                    className="theme-button muted-button"
-                    onClick={handleServiceUpdate}
-                    disabled={
-                      busyAction === 'update-service' ||
-                      !snapshot.service.authenticated ||
-                      !selectedServiceServer
-                    }
-                  >
-                    {busyAction === 'update-service' ? copy.updatingService : copy.updateService}
-                  </button>
+              <div className="service-launch-footer">
+                <div className="service-launch-selection">
+                  <span className="eyebrow">{copy.selectedServer}</span>
+                  <strong>{selectedServiceServer?.name ?? copy.selectedServerPlaceholder}</strong>
+                  <span>
+                    {selectedServiceServer
+                      ? getServiceServerStatusLabel(
+                          selectedServiceServer,
+                          snapshot.service,
+                          copy,
+                          selectedServiceSlug,
+                        )
+                      : copy.selectedServerPlaceholder}
+                  </span>
                 </div>
-              </div>
-            </details>
 
-            <section className="launch-center-card">
-              <div className="status-row">
-                <span className="status-dot" />
-                <span>{snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}</span>
+                <button
+                  className="launch-button"
+                  onClick={() => handleWorkspaceOpen(selectedServiceSlug)}
+                  disabled={
+                    busyAction === 'workspace' ||
+                    !snapshot.service.authenticated ||
+                    !selectedServiceServer
+                  }
+                >
+                  {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
+                </button>
               </div>
-
-              <button
-                className="launch-button"
-                onClick={handleWorkspaceOpen}
-                disabled={busyAction === 'workspace'}
-              >
-                {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
-              </button>
             </section>
 
             <details className="control-card compact-control update-card">
@@ -1130,6 +1048,20 @@ function getMachineStatusLabel(
     default:
       return status || copy.notConfigured
   }
+}
+
+function getServiceServerStatusLabel(
+  server: BootstrapPayload['service']['servers'][number],
+  service: BootstrapPayload['service'],
+  copy: UiCopy,
+  activeServerSlug = service.selectedServerSlug,
+) {
+  const runningServerSlug = service.activeServerSlug || activeServerSlug
+  if (service.running && server.slug === runningServerSlug) {
+    return copy.serviceRunning
+  }
+
+  return getMachineStatusLabel(server.machineStatus, copy)
 }
 
 function getErrorMessage(error: unknown) {

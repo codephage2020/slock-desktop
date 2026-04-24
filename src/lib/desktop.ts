@@ -24,6 +24,7 @@ export interface CustomThemeSnapshot {
 export interface ServiceSnapshot {
   serverUrl: string
   selectedServerSlug: string
+  activeServerSlug: string
   autoStartWithWorkspace: boolean
   authenticated: boolean
   configured: boolean
@@ -86,8 +87,8 @@ export async function updateLanguage(language: BootstrapPayload['language']) {
   return invoke<BootstrapPayload>('set_language', { language })
 }
 
-export async function openWorkspace() {
-  return invoke<BootstrapPayload>('open_workspace')
+export async function openWorkspace(selectedServerSlug?: string) {
+  return invoke<BootstrapPayload>('open_workspace', { selectedServerSlug })
 }
 
 export async function saveServiceSettings(service: ServiceSnapshot) {
@@ -112,8 +113,8 @@ export async function refreshServiceServers() {
   return invoke<BootstrapPayload>('refresh_service_servers')
 }
 
-export async function updateService() {
-  return invoke<BootstrapPayload>('update_service')
+export async function updateService(selectedServerSlug?: string) {
+  return invoke<BootstrapPayload>('update_service', { selectedServerSlug })
 }
 
 export async function saveUpdateSettings(updates: UpdateSnapshot) {

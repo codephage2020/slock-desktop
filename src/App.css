@@ -55,7 +55,7 @@
 
 .launch-side-column {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px;
 }
 
@@ -168,9 +168,121 @@
   border-radius: 22px;
 }
 
-.service-card,
+.service-launch-card,
 .update-card {
   align-self: stretch;
+}
+
+.service-launch-card {
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.service-launch-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.service-server-list {
+  min-height: 0;
+  display: grid;
+  gap: 8px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.service-server-row {
+  appearance: none;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.service-server-row:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-strong));
+}
+
+.service-server-row.selected {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.service-server-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.service-server-name-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.service-server-name {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.service-server-slug,
+.service-server-meta,
+.service-launch-selection span {
+  color: var(--muted);
+}
+
+.service-server-slug {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.74rem;
+  letter-spacing: 0.03em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-server-meta,
+.service-launch-selection span {
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+
+.service-launch-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.service-launch-selection {
+  display: grid;
+  gap: 4px;
+}
+
+.service-launch-selection strong {
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.service-launch-card .launch-button {
+  min-width: 200px;
 }
 
 .control-card h2 {
@@ -510,14 +622,18 @@ details.control-card[open] > summary::after {
     align-items: flex-start;
   }
 
-  .launch-center-card {
-    grid-template-rows: auto auto;
-  }
-
   .launch-button {
     width: 100%;
     min-width: 0;
     justify-self: stretch;
+  }
+
+  .service-launch-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .service-server-row {
+    grid-template-columns: 1fr;
   }
 
   .settings-quick-controls,
