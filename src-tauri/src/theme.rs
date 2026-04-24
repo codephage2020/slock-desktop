@@ -568,12 +568,10 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopAccountDock",
         "slockDesktopAccountAction",
         "slockDesktopProfileControl",
-        "slockDesktopTaskToolbar",
-        "slockDesktopCanvasChrome",
-        "slockDesktopSearchInput"
+        "slockDesktopTaskToolbar"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-profile-control],[data-slock-desktop-task-toolbar],[data-slock-desktop-canvas-chrome],[data-slock-desktop-search-input]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-profile-control],[data-slock-desktop-task-toolbar]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -606,32 +604,6 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           element.dataset.slockDesktopTaskToolbar = "true";
         }}
       }});
-
-      const canvasChromeSelectors = [
-        'main .relative > .flex > .flex > .flex',
-        'main .flex > .flex > .flex > .flex',
-        'main .relative > .absolute > .flex > .flex',
-        'main .flex > .relative > .absolute > .flex',
-        'main .relative > .flex > .flex > .shrink-0',
-        'main .flex.h-\\[62px\\]',
-        'main .flex.h-\\[62px\\].shrink-0'
-      ].join(',');
-      document.querySelectorAll(canvasChromeSelectors).forEach((element) => {{
-        if (!(element instanceof HTMLElement)) return;
-        if (element.closest('#slock-desktop-settings-host,nav,aside,form,button,a,[role="button"]')) return;
-        if (element.matches("input,textarea,select")) return;
-        const rect = element.getBoundingClientRect();
-        if (rect.width < 360 || rect.height < 32 || rect.height > 128) return;
-        element.dataset.slockDesktopCanvasChrome = "true";
-      }});
-
-      if (/\\/search(?:$|[/?#])/.test(window.location.pathname + window.location.search)) {{
-        document.querySelectorAll('main input.min-w-0, main input[type="search"], main input[placeholder]').forEach((element) => {{
-          if (!(element instanceof HTMLElement)) return;
-          if (element.closest('#slock-desktop-settings-host')) return;
-          element.dataset.slockDesktopSearchInput = "true";
-        }});
-      }}
 
       document
         .querySelectorAll(
@@ -1695,11 +1667,13 @@ header,
 }}
 
 .flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex,
-.flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex {{
+.flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex,
+.flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex,
+.flex.min-h-0.flex-1.flex-col > .flex > .relative > .absolute > .flex,
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 {{
   background: var(--slock-desktop-canvas) !important;
 }}
 
-[data-slock-desktop-canvas-chrome="true"],
 [data-slock-desktop-task-toolbar="true"] {{
   background: var(--slock-desktop-canvas) !important;
   border-top-color: transparent !important;
@@ -1707,7 +1681,10 @@ header,
   box-shadow: none !important;
 }}
 
-[data-slock-desktop-search-input="true"] {{
+main input.min-w-0[placeholder*="Search channels"],
+main input.min-w-0[placeholder*="搜索频道"],
+main input[placeholder*="Search channels, DMs, messages"],
+main input[placeholder*="搜索频道、私信、消息"] {{
   border-radius: var(--slock-desktop-radius-xs) !important;
   background-clip: padding-box !important;
   box-shadow: none !important;
@@ -1985,12 +1962,17 @@ mod tests {
             script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex")
         );
         assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex"));
+        assert!(script
+            .contains(".flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex"));
+        assert!(script
+            .contains(".flex.min-h-0.flex-1.flex-col > .flex > .relative > .absolute > .flex"));
         assert!(script.contains("slockDesktopTaskToolbar"));
-        assert!(script.contains("slockDesktopCanvasChrome"));
-        assert!(script.contains("slockDesktopSearchInput"));
         assert!(script.contains("data-slock-desktop-task-toolbar"));
-        assert!(script.contains("data-slock-desktop-canvas-chrome"));
-        assert!(script.contains("data-slock-desktop-search-input"));
         assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
+        assert!(script.contains(r#"main input.min-w-0[placeholder*=\"Search channels\"]"#));
+        assert!(script.contains(r#"main input.min-w-0[placeholder*=\"搜索频道\"]"#));
+        assert!(!script.contains("canvasChromeSelectors"));
+        assert!(!script.contains("querySelectorAll(canvasChromeSelectors)"));
+        assert!(!script.contains("slockDesktopCanvasChrome"));
     }
 }
