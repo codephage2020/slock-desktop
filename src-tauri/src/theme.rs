@@ -724,6 +724,7 @@ fn remote_css(theme: &ThemeDefinition) -> String {
   --slock-desktop-accent-hover: color-mix(in srgb, {accent} 88%, {text});
   --slock-desktop-accent-active: color-mix(in srgb, {accent} 72%, {text});
   --slock-desktop-selection: {accent_soft};
+  --slock-desktop-tab-selected: color-mix(in srgb, {surface} 86%, {text} 14%);
   --slock-desktop-hover: color-mix(in srgb, {text} 4%, transparent);
   --slock-desktop-active: color-mix(in srgb, {text} 8%, transparent);
   --slock-desktop-focus-ring: color-mix(in srgb, {accent} 28%, transparent);
@@ -776,6 +777,7 @@ fn remote_css(theme: &ThemeDefinition) -> String {
     --slock-desktop-text-tertiary: #8f9488;
     --slock-desktop-accent-soft: color-mix(in srgb, {accent} 22%, #1f1f1c);
     --slock-desktop-selection: color-mix(in srgb, {accent} 22%, #1f1f1c);
+    --slock-desktop-tab-selected: color-mix(in srgb, #252623 84%, #f4f4ef 16%);
     --slock-desktop-hover: rgba(244, 244, 239, 0.06);
     --slock-desktop-active: rgba(244, 244, 239, 0.1);
   }}
@@ -1001,8 +1003,9 @@ button:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:focus-visible {{
-  background: var(--slock-desktop-selection) !important;
-  color: var(--slock-desktop-accent-active) !important;
+  background: var(--slock-desktop-tab-selected) !important;
+  color: var(--slock-desktop-text) !important;
+  box-shadow: var(--slock-desktop-soft-shadow) !important;
 }}
 
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-brutal-yellow\/60 {{
@@ -1019,8 +1022,9 @@ button:hover,
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow,
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow:hover,
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow:focus-visible {{
-  background: var(--slock-desktop-selection) !important;
-  color: var(--slock-desktop-accent-active) !important;
+  background: var(--slock-desktop-tab-selected) !important;
+  color: var(--slock-desktop-text) !important;
+  box-shadow: var(--slock-desktop-soft-shadow) !important;
 }}
 
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-white,
