@@ -432,11 +432,8 @@ function App() {
     const runtimeRunning =
       snapshot.service.running &&
       (!snapshot.service.activeServerSlug || snapshot.service.activeServerSlug === selectedSlug)
-    const machineRunning = selectedServer
-      ? machineStatusCountsAsStarted(selectedServer.machineStatus)
-      : false
 
-    if (!selectedSlug || (!runtimeRunning && !machineRunning)) {
+    if (!selectedSlug || !runtimeRunning) {
       setErrorMessage(currentCopy.serviceNotRunning)
       return
     }
@@ -1100,7 +1097,7 @@ function getServiceStatusLabel(
     return copy.notConfigured
   }
 
-  return getMachineStatusLabel(selectedServer.machineStatus, copy)
+  return service.configured ? copy.serviceIdle : copy.serviceNotLinked
 }
 
 function getMachineStatusLabel(
@@ -1120,18 +1117,6 @@ function getMachineStatusLabel(
       return copy.serviceNotLinked
     default:
       return status || copy.notConfigured
-  }
-}
-
-function machineStatusCountsAsStarted(status: string) {
-  switch (status.trim().toLowerCase()) {
-    case 'online':
-    case 'running':
-    case 'healthy':
-    case 'idle':
-      return true
-    default:
-      return false
   }
 }
 

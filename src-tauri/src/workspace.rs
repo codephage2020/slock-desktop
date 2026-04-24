@@ -237,8 +237,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     return invoke(command, args);
   };
   const normalizeStatus = (status) => String(status || "").trim().toLowerCase();
-  const machineStatusCountsAsStarted = (status) =>
-    ["online", "running", "healthy", "idle"].includes(normalizeStatus(status));
   const machineStatusLabel = (status) => {
     const normalized = normalizeStatus(status);
     if (["online", "running", "healthy"].includes(normalized)) return t("serviceRunning");
@@ -263,7 +261,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     if (service.running) return t("serviceRunning");
     if (!service.authenticated) return t("serviceSignInRequired");
     const selected = selectedServiceServer();
-    if (selected) return machineStatusLabel(selected.machineStatus);
+    if (selected) return service.configured ? t("serviceIdle") : t("serviceNotLinked");
     return service.configured ? t("serviceIdle") : t("serviceNotLinked");
   };
   const syncServicePayload = (payload) => {
@@ -2215,8 +2213,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           const runtimeRunning =
             serviceSnapshot?.running &&
             (!serviceSnapshot?.activeServerSlug || serviceSnapshot.activeServerSlug === selectedServerSlug);
-          const machineRunning = selected ? machineStatusCountsAsStarted(selected.machineStatus) : false;
-          if (!selectedServerSlug || (!runtimeRunning && !machineRunning)) {
+          if (!selectedServerSlug || !runtimeRunning) {
             serviceError = t("serviceNotRunning");
             render();
             return;
@@ -2535,5 +2532,16 @@ mod tests {
         assert!(script.contains("window.location.pathname.split(\"/\").includes(\"search\")"));
         assert!(script.contains("p, div, span, [class*='empty-state'], [class*='mt-1']"));
         assert!(script.contains("Search channels, DMs, people, agents, and message history."));
+    }
+
+    #[test]
+    fn settings_overlay_stops_service_from_local_daemon_state() {
+        let script = settings_overlay_script("default", "system", "zh-CN", "zh-CN", &[]);
+
+        assert!(!script.contains("machineStatusCountsAsStarted"));
+        assert!(script.contains("if (!selectedServerSlug || !runtimeRunning)"));
+        assert!(
+            script.contains("service.configured ? t(\"serviceIdle\") : t(\"serviceNotLinked\")")
+        );
     }
 }
