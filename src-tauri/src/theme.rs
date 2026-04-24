@@ -990,15 +990,15 @@ button:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .relative.flex.items-center.border-b-2.border-black.px-4.py-3 > .relative.inline-flex.items-center.gap-1\.5.tilt-neg-2.border-2.border-black.bg-black:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .relative.flex.items-center.border-b-2.border-black.px-4.py-3 > .relative.inline-flex.items-center.gap-1\.5.tilt-neg-2.border-2.border-black.bg-black:focus-visible {{
   background: color-mix(in srgb, var(--slock-desktop-surface-strong) 88%, var(--slock-desktop-accent) 12%) !important;
-  border-color: var(--slock-desktop-line-strong) !important;
+  border-color: transparent !important;
   color: var(--slock-desktop-accent) !important;
 }}
 
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:focus-visible {{
-  background: var(--slock-desktop-accent) !important;
-  color: var(--slock-desktop-surface) !important;
+  background: var(--slock-desktop-selection) !important;
+  color: var(--slock-desktop-accent-active) !important;
 }}
 
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-brutal-yellow\/60 {{
@@ -1008,6 +1008,31 @@ button:hover,
 
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-brutal-yellow\/60:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-brutal-yellow\/60:focus-visible {{
+  background: var(--slock-desktop-hover) !important;
+  color: var(--slock-desktop-text) !important;
+}}
+
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow:hover,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow:focus-visible {{
+  background: var(--slock-desktop-selection) !important;
+  color: var(--slock-desktop-accent-active) !important;
+}}
+
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-white,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-white:hover,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-white:focus-visible,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.hover\:bg-brutal-cream,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.hover\:bg-brutal-cream:hover,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.hover\:bg-brutal-cream:focus-visible {{
+  background: transparent !important;
+  color: var(--slock-desktop-muted) !important;
+}}
+
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-white:hover,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-white:focus-visible,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.hover\:bg-brutal-cream:hover,
+.flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.hover\:bg-brutal-cream:focus-visible {{
   background: var(--slock-desktop-hover) !important;
   color: var(--slock-desktop-text) !important;
 }}
