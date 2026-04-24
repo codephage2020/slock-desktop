@@ -1370,6 +1370,32 @@ fn workspace_session_seed_script(seed: &WorkspaceSessionSeed) -> String {
     localStorage.setItem("slock_access_token", accessToken);
     localStorage.setItem("slock_refresh_token", refreshToken);
     window.__slockDesktopSessionSignature = accessToken + "::" + refreshToken;
+    const notifyTokenListeners = () => {{
+      try {{
+        window.dispatchEvent(
+          new StorageEvent("storage", {{
+            key: "slock_refresh_token",
+            newValue: refreshToken,
+            storageArea: localStorage,
+            url: window.location.href,
+          }})
+        );
+      }} catch (_) {{}}
+
+      try {{
+        const channel = new BroadcastChannel("slock-auth-tokens");
+        channel.postMessage({{
+          type: "tokens-updated",
+          sourceId: "slock-desktop-session-seed",
+          accessToken,
+          refreshToken,
+        }});
+        window.setTimeout(() => channel.close(), 1000);
+      }} catch (_) {{}}
+    }};
+    notifyTokenListeners();
+    window.setTimeout(notifyTokenListeners, 100);
+    window.setTimeout(notifyTokenListeners, 800);
     const path = window.location.pathname || "/";
     const isAuthPath = /^\/(?:login|signin|sign-in|auth)(?:\/|$)/i.test(path);
     const isRootPath = path === "/";
@@ -1384,6 +1410,16 @@ fn workspace_session_seed_script(seed: &WorkspaceSessionSeed) -> String {
     if ((isAuthPath || (isRootPath && targetPath !== "/")) && targetDiffers) {{
       window.location.replace(target.href);
     }}
+    window.setTimeout(() => {{
+      const loginFormVisible =
+        /^\/s\//.test(window.location.pathname) &&
+        !!document.querySelector("input[type='password']");
+      const reloadKey = "slock_desktop_session_seed_reload";
+      if (loginFormVisible && !sessionStorage.getItem(reloadKey)) {{
+        sessionStorage.setItem(reloadKey, "1");
+        window.location.replace(target?.href || window.location.href);
+      }}
+    }}, 1200);
   }} catch (error) {{
     console.warn("[Slock Desktop] session restore failed", error);
   }}
@@ -2235,6 +2271,9 @@ mod tests {
 
         assert!(script.contains("localStorage.setItem(\"slock_access_token\", accessToken)"));
         assert!(script.contains("localStorage.setItem(\"slock_refresh_token\", refreshToken)"));
+        assert!(script.contains("new StorageEvent(\"storage\""));
+        assert!(script.contains("new BroadcastChannel(\"slock-auth-tokens\")"));
+        assert!(script.contains("slock_desktop_session_seed_reload"));
         assert!(script.contains("window.location.replace(target.href)"));
         assert!(script.contains("\"https://app.slock.ai/s/open-have\""));
     }
