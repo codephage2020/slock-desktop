@@ -3,14 +3,15 @@ import './App.css'
 import './Settings.css'
 import {
   type BootstrapPayload,
-  type ServiceSnapshot,
   type ThemeDefinition,
   loadBootstrap,
   openExternalUrl,
   openWorkspace,
   refreshServiceServers,
   saveCustomTheme,
+  selectServiceServer,
   saveUpdateSettings,
+  stopService,
   updateTheme,
   updateLanguage,
   updateThemeMode,
@@ -120,7 +121,7 @@ const COPY = {
     serviceOffline: 'offline',
     serviceNotLinked: 'no local binding',
     serviceSignInRequired: 'sign in required',
-    serviceCopy: 'Desktop reads your server list from the signed-in Slock session, binds a local machine, and launches the daemon for the selected server.',
+    serviceCopy: 'Desktop reads your server list from the signed-in Slock session and starts the selected server in the background when it is offline.',
     selectedServer: 'Server',
     selectedServerPlaceholder: 'Choose a server',
     noServers: 'No servers available on this account yet.',
@@ -131,13 +132,16 @@ const COPY = {
     machineStatus: 'Machine status',
     autoStartService: 'Auto-start the service when launching the workspace',
     serviceSaved: 'Service command saved locally.',
-    cloudWorkspaceOnly: 'Choose a server and launch directly into that workspace. Online servers open immediately. Offline servers start automatically.',
+    cloudWorkspaceOnly: 'Choose a server to start it in the background when needed. Open Slock then enters the selected workspace.',
     saveServiceSettings: 'Save Service Settings',
     savingServiceSettings: 'Saving…',
     startService: 'Start Service',
     startingService: 'Starting…',
     stopService: 'Stop Service',
     stoppingService: 'Stopping…',
+    closeServer: 'Close server',
+    closingServer: 'Closing…',
+    serviceNotRunning: 'Selected server service is not running.',
     updateService: 'Update Daemon',
     updatingService: 'Updating…',
     updateCenterEyebrow: 'Update Center',
@@ -221,7 +225,7 @@ const COPY = {
     serviceOffline: '离线',
     serviceNotLinked: '未创建本地绑定',
     serviceSignInRequired: '需要登录',
-    serviceCopy: '桌面端会从已登录的 Slock 会话读取 server 列表，为所选 server 绑定本地 machine，并拉起对应 daemon。',
+    serviceCopy: '桌面端会从已登录的 Slock 会话读取 server 列表；所选 server 未在线时，会在后台自动拉起对应 daemon。',
     selectedServer: 'Server',
     selectedServerPlaceholder: '选择一个 server',
     noServers: '当前账号下还没有可用 server。',
@@ -232,13 +236,16 @@ const COPY = {
     machineStatus: '本地 machine 状态',
     autoStartService: '启动工作区时自动启动服务',
     serviceSaved: '服务命令已保存到本地。',
-    cloudWorkspaceOnly: '选择一个 server 后直接进入对应工作区。已在线的 server 会直接打开，未在线的 server 会自动启动。',
+    cloudWorkspaceOnly: '选择 server 后会按需在后台启动；点击打开 Slock 会进入所选工作区。',
     saveServiceSettings: '保存服务设置',
     savingServiceSettings: '保存中…',
     startService: '启动服务',
     startingService: '启动中…',
     stopService: '停止服务',
     stoppingService: '停止中…',
+    closeServer: '关闭 Server',
+    closingServer: '关闭中…',
+    serviceNotRunning: '所选 server 服务未运行。',
     updateService: '更新 Daemon',
     updatingService: '更新中…',
     updateCenterEyebrow: '更新中心',
@@ -409,6 +416,51 @@ function App() {
     }
   }
 
+  async function handleServiceStop() {
+    if (!snapshot) {
+      return
+    }
+
+    const currentCopy = getCopy(snapshot.language, snapshot.resolvedLanguage)
+    const selectedSlug =
+      snapshot.service.selectedServerSlug ||
+      snapshot.service.servers.find((server) => server.selected)?.slug ||
+      snapshot.service.servers[0]?.slug ||
+      ''
+    const runningSlug =
+      snapshot.service.activeServerSlug ||
+      (snapshot.service.running ? selectedSlug : '')
+
+    if (!snapshot.service.running || !selectedSlug || selectedSlug !== runningSlug) {
+      setErrorMessage(currentCopy.serviceNotRunning)
+      return
+    }
+
+    try {
+      setBusyAction('stop-service')
+      setErrorMessage(null)
+      const next = await stopService()
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleServiceServerSelect(selectedServerSlug: string) {
+    try {
+      setBusyAction(`select-service:${selectedServerSlug}`)
+      setErrorMessage(null)
+      const next = await selectServiceServer(selectedServerSlug)
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   async function handleUpdateSettingsSave() {
     if (!snapshot) {
       return
@@ -475,20 +527,6 @@ function App() {
     } finally {
       setBusyAction(null)
     }
-  }
-
-  function patchService(patch: Partial<ServiceSnapshot>) {
-    setSnapshot((current) =>
-      current
-        ? {
-            ...current,
-            service: {
-              ...current.service,
-              ...patch,
-            },
-          }
-        : current,
-    )
   }
 
   function patchUpdates(
@@ -720,6 +758,20 @@ function App() {
                     {serviceStatusLabel}
                   </span>
                   <button
+                    className="icon-action-button danger"
+                    onClick={handleServiceStop}
+                    disabled={busyAction === 'stop-service'}
+                    aria-label={copy.closeServer}
+                    title={copy.closeServer}
+                  >
+                    <span aria-hidden="true">
+                      {busyAction === 'stop-service' ? '…' : '⏻'}
+                    </span>
+                    <span className="sr-only">
+                      {busyAction === 'stop-service' ? copy.closingServer : copy.closeServer}
+                    </span>
+                  </button>
+                  <button
                     className="icon-action-button"
                     onClick={handleServiceRefresh}
                     disabled={busyAction === 'refresh-service'}
@@ -751,6 +803,7 @@ function App() {
               <div className="service-server-list" role="list" aria-label={copy.selectedServer}>
                 {snapshot.service.servers.map((server) => {
                   const selected = server.slug === selectedServiceSlug
+                  const selecting = busyAction === `select-service:${server.slug}`
                   const running =
                     snapshot.service.running &&
                     server.slug === snapshot.service.activeServerSlug
@@ -770,7 +823,12 @@ function App() {
                       className={`service-server-row${selected ? ' selected' : ''}${running ? ' running' : ''}`}
                       type="button"
                       aria-pressed={selected}
-                      onClick={() => patchService({ selectedServerSlug: server.slug })}
+                      disabled={
+                        busyAction?.startsWith('select-service:') ||
+                        busyAction === 'workspace' ||
+                        busyAction === 'stop-service'
+                      }
+                      onClick={() => handleServiceServerSelect(server.slug)}
                     >
                       <span className="service-server-copy">
                         <span className="service-server-name-line">
@@ -780,7 +838,7 @@ function App() {
                         <span className="service-server-meta">{serverMeta}</span>
                       </span>
                       <span className={`status-chip${running ? ' live' : ''}`}>
-                        {serverStatusLabel}
+                        {selecting ? copy.saving : serverStatusLabel}
                       </span>
                     </button>
                   )

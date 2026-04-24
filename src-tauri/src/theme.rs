@@ -565,10 +565,11 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
       const surfaceProps = [
         "slockDesktopMenuItem",
         "slockDesktopAccountDock",
-        "slockDesktopAccountAction"
+        "slockDesktopAccountAction",
+        "slockDesktopProfileControl"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-profile-control]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -647,6 +648,31 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           }}
         }});
       }});
+
+      const profileRoute = /[?&]profile=/.test(window.location.search) || /\/profile\b/i.test(window.location.pathname);
+      if (profileRoute) {{
+        document.querySelectorAll('main button, main [role="button"]').forEach((action) => {{
+          if (!(action instanceof HTMLElement)) return;
+          if (action.closest('#slock-desktop-settings-host,input,textarea,select,form')) return;
+          const label = [
+            action.textContent,
+            action.getAttribute("aria-label"),
+            action.getAttribute("title")
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .toLowerCase();
+          if (!label) return;
+          if (
+            /agent dms|agent 私信|reminders|提醒|message|发消息/.test(label) ||
+            /@/.test(label)
+          ) {{
+            action.dataset.slockDesktopProfileControl = "true";
+          }}
+        }});
+      }}
 
     }};
 
@@ -1719,6 +1745,11 @@ aside .h-12.w-12,
 [data-slock-desktop-account-action="true"],
 nav [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"],
 aside [class*="btn-brutal-sm"][data-slock-desktop-account-action="true"] {{
+  border-color: transparent !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-profile-control="true"] {{
   border-color: transparent !important;
   box-shadow: none !important;
 }}

@@ -216,8 +216,13 @@
   transform: translateY(-1px);
 }
 
+.icon-action-button.danger:hover {
+  color: color-mix(in srgb, #c24141 82%, var(--text));
+  background: color-mix(in srgb, #c24141 10%, var(--surface-strong));
+}
+
 .icon-action-button:disabled {
-  cursor: wait;
+  cursor: default;
   opacity: 0.7;
   transform: none;
 }
@@ -255,6 +260,12 @@
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--accent) 20%, var(--line));
   background: color-mix(in srgb, var(--accent) 6%, var(--surface-strong));
+}
+
+.service-server-row:disabled {
+  cursor: wait;
+  opacity: 0.78;
+  transform: none;
 }
 
 .service-server-row.selected {

@@ -91,6 +91,10 @@ export async function openWorkspace(selectedServerSlug?: string) {
   return invoke<BootstrapPayload>('open_workspace', { selectedServerSlug })
 }
 
+export async function selectServiceServer(selectedServerSlug: string) {
+  return invoke<BootstrapPayload>('select_service_server', { selectedServerSlug })
+}
+
 export async function saveServiceSettings(service: ServiceSnapshot) {
   return invoke<BootstrapPayload>('save_service_settings', {
     service: {

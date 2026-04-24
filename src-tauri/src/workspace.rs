@@ -64,6 +64,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const initialMode = __SLOCK_DESKTOP_ACTIVE_MODE__;
   const initialLanguage = __SLOCK_DESKTOP_ACTIVE_LANGUAGE__;
   const initialResolvedLanguage = __SLOCK_DESKTOP_RESOLVED_LANGUAGE__;
+  let activeSection = window.__slockDesktopSettingsSection || "appearance";
+  let serviceSnapshot = window.__slockDesktopServiceSnapshot || null;
+  let serviceBusyAction = null;
+  let serviceError = null;
   const modes = [
     { id: "light", icon: "☼", key: "modeLight" },
     { id: "dark", icon: "◐", key: "modeDark" },
@@ -84,6 +88,29 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       appearance: "Appearance",
       service: "Service",
       updates: "Updates",
+      serverSettings: "Server settings",
+      serverSettingsDescription: "Manage the selected desktop server from this workspace.",
+      serverUrl: "Server URL",
+      selectedServer: "Selected server",
+      selectedServerPlaceholder: "Choose a server",
+      serviceStatus: "Service status",
+      serviceRunning: "running",
+      serviceIdle: "idle",
+      serviceOffline: "offline",
+      serviceNotLinked: "no local binding",
+      serviceSignInRequired: "sign in required",
+      machineStatus: "Machine status",
+      noServers: "No servers available on this account yet.",
+      serviceSignInHint: "Open Slock once, sign in, and the desktop settings will sync your server list.",
+      loadingService: "Loading server settings...",
+      refreshServers: "Refresh servers",
+      refreshingServers: "Refreshing...",
+      closeServer: "Close server",
+      closingServer: "Closing...",
+      serviceNotRunning: "Selected server service is not running.",
+      openSelectedServer: "Open selected server",
+      openingServer: "Opening...",
+      startingService: "Starting...",
       mode: "Mode",
       modeLight: "Light",
       modeDark: "Dark",
@@ -115,6 +142,29 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       appearance: "外观",
       service: "服务",
       updates: "更新",
+      serverSettings: "Server 设置",
+      serverSettingsDescription: "在当前工作页管理桌面端选中的 server。",
+      serverUrl: "Server URL",
+      selectedServer: "已选 Server",
+      selectedServerPlaceholder: "选择一个 server",
+      serviceStatus: "服务状态",
+      serviceRunning: "运行中",
+      serviceIdle: "空闲",
+      serviceOffline: "离线",
+      serviceNotLinked: "未创建本地绑定",
+      serviceSignInRequired: "需要登录",
+      machineStatus: "本地 machine 状态",
+      noServers: "当前账号下还没有可用 server。",
+      serviceSignInHint: "先打开一次 Slock 并完成登录，桌面设置会同步 server 列表。",
+      loadingService: "正在读取 server 设置...",
+      refreshServers: "刷新 Server",
+      refreshingServers: "刷新中...",
+      closeServer: "关闭 Server",
+      closingServer: "关闭中...",
+      serviceNotRunning: "所选 server 服务未运行。",
+      openSelectedServer: "打开所选 Server",
+      openingServer: "打开中...",
+      startingService: "启动中...",
       mode: "模式",
       modeLight: "亮色",
       modeDark: "暗黑",
@@ -173,6 +223,67 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     return navigator.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
   };
   const t = (key) => copy[resolveLanguage()][key];
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  const invokeDesktop = async (command, args = {}) => {
+    const invoke = window.__TAURI__?.core?.invoke;
+    if (typeof invoke !== "function") {
+      throw new Error("Tauri invoke API is unavailable");
+    }
+    return invoke(command, args);
+  };
+  const normalizeStatus = (status) => String(status || "").trim().toLowerCase();
+  const machineStatusLabel = (status) => {
+    const normalized = normalizeStatus(status);
+    if (["online", "running", "healthy"].includes(normalized)) return t("serviceRunning");
+    if (["idle", "ready"].includes(normalized)) return t("serviceIdle");
+    if (["not linked", "unbound", "missing"].includes(normalized)) return t("serviceNotLinked");
+    if (!normalized || ["offline", "stopped"].includes(normalized)) return t("serviceOffline");
+    return status;
+  };
+  const selectedServiceServer = () => {
+    const service = serviceSnapshot;
+    if (!service) return null;
+    return (
+      service.servers?.find((server) => server.slug === service.selectedServerSlug) ||
+      service.servers?.find((server) => server.selected) ||
+      service.servers?.[0] ||
+      null
+    );
+  };
+  const serviceStatusText = () => {
+    const service = serviceSnapshot;
+    if (!service) return t("loadingService");
+    if (service.running) return t("serviceRunning");
+    if (!service.authenticated) return t("serviceSignInRequired");
+    const selected = selectedServiceServer();
+    if (selected) return machineStatusLabel(selected.machineStatus);
+    return service.configured ? t("serviceIdle") : t("serviceNotLinked");
+  };
+  const syncServicePayload = (payload) => {
+    if (!payload?.service) return;
+    serviceSnapshot = payload.service;
+    serviceError = null;
+    window.__slockDesktopServiceSnapshot = serviceSnapshot;
+  };
+  const loadServiceSnapshot = async (command = "bootstrap", args = {}, busy = "service-load") => {
+    serviceBusyAction = busy;
+    render();
+    try {
+      const payload = await invokeDesktop(command, args);
+      syncServicePayload(payload);
+    } catch (error) {
+      serviceError = error?.message || String(error);
+      console.warn("[Slock Desktop] service settings sync failed", error);
+    } finally {
+      serviceBusyAction = null;
+      render();
+    }
+  };
   const slockMenuCopy = {
     "en-US": {
       channels: "Channels",
@@ -301,6 +412,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       unread: "Unread",
       activity: "Activity",
       inbox: "Inbox",
+      agentDms: "Agent DMs",
+      reminders: "Reminders",
+      messageAction: "Message",
       people: "People",
       participants: "Participants",
       messages: "Messages",
@@ -565,6 +679,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       unread: "未读",
       activity: "动态",
       inbox: "收件箱",
+      agentDms: "Agent 私信",
+      reminders: "提醒",
+      messageAction: "发消息",
       people: "人员",
       participants: "参与者",
       messages: "消息",
@@ -865,6 +982,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       const text = element.textContent?.trim() || "";
       if (!text || text.length > 96) return false;
       if (isExcludedTranslationTarget(element)) return false;
+      if (/^\d+\s+active$/i.test(text)) return true;
 
       return element.matches([
         "header",
@@ -1021,6 +1139,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       "main [class*='font-bold'] span",
       "main [class*='font-semibold']",
       "main [class*='font-semibold'] span",
+      "main [class*='text-xs']",
+      "main [class*='text-xs'] span",
+      "main p",
+      "main p span",
       "main [class*='status']",
       "main [class*='status'] span",
       "main [class*='badge']",
@@ -1214,14 +1336,17 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       touch-action: manipulation;
     }
 
-    .launcher,
-    .mode-option,
-    .theme-option {
-      pointer-events: auto;
-      appearance: none;
-      border: 0;
-      cursor: pointer;
-      transition:
+	    .launcher,
+	    .mode-option,
+	    .theme-option,
+	    .nav-item,
+	    .settings-icon-button,
+	    .service-row,
+	    .service-open-button {
+	      pointer-events: auto;
+	      appearance: none;
+	      cursor: pointer;
+	      transition:
         transform 150ms ease,
         background 150ms ease,
         box-shadow 150ms ease,
@@ -1371,22 +1496,33 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       background: var(--desktop-sidebar);
     }
 
-    .nav-item {
-      min-height: 38px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px;
-      border-radius: var(--desktop-radius-md);
-      color: var(--desktop-text);
-      font-size: 13px;
-      font-weight: 600;
-    }
+	    .nav-item {
+	      appearance: none;
+	      width: 100%;
+	      min-height: 38px;
+	      display: flex;
+	      align-items: center;
+	      gap: 8px;
+	      padding: 8px;
+	      border: 0;
+	      border-radius: var(--desktop-radius-md);
+	      background: transparent;
+	      color: var(--desktop-text);
+	      font-size: 13px;
+	      font-weight: 600;
+	      text-align: left;
+	      cursor: pointer;
+	    }
 
-    .nav-item.active {
-      background: var(--desktop-selection);
-      box-shadow: none;
-    }
+	    .nav-item.active {
+	      background: var(--desktop-selection);
+	      box-shadow: none;
+	    }
+
+	    .nav-item.inert {
+	      cursor: default;
+	      color: var(--desktop-muted);
+	    }
 
     .content {
       display: grid;
@@ -1455,14 +1591,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     }
 
-    .theme-option {
-      min-height: 58px;
-      display: grid;
+	    .theme-option {
+	      min-height: 58px;
+	      display: grid;
       grid-template-columns: 52px minmax(0, 1fr) 20px;
       align-items: center;
-      gap: 10px;
-      padding: 8px;
-      border-radius: var(--desktop-radius-lg);
+	      gap: 10px;
+	      padding: 8px;
+	      border: 0;
+	      border-radius: var(--desktop-radius-lg);
       background: transparent;
       color: var(--desktop-text);
       text-align: left;
@@ -1534,9 +1671,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       text-align: center;
     }
 
-    .status {
-      min-height: 32px;
-      display: flex;
+	    .status {
+	      min-height: 32px;
+	      display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
@@ -1545,8 +1682,162 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       border-radius: var(--desktop-radius-md);
       background: var(--desktop-surface-secondary);
       color: var(--desktop-muted);
-      font-size: 12px;
-    }
+	      font-size: 12px;
+	    }
+
+	    .service-panel {
+	      display: grid;
+	      gap: 12px;
+	    }
+
+	    .service-panel-head {
+	      display: flex;
+	      align-items: flex-start;
+	      justify-content: space-between;
+	      gap: 12px;
+	    }
+
+	    .service-description,
+	    .service-empty {
+	      margin: 4px 0 0;
+	      color: var(--desktop-muted);
+	      font-size: 12px;
+	      line-height: 1.45;
+	    }
+
+	    .service-actions {
+	      display: inline-flex;
+	      gap: 6px;
+	      flex: 0 0 auto;
+	    }
+
+	    .settings-icon-button {
+	      width: 30px;
+	      height: 30px;
+	      display: inline-grid;
+	      place-items: center;
+	      padding: 0;
+	      border: 0;
+	      border-radius: var(--desktop-radius-pill);
+	      background: transparent;
+	      color: var(--desktop-muted);
+	      font-size: 14px;
+	    }
+
+	    .settings-icon-button.danger:hover {
+	      color: color-mix(in srgb, #c24141 82%, var(--desktop-text));
+	      background: color-mix(in srgb, #c24141 10%, var(--desktop-surface-secondary));
+	    }
+
+	    .settings-icon-button:disabled,
+	    .service-open-button:disabled,
+	    .service-row:disabled {
+	      cursor: default;
+	      opacity: 0.64;
+	      transform: none;
+	    }
+
+	    .service-facts {
+	      display: grid;
+	      grid-template-columns: 108px minmax(0, 1fr);
+	      gap: 7px 10px;
+	      padding: 10px;
+	      border: 1px solid var(--desktop-line);
+	      border-radius: var(--desktop-radius-md);
+	      background: var(--desktop-surface-secondary);
+	      font-size: 12px;
+	    }
+
+	    .service-facts span {
+	      color: var(--desktop-muted);
+	    }
+
+	    .service-facts strong {
+	      min-width: 0;
+	      overflow: hidden;
+	      color: var(--desktop-text);
+	      text-overflow: ellipsis;
+	      white-space: nowrap;
+	    }
+
+	    .service-list {
+	      display: grid;
+	      gap: 7px;
+	      max-height: 190px;
+	      overflow: auto;
+	    }
+
+	    .service-row {
+	      display: grid;
+	      grid-template-columns: minmax(0, 1fr) auto;
+	      align-items: center;
+	      gap: 10px;
+	      min-height: 54px;
+	      padding: 8px 10px;
+	      border: 1px solid color-mix(in srgb, var(--desktop-line) 72%, transparent);
+	      border-radius: var(--desktop-radius-md);
+	      background: transparent;
+	      color: var(--desktop-text);
+	      text-align: left;
+	    }
+
+	    .service-row.active {
+	      border-color: color-mix(in srgb, var(--desktop-accent) 28%, var(--desktop-line));
+	      background: var(--desktop-selection);
+	    }
+
+	    .service-row-copy {
+	      min-width: 0;
+	      display: grid;
+	      gap: 3px;
+	    }
+
+	    .service-row-name {
+	      min-width: 0;
+	      overflow: hidden;
+	      text-overflow: ellipsis;
+	      white-space: nowrap;
+	      font-size: 13px;
+	      font-weight: 700;
+	    }
+
+	    .service-row-meta {
+	      min-width: 0;
+	      overflow: hidden;
+	      color: var(--desktop-muted);
+	      font-size: 11px;
+	      line-height: 1.35;
+	      text-overflow: ellipsis;
+	      white-space: nowrap;
+	    }
+
+	    .service-chip {
+	      display: inline-flex;
+	      align-items: center;
+	      min-height: 24px;
+	      padding: 0 8px;
+	      border-radius: var(--desktop-radius-pill);
+	      background: var(--desktop-surface-secondary);
+	      color: var(--desktop-muted);
+	      font-size: 11px;
+	      font-weight: 700;
+	      white-space: nowrap;
+	    }
+
+	    .service-chip.live {
+	      background: var(--desktop-selection);
+	      color: var(--desktop-accent);
+	    }
+
+	    .service-open-button {
+	      min-height: 34px;
+	      border: 1px solid color-mix(in srgb, var(--desktop-accent) 32%, var(--desktop-line));
+	      border-radius: var(--desktop-radius-md);
+	      background: var(--desktop-accent);
+	      color: #ffffff;
+	      font-size: 12px;
+	      font-weight: 700;
+	    }
 
     @media (hover: hover) {
       .launcher:hover {
@@ -1561,17 +1852,31 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         background: var(--desktop-hover);
       }
 
-      .language-option:hover {
-        background: var(--desktop-hover);
-      }
-    }
+	      .language-option:hover {
+	        background: var(--desktop-hover);
+	      }
 
-    .launcher:active,
-    .language-option:active,
-    .mode-option:active,
-    .theme-option:active {
-      transform: scale(0.97);
-    }
+	      .nav-item:hover,
+	      .settings-icon-button:hover,
+	      .service-row:hover {
+	        background: var(--desktop-hover);
+	      }
+
+	      .service-open-button:hover {
+	        background: var(--desktop-accent-hover);
+	      }
+	    }
+
+	    .launcher:active,
+	    .language-option:active,
+	    .mode-option:active,
+	    .theme-option:active,
+	    .nav-item:active,
+	    .settings-icon-button:active,
+	    .service-row:active,
+	    .service-open-button:active {
+	      transform: scale(0.97);
+	    }
 
     @media (max-width: 520px) {
       .dock {
@@ -1588,16 +1893,114 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       }
     }
 
-    @media (prefers-reduced-motion: reduce) {
-      .launcher,
-      .language-option,
-      .mode-option,
-      .theme-option,
-      .panel {
+	    @media (prefers-reduced-motion: reduce) {
+	      .launcher,
+	      .language-option,
+	      .mode-option,
+	      .theme-option,
+	      .nav-item,
+	      .settings-icon-button,
+	      .service-row,
+	      .service-open-button,
+	      .panel {
         transition-duration: 1ms;
       }
-    }
+	    }
+	  `;
+
+  const navItem = (section, label) =>
+    `<button class="nav-item${activeSection === section ? " active" : ""}" type="button" data-section="${section}">${label}</button>`;
+
+  const appearanceContent = () => `
+    <p class="setting-title">${t("theme")}</p>
+    <div class="theme-list" role="radiogroup" aria-label="${t("theme")}"></div>
+    <div class="status">
+      <span>${t("saved")}</span>
+      <span>${themes.length} ${t("themes")}</span>
+    </div>
   `;
+
+  const serviceContent = () => {
+    const service = serviceSnapshot;
+    const selected = selectedServiceServer();
+    const busy = serviceBusyAction;
+    const busyRefresh = busy === "service-refresh" || busy === "service-load";
+    const busyClose = busy === "service-stop";
+    const busyOpen = busy === "service-open";
+    const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
+    const serviceNote =
+      serviceError ||
+      service?.syncError ||
+      service?.lastError ||
+      (!service
+        ? t("loadingService")
+        : !service.authenticated
+          ? t("serviceSignInHint")
+          : service.servers.length === 0
+            ? t("noServers")
+            : t("serverSettingsDescription"));
+    const servers = service?.servers || [];
+    const serverRows = servers
+      .map((server) => {
+        const selectedRow = server.slug === selectedSlug;
+        const running = service?.running && server.slug === service.activeServerSlug;
+        const status = running ? t("serviceRunning") : machineStatusLabel(server.machineStatus);
+        const busySelect = busy === `service-select:${server.slug}`;
+        const machineMeta = server.machineName
+          ? `${t("machineStatus")}: ${escapeHtml(server.machineName)}`
+          : `${t("machineStatus")}: ${escapeHtml(status)}`;
+        return `
+          <button
+            class="service-row${selectedRow ? " active" : ""}${running ? " running" : ""}"
+            type="button"
+            data-service-action="select"
+            data-server-slug="${escapeHtml(server.slug)}"
+            aria-pressed="${selectedRow}"
+            ${busy ? "disabled" : ""}
+          >
+            <span class="service-row-copy">
+              <span class="service-row-name">${escapeHtml(server.name)}</span>
+              <span class="service-row-meta">${escapeHtml(server.slug)} · ${machineMeta}</span>
+            </span>
+            <span class="service-chip${running ? " live" : ""}">${busySelect ? t("saving") : escapeHtml(status)}</span>
+          </button>
+        `;
+      })
+      .join("");
+
+    return `
+      <div class="service-panel">
+        <div class="service-panel-head">
+          <div>
+            <p class="setting-title">${t("serverSettings")}</p>
+            <p class="service-description">${escapeHtml(serviceNote)}</p>
+          </div>
+          <div class="service-actions">
+            <button class="settings-icon-button danger" type="button" data-service-action="stop" title="${t("closeServer")}" aria-label="${t("closeServer")}" ${busy ? "disabled" : ""}>
+              <span aria-hidden="true">${busyClose ? "…" : "⏻"}</span>
+            </button>
+            <button class="settings-icon-button" type="button" data-service-action="refresh" title="${t("refreshServers")}" aria-label="${t("refreshServers")}" ${busy ? "disabled" : ""}>
+              <span aria-hidden="true">${busyRefresh ? "↻" : "⟳"}</span>
+            </button>
+          </div>
+        </div>
+        <div class="service-facts">
+          <span>${t("serverUrl")}</span>
+          <strong>${escapeHtml(service?.serverUrl || "https://api.slock.ai")}</strong>
+          <span>${t("serviceStatus")}</span>
+          <strong>${escapeHtml(serviceStatusText())}</strong>
+          <span>${t("selectedServer")}</span>
+          <strong>${escapeHtml(selected?.name || selectedSlug || t("selectedServerPlaceholder"))}</strong>
+        </div>
+        <div class="service-list" role="list" aria-label="${t("selectedServer")}">
+          ${serverRows || `<p class="service-empty">${escapeHtml(serviceNote)}</p>`}
+        </div>
+        <button class="service-open-button" type="button" data-service-action="open" ${!selectedSlug || busy ? "disabled" : ""}>
+          ${busyOpen ? t("openingServer") : t("openSelectedServer")}
+        </button>
+      </div>
+    `;
+  };
 
   const render = () => {
     syncHostTheme();
@@ -1626,24 +2029,21 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         <h2>${t("title")}</h2>
         <p class="description">${t("description")}</p>
       </div>
-      <div class="quick-controls">
-        <div class="mode-list" role="radiogroup" aria-label="${t("mode")}"></div>
-        <div class="language-list" role="radiogroup" aria-label="${t("language")}"></div>
-      </div>
+      ${
+        activeSection === "appearance"
+          ? `<div class="quick-controls">
+              <div class="mode-list" role="radiogroup" aria-label="${t("mode")}"></div>
+              <div class="language-list" role="radiogroup" aria-label="${t("language")}"></div>
+            </div>`
+          : ""
+      }
       <div class="settings-grid">
         <nav class="nav" aria-label="${t("settingsSections")}">
-          <div class="nav-item active">${t("appearance")}</div>
-          <div class="nav-item">${t("service")}</div>
-          <div class="nav-item">${t("updates")}</div>
+          ${navItem("appearance", t("appearance"))}
+          ${navItem("service", t("service"))}
+          <div class="nav-item inert">${t("updates")}</div>
         </nav>
-        <div class="content">
-          <p class="setting-title">${t("theme")}</p>
-          <div class="theme-list" role="radiogroup" aria-label="${t("theme")}"></div>
-          <div class="status">
-            <span>${t("saved")}</span>
-            <span>${themes.length} ${t("themes")}</span>
-          </div>
-        </div>
+        <div class="content">${activeSection === "service" ? serviceContent() : appearanceContent()}</div>
       </div>
     `;
 
@@ -1651,7 +2051,16 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const list = inner.querySelector(".theme-list");
     const languageList = inner.querySelector(".language-list");
 
+    inner.querySelectorAll("[data-section]").forEach((item) => {
+      item.addEventListener("click", () => {
+        activeSection = item.dataset.section || "appearance";
+        window.__slockDesktopSettingsSection = activeSection;
+        render();
+      });
+    });
+
     modes.forEach((mode) => {
+      if (!modeList) return;
       const selected = mode.id === activeMode;
       const option = document.createElement("button");
       option.className = `mode-option${selected ? " active" : ""}`;
@@ -1665,6 +2074,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     });
 
     languages.forEach((language) => {
+      if (!languageList) return;
       const selected = language.id === activeLanguage;
       const option = document.createElement("button");
       option.className = `language-option${selected ? " active" : ""}`;
@@ -1678,6 +2088,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     });
 
     themes.forEach((theme) => {
+      if (!list) return;
       const selected = theme.id === activeThemeId;
       const display = themeDisplay(theme);
       const option = document.createElement("button");
@@ -1717,6 +2128,44 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       option.addEventListener("click", () => setTheme(theme.id));
       list.appendChild(option);
     });
+
+    inner.querySelectorAll("[data-service-action]").forEach((action) => {
+      action.addEventListener("click", () => {
+        const serviceAction = action.dataset.serviceAction;
+        const serverSlug = action.dataset.serverSlug;
+        if (serviceAction === "refresh") {
+          loadServiceSnapshot("refresh_service_servers", {}, "service-refresh");
+        } else if (serviceAction === "stop") {
+          const selected = selectedServiceServer();
+          const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug || "";
+          const runningSlug =
+            serviceSnapshot?.activeServerSlug ||
+            (serviceSnapshot?.running ? selectedServerSlug : "");
+          if (!serviceSnapshot?.running || !selectedServerSlug || selectedServerSlug !== runningSlug) {
+            serviceError = t("serviceNotRunning");
+            render();
+            return;
+          }
+          loadServiceSnapshot("stop_service", {}, "service-stop");
+        } else if (serviceAction === "select" && serverSlug) {
+          loadServiceSnapshot(
+            "select_service_server",
+            { selectedServerSlug: serverSlug },
+            `service-select:${serverSlug}`,
+          );
+        } else if (serviceAction === "open") {
+          const selected = selectedServiceServer();
+          const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug;
+          if (selectedServerSlug) {
+            loadServiceSnapshot("open_workspace", { selectedServerSlug }, "service-open");
+          }
+        }
+      });
+    });
+
+    if (activeSection === "service" && !serviceSnapshot && !serviceBusyAction) {
+      queueMicrotask(() => loadServiceSnapshot());
+    }
 
     panel.appendChild(inner);
 

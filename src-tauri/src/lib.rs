@@ -138,6 +138,12 @@ struct ApiMachineRegistration {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ApiMachineKeyRotation {
+    api_key: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ApiRefreshSession {
     access_token: String,
     refresh_token: String,
@@ -338,6 +344,16 @@ fn open_workspace(
         &custom_theme_input(&custom_theme),
         &selected_server_slug,
     )?;
+    build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn select_service_server(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    selected_server_slug: String,
+) -> Result<BootstrapPayload, String> {
+    persist_service_target_slug(&app, &state, Some(selected_server_slug), false)?;
     build_bootstrap(&app, &state, false)
 }
 
@@ -1022,11 +1038,10 @@ fn stop_service_process(
 
     let target_api_key = service_settings
         .and_then(|settings| {
-            let target_slug = if !settings.selected_server_slug.trim().is_empty() {
-                settings.selected_server_slug.as_str()
-            } else {
-                active_server_slug.as_deref().unwrap_or_default()
-            };
+            let target_slug = active_server_slug
+                .as_deref()
+                .filter(|slug| !slug.trim().is_empty())
+                .unwrap_or_else(|| settings.selected_server_slug.as_str());
             find_service_binding(settings, "", target_slug)
         })
         .map(|binding| binding.api_key)
@@ -1464,13 +1479,27 @@ fn ensure_machine_binding(
     settings: &ServiceSettings,
     server: &ApiServer,
 ) -> Result<ServiceMachineBinding, String> {
-    if let Some(binding) = find_service_binding(settings, &server.id, &server.slug) {
+    let existing_binding = find_service_binding(settings, &server.id, &server.slug);
+    if let Some(binding) = existing_binding.as_ref() {
         if !binding.api_key.trim().is_empty() {
-            return Ok(binding);
+            return Ok(binding.clone());
         }
     }
 
     let server_url = settings.server_url.clone();
+    let machines = fetch_server_machines(app, state, &server_url, &server.id)?;
+    if let Some(machine) = select_existing_machine(existing_binding.as_ref(), &machines) {
+        let api_key = rotate_machine_api_key(app, state, &server_url, &server.id, &machine.id)?;
+        let binding = ServiceMachineBinding {
+            server_id: server.id.clone(),
+            server_slug: server.slug.clone(),
+            machine_id: machine.id,
+            machine_name: machine.name,
+            api_key,
+        };
+        return upsert_service_binding(app, state, binding);
+    }
+
     let api_root = api_base_url(&server_url);
     let payload = load_authenticated_json::<ApiMachineRegistration>(
         app,
@@ -1493,6 +1522,57 @@ fn ensure_machine_binding(
         api_key: payload.api_key,
     };
     upsert_service_binding(app, state, binding)
+}
+
+fn select_existing_machine(
+    binding: Option<&ServiceMachineBinding>,
+    machines: &[ApiMachine],
+) -> Option<ApiMachine> {
+    if let Some(binding) = binding {
+        if let Some(machine) = machines
+            .iter()
+            .find(|machine| machine.id == binding.machine_id)
+        {
+            return Some(machine.clone());
+        }
+        let binding_name = binding.machine_name.trim();
+        if !binding_name.is_empty() {
+            if let Some(machine) = machines.iter().find(|machine| machine.name == binding_name) {
+                return Some(machine.clone());
+            }
+        }
+    }
+
+    machines
+        .iter()
+        .find(|machine| machine_counts_as_started(&machine.status))
+        .or_else(|| machines.first())
+        .cloned()
+}
+
+fn rotate_machine_api_key(
+    app: &AppHandle,
+    state: &DesktopState,
+    server_url: &str,
+    server_id: &str,
+    machine_id: &str,
+) -> Result<String, String> {
+    let api_root = api_base_url(server_url);
+    let payload = load_authenticated_json::<ApiMachineKeyRotation>(
+        app,
+        state,
+        server_url,
+        |client, access_token| {
+            client
+                .post(format!(
+                    "{api_root}/servers/{server_id}/machines/{machine_id}/rotate-key"
+                ))
+                .header("X-Server-Id", server_id)
+                .bearer_auth(access_token)
+        },
+    )?;
+
+    Ok(payload.api_key)
 }
 
 fn find_service_binding(
@@ -1823,6 +1903,7 @@ pub fn run() {
             open_workspace,
             save_service_settings,
             refresh_service_servers,
+            select_service_server,
             start_service,
             stop_service,
             update_service,
@@ -1842,7 +1923,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{daemon_command_matches, daemon_pids_from_ps_output};
+    use super::{
+        daemon_command_matches, daemon_pids_from_ps_output, select_existing_machine, ApiMachine,
+    };
+    use crate::config::ServiceMachineBinding;
 
     #[test]
     fn daemon_command_matching_respects_target_api_key() {
@@ -1877,5 +1961,51 @@ mod tests {
             daemon_pids_from_ps_output(output, Some("sk_machine_current"), "https://api.slock.ai");
 
         assert_eq!(pids, vec![101]);
+    }
+
+    #[test]
+    fn existing_machine_selection_prefers_bound_machine_before_creating_new_one() {
+        let binding = ServiceMachineBinding {
+            server_id: "server".to_string(),
+            server_slug: "slug".to_string(),
+            machine_id: "bound".to_string(),
+            machine_name: "Bound machine".to_string(),
+            api_key: String::new(),
+        };
+        let machines = vec![
+            ApiMachine {
+                id: "other".to_string(),
+                name: "Other machine".to_string(),
+                status: "online".to_string(),
+            },
+            ApiMachine {
+                id: "bound".to_string(),
+                name: "Bound machine".to_string(),
+                status: "offline".to_string(),
+            },
+        ];
+
+        let selected = select_existing_machine(Some(&binding), &machines);
+
+        assert_eq!(
+            selected.map(|machine| machine.id),
+            Some("bound".to_string())
+        );
+    }
+
+    #[test]
+    fn existing_machine_selection_reuses_any_existing_machine_without_binding() {
+        let machines = vec![ApiMachine {
+            id: "existing".to_string(),
+            name: "Existing machine".to_string(),
+            status: "offline".to_string(),
+        }];
+
+        let selected = select_existing_machine(None, &machines);
+
+        assert_eq!(
+            selected.map(|machine| machine.id),
+            Some("existing".to_string())
+        );
     }
 }
