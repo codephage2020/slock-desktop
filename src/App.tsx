@@ -118,20 +118,21 @@ const COPY = {
     serviceRunning: 'running',
     serviceIdle: 'idle',
     serviceOffline: 'offline',
-    serviceNotLinked: 'not linked',
+    serviceNotLinked: 'no local binding',
     serviceSignInRequired: 'sign in required',
     serviceCopy: 'Desktop reads your server list from the signed-in Slock session, binds a local machine, and launches the daemon for the selected server.',
     selectedServer: 'Server',
     selectedServerPlaceholder: 'Choose a server',
     noServers: 'No servers available on this account yet.',
     refreshServers: 'Refresh Servers',
+    refreshServersShort: 'Refresh',
     refreshingServers: 'Refreshing…',
     serviceSelectionSaved: 'Selected server saved locally.',
     serviceSignInHint: 'Open Slock once, sign in, and the launcher will sync your server list automatically.',
     machineStatus: 'Machine status',
     autoStartService: 'Auto-start the service when launching the workspace',
     serviceSaved: 'Service command saved locally.',
-    cloudWorkspaceOnly: 'Choose a server to launch directly into that workspace.',
+    cloudWorkspaceOnly: 'Choose a server and launch directly into that workspace. Online servers open immediately. Offline servers start automatically.',
     saveServiceSettings: 'Save Service Settings',
     savingServiceSettings: 'Saving…',
     startService: 'Start Service',
@@ -219,20 +220,21 @@ const COPY = {
     serviceRunning: '运行中',
     serviceIdle: '空闲',
     serviceOffline: '离线',
-    serviceNotLinked: '未绑定',
+    serviceNotLinked: '未创建本地绑定',
     serviceSignInRequired: '需要登录',
     serviceCopy: '桌面端会从已登录的 Slock 会话读取 server 列表，为所选 server 绑定本地 machine，并拉起对应 daemon。',
     selectedServer: 'Server',
     selectedServerPlaceholder: '选择一个 server',
     noServers: '当前账号下还没有可用 server。',
     refreshServers: '刷新 Server 列表',
+    refreshServersShort: '刷新',
     refreshingServers: '刷新中…',
     serviceSelectionSaved: '所选 server 已保存到本地。',
     serviceSignInHint: '先打开一次 Slock 并完成登录，launcher 就会自动同步 server 列表。',
     machineStatus: '本地 machine 状态',
     autoStartService: '启动工作区时自动启动服务',
     serviceSaved: '服务命令已保存到本地。',
-    cloudWorkspaceOnly: '选择一个 server 后，启动会直接进入对应工作区。',
+    cloudWorkspaceOnly: '选择一个 server 后直接进入对应工作区。已在线的 server 会直接打开，未在线的 server 会自动启动。',
     saveServiceSettings: '保存服务设置',
     savingServiceSettings: '保存中…',
     startService: '启动服务',
@@ -732,11 +734,12 @@ function App() {
 
               <div className="service-launch-toolbar">
                 <button
-                  className="theme-button muted-button"
+                  className="theme-button muted-button compact-action-button"
                   onClick={handleServiceRefresh}
                   disabled={busyAction === 'refresh-service'}
+                  title={copy.refreshServers}
                 >
-                  {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServers}
+                  {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServersShort}
                 </button>
               </div>
 
@@ -1038,6 +1041,8 @@ function getMachineStatusLabel(
 ) {
   switch (status) {
     case 'online':
+    case 'running':
+    case 'healthy':
       return copy.serviceRunning
     case 'offline':
       return copy.serviceOffline

@@ -183,6 +183,12 @@
   justify-content: flex-end;
 }
 
+.compact-action-button {
+  min-height: 34px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+}
+
 .service-server-list {
   min-height: 0;
   display: grid;

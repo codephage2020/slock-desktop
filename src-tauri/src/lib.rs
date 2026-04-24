@@ -832,7 +832,7 @@ fn collect_service_snapshot(
     let configured = servers
         .iter()
         .find(|server| server.selected)
-        .map(|server| server.api_key_ready)
+        .map(|server| server.api_key_ready || machine_counts_as_started(&server.machine_status))
         .unwrap_or(false);
 
     Ok(ServiceSnapshot {
@@ -860,6 +860,9 @@ fn maybe_start_service(
         || (settings.auto_start_with_workspace && !settings.selected_server_slug.trim().is_empty());
 
     if should_start {
+        if selected_server_is_started(app, state, settings)? {
+            return Ok(());
+        }
         force_start_service(app, state, settings)?;
     }
 
@@ -1117,33 +1120,48 @@ fn fetch_service_servers(
     let mut snapshots = Vec::with_capacity(servers.len());
     for server in servers {
         let binding = find_service_binding(settings, &server.id, &server.slug);
-        let machine = if let Some(binding) = binding.as_ref() {
-            fetch_bound_machine(app, state, &server_url, &server.id, &binding.machine_id)?
-        } else {
-            None
-        };
+        let machines = fetch_server_machines(app, state, &server_url, &server.id)?;
+        let bound_machine = binding.as_ref().and_then(|binding| {
+            machines
+                .iter()
+                .find(|machine| machine.id == binding.machine_id)
+        });
+        let active_machine = bound_machine
+            .or_else(|| {
+                machines
+                    .iter()
+                    .find(|machine| machine_counts_as_started(&machine.status))
+            })
+            .or_else(|| machines.first());
+        let machine_status = active_machine
+            .map(|machine| normalize_machine_status(&machine.status))
+            .unwrap_or_else(|| {
+                if binding.is_some() {
+                    "offline".to_string()
+                } else {
+                    "not linked".to_string()
+                }
+            });
 
         snapshots.push(ServiceServerSnapshot {
             id: server.id.clone(),
             name: server.name,
             slug: server.slug.clone(),
             selected: server.slug == settings.selected_server_slug,
-            machine_id: binding.as_ref().map(|item| item.machine_id.clone()),
-            machine_name: machine.as_ref().map(|item| item.name.clone()).or_else(|| {
-                binding
-                    .as_ref()
-                    .map(|item| item.machine_name.clone())
-                    .filter(|name| !name.is_empty())
-            }),
-            machine_status: machine
-                .map(|item| normalize_machine_status(&item.status))
-                .unwrap_or_else(|| {
-                    if binding.is_some() {
-                        "offline".to_string()
-                    } else {
-                        "not linked".to_string()
-                    }
-                }),
+            machine_id: binding
+                .as_ref()
+                .map(|item| item.machine_id.clone())
+                .or_else(|| active_machine.map(|machine| machine.id.clone())),
+            machine_name: bound_machine
+                .map(|machine| machine.name.clone())
+                .or_else(|| {
+                    binding
+                        .as_ref()
+                        .map(|item| item.machine_name.clone())
+                        .filter(|name| !name.is_empty())
+                })
+                .or_else(|| active_machine.map(|machine| machine.name.clone())),
+            machine_status,
             api_key_ready: binding
                 .as_ref()
                 .map(|item| !item.api_key.trim().is_empty())
@@ -1154,13 +1172,12 @@ fn fetch_service_servers(
     Ok(snapshots)
 }
 
-fn fetch_bound_machine(
+fn fetch_server_machines(
     app: &AppHandle,
     state: &DesktopState,
     server_url: &str,
     server_id: &str,
-    machine_id: &str,
-) -> Result<Option<ApiMachine>, String> {
+) -> Result<Vec<ApiMachine>, String> {
     let api_root = api_base_url(server_url);
     let payload = load_authenticated_json::<serde_json::Value>(
         app,
@@ -1182,9 +1199,7 @@ fn fetch_bound_machine(
             .machines
     };
 
-    Ok(machines
-        .into_iter()
-        .find(|machine| machine.id == machine_id))
+    Ok(machines)
 }
 
 fn resolve_selected_server(
@@ -1310,6 +1325,25 @@ fn normalize_machine_status(status: &str) -> String {
     } else {
         status.to_string()
     }
+}
+
+fn machine_counts_as_started(status: &str) -> bool {
+    matches!(
+        normalize_machine_status(status).as_str(),
+        "online" | "running" | "idle" | "healthy"
+    )
+}
+
+fn selected_server_is_started(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+) -> Result<bool, String> {
+    let selected_server = resolve_selected_server(app, state, settings)?;
+    let machines = fetch_server_machines(app, state, &settings.server_url, &selected_server.id)?;
+    Ok(machines
+        .iter()
+        .any(|machine| machine_counts_as_started(&machine.status)))
 }
 
 fn persist_service_target_slug(
