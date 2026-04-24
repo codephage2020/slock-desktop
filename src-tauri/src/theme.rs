@@ -1660,11 +1660,9 @@ header,
 .flex.min-h-0.flex-1.flex-col > :is(.relative.flex.items-center, .flex.overflow-x-auto)[class*="border-t-2"],
 .flex.min-h-0.flex-1.flex-col > .flex.h-\[62px\],
 .flex.min-h-0.flex-1.flex-col > .flex.h-\[62px\].shrink-0,
-.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex[class*="border"],
 .flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex[class*="border"],
-.flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex[class*="border"],
 .flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex[class*="border"],
-.flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex[class*="border"],
+.flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex.h-\[62px\][class*="border"],
 .flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex[class*="border"],
 .flex.min-h-0.flex-1.flex-col > .flex > .relative > .absolute > .flex[class*="border"],
 .flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0[class*="border"] {{
@@ -1673,11 +1671,9 @@ header,
   box-shadow: none !important;
 }}
 
-.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex,
 .flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex,
-.flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex,
 .flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex,
-.flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex,
+.flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex.h-\[62px\],
 .flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex,
 .flex.min-h-0.flex-1.flex-col > .flex > .relative > .absolute > .flex,
 .flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 {{
@@ -1988,12 +1984,14 @@ mod tests {
         assert!(
             script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex")
         );
-        assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex"));
-        assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex"));
         assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex"));
-        assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex"));
+        assert!(script.contains(
+            ".flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex.h-\\\\[62px\\\\]"
+        ));
         assert!(script
             .contains(".flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex"));
+        assert!(!script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex,\n"));
+        assert!(!script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex,\n"));
         assert!(script
             .contains(".flex.min-h-0.flex-1.flex-col > .flex > .relative > .absolute > .flex"));
         assert!(script.contains(
