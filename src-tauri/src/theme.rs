@@ -505,6 +505,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
             '[class*="bg-brutal"]',
             '[class*="text-brutal"]',
             '[class*="border-brutal"]',
+            '[class*="ml-auto"]',
             '[data-state]',
             '[aria-label*="task" i]',
             '[aria-label*="任务"]'
@@ -530,6 +531,9 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
             );
 
           const brutalColor = resolveBrutalColor(className);
+          const filledCountChrome =
+            /(?:^|\\s)bg-brutal-/.test(className) ||
+            /(?:^|\\s)border-brutal-/.test(className);
           if (brutalColor && badgeLike) {{
             element.dataset.slockDesktopSemanticColor = brutalColor;
             element.dataset.slockDesktopSemanticShape = tinyDot ? "dot" : "chip";
@@ -540,7 +544,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 
           const numericCount = /^\\d+\\+?$/.test(text);
           if (badgeLike && numericCount && !tinyDot) {{
-            element.dataset.slockDesktopCountTone = brutalColor ? "accent" : "plain";
+            element.dataset.slockDesktopCountTone = filledCountChrome ? "plain" : "accent";
           }} else {{
             delete element.dataset.slockDesktopCountTone;
           }}
@@ -1390,7 +1394,7 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 }}
 
 [data-slock-desktop-count-tone="accent"] {{
-  color: color-mix(in srgb, var(--slock-desktop-semantic-current) 78%, var(--slock-desktop-text)) !important;
+  color: color-mix(in srgb, var(--slock-semantic-pink) 90%, var(--slock-desktop-text)) !important;
   font-weight: 650 !important;
 }}
 
@@ -1660,12 +1664,12 @@ aside .h-12.w-12,
   box-shadow: none !important;
 }}
 
-.ml-auto.shrink-0.rounded,
-.rounded.bg-brutal-pink,
-.inline-flex.items-center.gap-1.border,
-.inline-flex.items-center.gap-1\.5.border,
-.inline-flex.items-center.px-1\.5,
-.shrink-0.inline-flex.items-center {{
+.ml-auto.shrink-0.rounded:not([data-slock-desktop-count-tone]),
+.rounded.bg-brutal-pink:not([data-slock-desktop-count-tone]),
+.inline-flex.items-center.gap-1.border:not([data-slock-desktop-count-tone]),
+.inline-flex.items-center.gap-1\.5.border:not([data-slock-desktop-count-tone]),
+.inline-flex.items-center.px-1\.5:not([data-slock-desktop-count-tone]),
+.shrink-0.inline-flex.items-center:not([data-slock-desktop-count-tone]) {{
   border-color: var(--slock-desktop-line) !important;
   border-radius: var(--slock-desktop-radius-pill) !important;
   background: var(--slock-desktop-accent-soft) !important;
@@ -1810,5 +1814,28 @@ impl From<ThemeDefinition> for ThemeMeta {
             accent_soft: value.accent_soft,
             preview: value.preview,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{injected_script, resolve_theme, CustomThemeInput};
+
+    #[test]
+    fn injected_script_contains_unread_count_tone_fixups() {
+        let script = injected_script(resolve_theme(
+            "default",
+            "light",
+            &CustomThemeInput {
+                name: "Custom".to_string(),
+                accent: "#10a37f".to_string(),
+            },
+        ));
+
+        assert!(script.contains("'[class*=\"ml-auto\"]'"));
+        assert!(script.contains(
+            "element.dataset.slockDesktopCountTone = filledCountChrome ? \"plain\" : \"accent\";"
+        ));
+        assert!(script.contains("var(--slock-semantic-pink) 90%"));
     }
 }

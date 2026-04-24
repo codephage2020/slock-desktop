@@ -12,6 +12,8 @@ use std::{
     env,
     process::{Child, Command, Stdio},
     sync::Mutex,
+    thread::sleep,
+    time::Duration,
 };
 use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
@@ -378,7 +380,15 @@ fn stop_service(
     app: AppHandle,
     state: State<'_, DesktopState>,
 ) -> Result<BootstrapPayload, String> {
-    stop_service_process(&state)?;
+    let service_settings = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        settings.service.clone()
+    };
+
+    stop_service_process(&state, Some(&service_settings))?;
     build_bootstrap(&app, &state, true)
 }
 
@@ -405,7 +415,7 @@ fn update_service(
         settings.service.clone()
     };
 
-    stop_service_process(&state)?;
+    stop_service_process(&state, Some(&service_settings))?;
     force_start_service(&app, &state, &service_settings)?;
     build_bootstrap(&app, &state, false)
 }
@@ -987,17 +997,47 @@ fn force_start_service(
     Ok(())
 }
 
-fn stop_service_process(state: &DesktopState) -> Result<(), String> {
+fn stop_service_process(
+    state: &DesktopState,
+    service_settings: Option<&ServiceSettings>,
+) -> Result<(), String> {
     let mut runtime = state
         .service
         .lock()
         .map_err(|_| "Unable to lock service runtime".to_string())?;
+    let active_server_slug = runtime.active_server_slug.clone();
 
     if let Some(child) = runtime.child.as_mut() {
-        child
-            .kill()
-            .map_err(|err| format!("Failed to stop service: {err}"))?;
+        let still_running = child
+            .try_wait()
+            .map_err(|err| format!("Unable to inspect service state: {err}"))?
+            .is_none();
+        if still_running {
+            child
+                .kill()
+                .map_err(|err| format!("Failed to stop service: {err}"))?;
+        }
         let _ = child.wait();
+    }
+
+    let target_api_key = service_settings
+        .and_then(|settings| {
+            let target_slug = if !settings.selected_server_slug.trim().is_empty() {
+                settings.selected_server_slug.as_str()
+            } else {
+                active_server_slug.as_deref().unwrap_or_default()
+            };
+            find_service_binding(settings, "", target_slug)
+        })
+        .map(|binding| binding.api_key)
+        .filter(|api_key| !api_key.trim().is_empty());
+    let target_server_url = service_settings
+        .map(|settings| settings.server_url.as_str())
+        .unwrap_or(DEFAULT_SERVER_URL);
+
+    let daemon_pids = find_daemon_process_ids(target_api_key.as_deref(), target_server_url)?;
+    for pid in daemon_pids {
+        terminate_daemon_process(pid)?;
     }
 
     runtime.child = None;
@@ -1005,6 +1045,125 @@ fn stop_service_process(state: &DesktopState) -> Result<(), String> {
     runtime.active_server_slug = None;
     runtime.active_machine_id = None;
     Ok(())
+}
+
+fn find_daemon_process_ids(
+    target_api_key: Option<&str>,
+    target_server_url: &str,
+) -> Result<Vec<u32>, String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let output = Command::new("ps")
+            .args(["-axo", "pid=,command="])
+            .output()
+            .map_err(|err| format!("Failed to inspect daemon processes: {err}"))?;
+        if !output.status.success() {
+            return Err("Failed to inspect daemon processes".to_string());
+        }
+
+        let listing = String::from_utf8_lossy(&output.stdout);
+        Ok(daemon_pids_from_ps_output(
+            &listing,
+            target_api_key,
+            target_server_url,
+        ))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = target_api_key;
+        let _ = target_server_url;
+        Ok(Vec::new())
+    }
+}
+
+fn daemon_pids_from_ps_output(
+    output: &str,
+    target_api_key: Option<&str>,
+    target_server_url: &str,
+) -> Vec<u32> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let split_index = trimmed.find(char::is_whitespace)?;
+            let (pid_text, command_text) = trimmed.split_at(split_index);
+            let pid = pid_text.parse::<u32>().ok()?;
+            let command = command_text.trim();
+            if daemon_command_matches(command, target_api_key, target_server_url) {
+                Some(pid)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn daemon_command_matches(
+    command: &str,
+    target_api_key: Option<&str>,
+    target_server_url: &str,
+) -> bool {
+    let daemon_marker = command.contains("@slock-ai/daemon") || command.contains("slock-ai/daemon");
+    if !daemon_marker || !command.contains("--server-url") || !command.contains(target_server_url) {
+        return false;
+    }
+
+    if let Some(api_key) = target_api_key.filter(|api_key| !api_key.trim().is_empty()) {
+        return command.contains("--api-key") && command.contains(api_key);
+    }
+
+    true
+}
+
+fn terminate_daemon_process(pid: u32) -> Result<(), String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let pid_text = pid.to_string();
+        let status = Command::new("kill")
+            .args(["-TERM", pid_text.as_str()])
+            .status()
+            .map_err(|err| format!("Failed to stop daemon process {pid}: {err}"))?;
+        if !status.success() {
+            return Err(format!("Failed to stop daemon process {pid}"));
+        }
+
+        sleep(Duration::from_millis(250));
+        if process_is_alive(pid)? {
+            let kill_status = Command::new("kill")
+                .args(["-KILL", pid_text.as_str()])
+                .status()
+                .map_err(|err| format!("Failed to force-stop daemon process {pid}: {err}"))?;
+            if !kill_status.success() {
+                return Err(format!("Failed to force-stop daemon process {pid}"));
+            }
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = pid;
+    }
+
+    Ok(())
+}
+
+fn process_is_alive(pid: u32) -> Result<bool, String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let pid_text = pid.to_string();
+        let status = Command::new("kill")
+            .args(["-0", pid_text.as_str()])
+            .status()
+            .map_err(|err| format!("Failed to inspect daemon process {pid}: {err}"))?;
+        Ok(status.success())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = pid;
+        Ok(false)
+    }
 }
 
 fn sanitize_service_settings(service: ServiceSettings) -> ServiceSettings {
@@ -1676,7 +1835,47 @@ pub fn run() {
     app.run(|app: &AppHandle, event: RunEvent| {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
             let state = app.state::<DesktopState>();
-            let _ = stop_service_process(&state);
+            let _ = stop_service_process(&state, None);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{daemon_command_matches, daemon_pids_from_ps_output};
+
+    #[test]
+    fn daemon_command_matching_respects_target_api_key() {
+        let command = "node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_current";
+
+        assert!(daemon_command_matches(
+            command,
+            Some("sk_machine_current"),
+            "https://api.slock.ai"
+        ));
+        assert!(!daemon_command_matches(
+            command,
+            Some("sk_machine_other"),
+            "https://api.slock.ai"
+        ));
+        assert!(!daemon_command_matches(
+            command,
+            Some("sk_machine_current"),
+            "https://other.slock.ai"
+        ));
+    }
+
+    #[test]
+    fn daemon_pid_parser_keeps_only_matching_target_processes() {
+        let output = r#"
+  101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_current
+  102 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_other
+  103 node /tmp/another-command --server-url https://api.slock.ai --api-key sk_machine_current
+"#;
+
+        let pids =
+            daemon_pids_from_ps_output(output, Some("sk_machine_current"), "https://api.slock.ai");
+
+        assert_eq!(pids, vec![101]);
+    }
 }
