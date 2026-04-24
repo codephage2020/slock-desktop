@@ -12,7 +12,7 @@ use std::{
     env,
     process::{Child, Command, Stdio},
     sync::Mutex,
-    thread::sleep,
+    thread::{self, sleep},
     time::Duration,
 };
 use tauri::{
@@ -65,6 +65,13 @@ struct ServiceRuntime {
     active_machine_id: Option<String>,
     cached_servers: Vec<ServiceServerSnapshot>,
     cached_sync_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct WorkspaceSessionSeed {
+    access_token: String,
+    refresh_token: String,
+    target_url: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -320,7 +327,6 @@ fn open_workspace(
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         settings.service.clone()
     };
-    maybe_start_service(&app, &state, &service_settings, true)?;
 
     let (color_scheme, appearance_mode, custom_theme, language, selected_server_slug) = {
         let settings = state
@@ -338,12 +344,14 @@ fn open_workspace(
 
     enter_workspace_in_main_window(
         &app,
+        &state,
         &color_scheme,
         &appearance_mode,
         &language,
         &custom_theme_input(&custom_theme),
         &selected_server_slug,
     )?;
+    start_workspace_service_in_background(app.clone(), service_settings);
     build_bootstrap(&app, &state, false)
 }
 
@@ -506,6 +514,7 @@ fn build_bootstrap(
 
 fn enter_workspace_in_main_window(
     app: &AppHandle,
+    state: &DesktopState,
     theme_id: &str,
     theme_mode: &str,
     language: &str,
@@ -528,6 +537,7 @@ fn enter_workspace_in_main_window(
         let _ = window.set_focus();
         apply_window_theme(&window, theme_mode);
         apply_window_language(app, &window, language, true);
+        apply_workspace_session_seed_to_window(&window, state)?;
         if window.url().ok().as_ref() != Some(&target_url) {
             return window.navigate(target_url).map_err(|err| err.to_string());
         }
@@ -544,7 +554,6 @@ fn enter_workspace_in_main_window(
 
     apply_window_language(app, &window, language, true);
     apply_window_theme(&window, theme_mode);
-    apply_workspace_window_size(&window);
     let _ = window.set_focus();
     window.navigate(target_url).map_err(|err| err.to_string())
 }
@@ -562,6 +571,18 @@ fn apply_launcher_window_size(window: &tauri::WebviewWindow) {
 }
 
 fn apply_workspace_window_size(window: &tauri::WebviewWindow) {
+    let _ = window.set_min_size(Some(LogicalSize::new(
+        WORKSPACE_WINDOW_MIN_WIDTH,
+        WORKSPACE_WINDOW_MIN_HEIGHT,
+    )));
+    let _ = window.set_size(LogicalSize::new(
+        WORKSPACE_WINDOW_WIDTH,
+        WORKSPACE_WINDOW_HEIGHT,
+    ));
+    let _ = window.center();
+}
+
+fn apply_workspace_window_size_to_window(window: &tauri::Window) {
     let _ = window.set_min_size(Some(LogicalSize::new(
         WORKSPACE_WINDOW_MIN_WIDTH,
         WORKSPACE_WINDOW_MIN_HEIGHT,
@@ -777,6 +798,30 @@ fn apply_workspace_scripts_to_window(
     Ok(())
 }
 
+fn apply_workspace_session_seed_to_window(
+    window: &tauri::WebviewWindow,
+    state: &DesktopState,
+) -> Result<(), String> {
+    let Some(seed) = current_workspace_session_seed(state)? else {
+        return Ok(());
+    };
+    window
+        .eval(workspace_session_seed_script(&seed))
+        .map_err(|err| err.to_string())
+}
+
+fn apply_workspace_session_seed_to_webview(
+    webview: &tauri::Webview,
+    state: &DesktopState,
+) -> Result<(), String> {
+    let Some(seed) = current_workspace_session_seed(state)? else {
+        return Ok(());
+    };
+    webview
+        .eval(workspace_session_seed_script(&seed))
+        .map_err(|err| err.to_string())
+}
+
 fn apply_workspace_scripts_to_webview(
     webview: &tauri::Webview,
     theme: theme::ThemeDefinition,
@@ -959,6 +1004,22 @@ fn maybe_start_service(
     }
 
     Ok(())
+}
+
+fn start_workspace_service_in_background(app: AppHandle, settings: ServiceSettings) {
+    if settings.selected_server_slug.trim().is_empty() {
+        return;
+    }
+
+    thread::spawn(move || {
+        let state = app.state::<DesktopState>();
+        if let Err(err) = maybe_start_service(&app, &state, &settings, true) {
+            log::warn!("failed to start workspace service in background: {err}");
+            if let Ok(mut runtime) = state.service.lock() {
+                runtime.last_error = Some(err);
+            }
+        }
+    });
 }
 
 fn force_start_service(
@@ -1269,6 +1330,65 @@ fn current_session_tokens(state: &DesktopState) -> Result<Option<(String, String
     } else {
         Ok(Some((access_token, refresh_token)))
     }
+}
+
+fn current_workspace_session_seed(
+    state: &DesktopState,
+) -> Result<Option<WorkspaceSessionSeed>, String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    let access_token = settings.session.access_token.trim().to_string();
+    let refresh_token = settings.session.refresh_token.trim().to_string();
+    if access_token.is_empty() || refresh_token.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(WorkspaceSessionSeed {
+        access_token,
+        refresh_token,
+        target_url: workspace_url_for_slug(&settings.service.selected_server_slug),
+    }))
+}
+
+fn workspace_session_seed_script(seed: &WorkspaceSessionSeed) -> String {
+    let access_token =
+        serde_json::to_string(&seed.access_token).unwrap_or_else(|_| "\"\"".to_string());
+    let refresh_token =
+        serde_json::to_string(&seed.refresh_token).unwrap_or_else(|_| "\"\"".to_string());
+    let target_url = serde_json::to_string(&seed.target_url).unwrap_or_else(|_| "\"\"".to_string());
+
+    format!(
+        r#"(function() {{
+  try {{
+    if (window.location.origin !== "https://app.slock.ai") return;
+    const accessToken = {access_token};
+    const refreshToken = {refresh_token};
+    const targetUrl = {target_url};
+    if (!accessToken || !refreshToken) return;
+    localStorage.setItem("slock_access_token", accessToken);
+    localStorage.setItem("slock_refresh_token", refreshToken);
+    window.__slockDesktopSessionSignature = accessToken + "::" + refreshToken;
+    const path = window.location.pathname || "/";
+    const isAuthPath = /^\/(?:login|signin|sign-in|auth)(?:\/|$)/i.test(path);
+    const isRootPath = path === "/";
+    const target = targetUrl ? new URL(targetUrl, window.location.origin) : null;
+    const targetPath = target?.pathname || "/";
+    const targetDiffers =
+      target &&
+      target.origin === window.location.origin &&
+      (window.location.pathname !== target.pathname ||
+        window.location.search !== target.search ||
+        window.location.hash !== target.hash);
+    if ((isAuthPath || (isRootPath && targetPath !== "/")) && targetDiffers) {{
+      window.location.replace(target.href);
+    }}
+  }} catch (error) {{
+    console.warn("[Slock Desktop] session restore failed", error);
+  }}
+}})();"#
+    )
 }
 
 fn api_base_url(server_url: &str) -> String {
@@ -1897,11 +2017,26 @@ pub fn run() {
             }),
         })
         .on_page_load(|webview, payload| {
-            if webview.label() != MAIN_LABEL
-                || !matches!(payload.event(), PageLoadEvent::Finished)
-                || !is_workspace_url(payload.url())
-            {
+            if webview.label() != MAIN_LABEL || !is_workspace_url(payload.url()) {
                 return;
+            }
+
+            if matches!(payload.event(), PageLoadEvent::Started) {
+                let state = webview.state::<DesktopState>();
+                if let Err(err) = apply_workspace_session_seed_to_webview(webview, &state) {
+                    log::warn!("failed to seed workspace session: {err}");
+                }
+                apply_workspace_window_size_to_window(&webview.window());
+                return;
+            }
+
+            if !matches!(payload.event(), PageLoadEvent::Finished) {
+                return;
+            }
+
+            let state = webview.state::<DesktopState>();
+            if let Err(err) = apply_workspace_session_seed_to_webview(webview, &state) {
+                log::warn!("failed to seed workspace session: {err}");
             }
 
             let (color_scheme, appearance_mode, custom_theme, language) = webview
@@ -2004,7 +2139,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        daemon_command_matches, daemon_pids_from_ps_output, select_existing_machine, ApiMachine,
+        daemon_command_matches, daemon_pids_from_ps_output, select_existing_machine,
+        workspace_session_seed_script, ApiMachine, WorkspaceSessionSeed,
     };
     use crate::config::ServiceMachineBinding;
 
@@ -2087,5 +2223,19 @@ mod tests {
             selected.map(|machine| machine.id),
             Some("existing".to_string())
         );
+    }
+
+    #[test]
+    fn workspace_session_seed_script_restores_tokens_and_target_route() {
+        let script = workspace_session_seed_script(&WorkspaceSessionSeed {
+            access_token: "access-token".to_string(),
+            refresh_token: "refresh-token".to_string(),
+            target_url: "https://app.slock.ai/s/open-have".to_string(),
+        });
+
+        assert!(script.contains("localStorage.setItem(\"slock_access_token\", accessToken)"));
+        assert!(script.contains("localStorage.setItem(\"slock_refresh_token\", refreshToken)"));
+        assert!(script.contains("window.location.replace(target.href)"));
+        assert!(script.contains("\"https://app.slock.ai/s/open-have\""));
     }
 }
