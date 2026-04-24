@@ -587,20 +587,30 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
       const taskToolbarSelectors = [
         'main .relative > .flex > .flex > .flex',
-        'main .flex > .flex > .flex > .flex'
+        'main .flex > .flex > .flex > .flex',
+        'main .shrink-0 > .flex > .relative'
       ].join(',');
       document.querySelectorAll(taskToolbarSelectors).forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         if (element.closest('#slock-desktop-settings-host,nav,aside,form')) return;
         const rect = element.getBoundingClientRect();
-        if (rect.width < 360 || rect.height < 32 || rect.height > 180) return;
         const label = normalizeSurfaceText(element.textContent);
         const hasTaskAction = /new task|create task|add task|新建任务|创建任务|添加任务/.test(label);
         const hasTaskFilter =
           /(todo|to do|待办)/.test(label) &&
           /(in progress|doing|进行中)/.test(label) &&
           /(done|完成)/.test(label);
-        if (hasTaskAction && hasTaskFilter) {{
+        const hasTaskViewToggle =
+          /(board|kanban|看板)/.test(label) &&
+          /(list|列表)/.test(label);
+        const hasChannelFilter =
+          /(channel|频道)/.test(label) &&
+          element.querySelectorAll('button,[role="button"],.inline-flex').length <= 4;
+        const matchesTaskToolbar =
+          hasTaskAction && hasTaskFilter && rect.width >= 360 && rect.height >= 32 && rect.height <= 180;
+        const matchesCompactControl =
+          (hasTaskViewToggle || hasChannelFilter) && rect.width >= 56 && rect.width <= 420 && rect.height >= 24 && rect.height <= 96;
+        if (matchesTaskToolbar || matchesCompactControl) {{
           element.dataset.slockDesktopTaskToolbar = "true";
         }}
       }});
@@ -1053,9 +1063,9 @@ button:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:focus-visible {{
-  background: var(--slock-desktop-tab-selected) !important;
+  background: var(--slock-desktop-selection) !important;
   color: var(--slock-desktop-text) !important;
-  box-shadow: var(--slock-desktop-soft-shadow) !important;
+  box-shadow: none !important;
 }}
 
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-brutal-yellow\/60 {{
@@ -1087,9 +1097,9 @@ button:hover,
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow,
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow:hover,
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow:focus-visible {{
-  background: var(--slock-desktop-tab-selected) !important;
+  background: var(--slock-desktop-selection) !important;
   color: var(--slock-desktop-text) !important;
-  box-shadow: var(--slock-desktop-soft-shadow) !important;
+  box-shadow: none !important;
 }}
 
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-white,
@@ -1355,7 +1365,7 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold:not([data-slock-de
 .flex.w-full.items-center.gap-2.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold:not([data-slock-desktop-account-action="true"]) {{
   background: var(--slock-desktop-selection) !important;
   color: var(--slock-desktop-text) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slock-desktop-accent) 20%, transparent) !important;
+  box-shadow: none !important;
 }}
 
 [class*="sidebar"] [class*="bg-brutal"],
@@ -1393,6 +1403,8 @@ aside .border-black.bg-brutal-pink.shadow-brutal-sm.font-bold:not([data-slock-de
 button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold:not([data-slock-desktop-account-action="true"]),
 .flex.w-full.items-center.gap-1\.5.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold:not([data-slock-desktop-account-action="true"]) {{
   background: var(--slock-desktop-selection) !important;
+  color: var(--slock-desktop-text) !important;
+  box-shadow: none !important;
 }}
 
 [data-slock-desktop-semantic-color="yellow"] {{
@@ -1665,7 +1677,12 @@ header,
 .flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex.h-\[62px\][class*="border"],
 .flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex[class*="border"],
 .flex.min-h-0.flex-1.flex-col > .flex > .relative > .absolute > .flex[class*="border"],
-.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0[class*="border"] {{
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0[class*="border"],
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .shrink-0.border-b-2,
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .relative.flex.items-center.border-b-2,
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .flex.items-start.gap-2.border-b-2,
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .flex.h-\[62px\],
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .border-b-2.bg-white {{
   border-top-color: transparent !important;
   border-bottom-color: transparent !important;
   box-shadow: none !important;
@@ -1676,7 +1693,12 @@ header,
 .flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex.h-\[62px\],
 .flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex,
 .flex.min-h-0.flex-1.flex-col > .flex > .relative > .absolute > .flex,
-.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 {{
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0,
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .shrink-0.border-b-2,
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .relative.flex.items-center.border-b-2,
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .flex.items-start.gap-2.border-b-2,
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .flex.h-\[62px\],
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .border-b-2.bg-white {{
   background: var(--slock-desktop-canvas) !important;
 }}
 
@@ -1684,6 +1706,68 @@ header,
   background: var(--slock-desktop-canvas) !important;
   border-top-color: transparent !important;
   border-bottom-color: transparent !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-task-toolbar="true"] button.bg-white,
+[data-slock-desktop-task-toolbar="true"] button.hover\:bg-brutal-cream,
+[data-slock-desktop-task-toolbar="true"] button[class*="bg-brutal-yellow\/40"],
+[data-slock-desktop-task-toolbar="true"] button[class*="bg-brutal-cream"],
+[data-slock-desktop-task-toolbar="true"] > .inline-flex.bg-white,
+[data-slock-desktop-task-toolbar="true"] > .inline-flex[class*="bg-brutal-yellow\/40"],
+[data-slock-desktop-task-toolbar="true"] > [role="button"].bg-white,
+[data-slock-desktop-task-toolbar="true"] > [role="button"][class*="bg-brutal-yellow\/40"] {{
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--slock-desktop-muted) !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-task-toolbar="true"] button.bg-white:hover,
+[data-slock-desktop-task-toolbar="true"] button.bg-white:focus-visible,
+[data-slock-desktop-task-toolbar="true"] button.hover\:bg-brutal-cream:hover,
+[data-slock-desktop-task-toolbar="true"] button.hover\:bg-brutal-cream:focus-visible,
+[data-slock-desktop-task-toolbar="true"] button[class*="bg-brutal-yellow\/40"]:hover,
+[data-slock-desktop-task-toolbar="true"] button[class*="bg-brutal-yellow\/40"]:focus-visible,
+[data-slock-desktop-task-toolbar="true"] > .inline-flex.bg-white:hover,
+[data-slock-desktop-task-toolbar="true"] > .inline-flex.bg-white:focus-visible,
+[data-slock-desktop-task-toolbar="true"] > .inline-flex[class*="bg-brutal-yellow\/40"]:hover,
+[data-slock-desktop-task-toolbar="true"] > .inline-flex[class*="bg-brutal-yellow\/40"]:focus-visible,
+[data-slock-desktop-task-toolbar="true"] > [role="button"].bg-white:hover,
+[data-slock-desktop-task-toolbar="true"] > [role="button"].bg-white:focus-visible,
+[data-slock-desktop-task-toolbar="true"] > [role="button"][class*="bg-brutal-yellow\/40"]:hover,
+[data-slock-desktop-task-toolbar="true"] > [role="button"][class*="bg-brutal-yellow\/40"]:focus-visible {{
+  background: var(--slock-desktop-hover) !important;
+  color: var(--slock-desktop-text) !important;
+}}
+
+[data-slock-desktop-task-toolbar="true"] button.bg-brutal-yellow,
+[data-slock-desktop-task-toolbar="true"] button[aria-selected="true"],
+[data-slock-desktop-task-toolbar="true"] button[aria-pressed="true"],
+[data-slock-desktop-task-toolbar="true"] button[data-state="active"],
+[data-slock-desktop-task-toolbar="true"] button[data-active="true"] {{
+  background: var(--slock-desktop-selection) !important;
+  border-color: transparent !important;
+  color: var(--slock-desktop-text) !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-task-toolbar="true"].inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]),
+[data-slock-desktop-task-toolbar="true"][role="button"][class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]),
+[data-slock-desktop-task-toolbar="true"] > .inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]),
+[data-slock-desktop-task-toolbar="true"] > [role="button"][class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]) {{
+  background: var(--slock-desktop-selection) !important;
+  border-color: transparent !important;
+  color: var(--slock-desktop-text) !important;
+  box-shadow: none !important;
+}}
+
+main .shrink-0 > .flex > .relative > .inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]),
+main .shrink-0 > .flex > .relative > button.inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]),
+main .shrink-0 > .flex > .relative > [role="button"].inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]) {{
+  background: var(--slock-desktop-selection) !important;
+  border-color: transparent !important;
+  color: var(--slock-desktop-text) !important;
   box-shadow: none !important;
 }}
 
@@ -2000,6 +2084,15 @@ mod tests {
         assert!(script.contains(
             r#".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0[class*=\"border\"]"#
         ));
+        assert!(script.contains(
+            ".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .shrink-0.border-b-2"
+        ));
+        assert!(script.contains(
+            ".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .flex.items-start.gap-2.border-b-2"
+        ));
+        assert!(script.contains(
+            ".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0 > .border-b-2.bg-white"
+        ));
         assert!(script.contains("slockDesktopTaskToolbar"));
         assert!(script.contains(".flex.h-full.w-full.flex-col[class*=\"border-r\"]"));
         assert!(script.contains("data-slock-desktop-task-toolbar"));
@@ -2012,5 +2105,35 @@ mod tests {
         assert!(!script.contains("canvasChromeSelectors"));
         assert!(!script.contains("querySelectorAll(canvasChromeSelectors)"));
         assert!(!script.contains("slockDesktopCanvasChrome"));
+    }
+
+    #[test]
+    fn injected_script_normalizes_task_page_selected_controls() {
+        let script = injected_script(resolve_theme(
+            "default",
+            "light",
+            &CustomThemeInput {
+                name: "Custom".to_string(),
+                accent: "#10a37f".to_string(),
+            },
+        ));
+
+        assert!(script.contains(
+            ".flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow"
+        ));
+        assert!(script
+            .contains("[data-slock-desktop-task-toolbar=\\\"true\\\"] button.bg-brutal-yellow"));
+        assert!(script.contains("hasTaskViewToggle"));
+        assert!(script.contains("hasChannelFilter"));
+        assert!(script.contains(
+            "[data-slock-desktop-task-toolbar=\\\"true\\\"] > .inline-flex[class*=\\\"bg-brutal\\\"]"
+        ));
+        assert!(script.contains(
+            "main .shrink-0 > .flex > .relative > .inline-flex[class*=\\\"bg-brutal\\\"]"
+        ));
+        assert!(!script.contains("background: var(--slock-desktop-tab-selected) !important;"));
+        assert!(!script.contains(
+            "box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slock-desktop-accent) 20%, transparent)"
+        ));
     }
 }
