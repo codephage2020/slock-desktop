@@ -1632,6 +1632,14 @@ header,
   box-shadow: none !important;
 }}
 
+.flex.min-h-0.flex-1.flex-col > :is(.relative.flex.items-center, .flex.overflow-x-auto)[class*="border-b-2"],
+.flex.min-h-0.flex-1.flex-col > :is(.relative.flex.items-center, .flex.overflow-x-auto)[class*="border-t-2"],
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex[class*="border"] {{
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
+  box-shadow: none !important;
+}}
+
 .flex.w-full.items-center.gap-2,
 .group.flex.items-center {{
   border-radius: var(--slock-desktop-radius-sm) !important;
