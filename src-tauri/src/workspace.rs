@@ -922,6 +922,55 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       }
     };
 
+    const translateElementTextNodes = (element, allowPartial) => {
+      const walker = document.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(node) {
+            const text = node.textContent?.trim() || "";
+            if (!text) return NodeFilter.FILTER_REJECT;
+            const parent = node.parentElement;
+            if (!parent) return NodeFilter.FILTER_REJECT;
+            if (isExcludedTranslationTarget(parent)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        },
+      );
+
+      const pending = [];
+      let node = walker.nextNode();
+      while (node) {
+        const text = node.textContent || "";
+        const translated = translateText(text, allowPartial);
+        if (translated !== text) {
+          pending.push([node, translated]);
+        }
+        node = walker.nextNode();
+      }
+
+      pending.forEach(([targetNode, translated]) => {
+        targetNode.textContent = translated;
+      });
+    };
+
+    const collectSearchRoots = (root = document) => {
+      const roots = [root];
+      const startNode = root instanceof Document ? root.documentElement : root;
+      if (!startNode) return roots;
+
+      const walker = document.createTreeWalker(startNode, NodeFilter.SHOW_ELEMENT);
+      let node = walker.currentNode;
+      while (node) {
+        if (node.shadowRoot) {
+          roots.push(...collectSearchRoots(node.shadowRoot));
+        }
+        node = walker.nextNode();
+      }
+
+      return roots;
+    };
+
     const selectors = [
       "[role='menuitem']",
       "[role='menu'] button",
@@ -985,27 +1034,27 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       "[aria-label]",
     ].join(",");
 
-    document.querySelectorAll(selectors).forEach((element) => {
-      if (isExcludedTranslationTarget(element)) return;
+    const seen = new Set();
+    collectSearchRoots().forEach((root) => {
+      root.querySelectorAll(selectors).forEach((element) => {
+        if (seen.has(element)) return;
+        seen.add(element);
+        if (isExcludedTranslationTarget(element)) return;
 
-      translateAttribute(element, "aria-label");
-      translateAttribute(element, "title");
-      translateAttribute(element, "placeholder");
+        translateAttribute(element, "aria-label");
+        translateAttribute(element, "title");
+        translateAttribute(element, "placeholder");
 
-      const allowPartial = canPartiallyTranslate(element);
+        const allowPartial = canPartiallyTranslate(element);
 
-      if (element.childElementCount === 0) {
-        const text = element.textContent || "";
-        const translated = translateText(text, allowPartial);
-        if (translated !== text) element.textContent = translated;
-        return;
-      }
+        if (element.childElementCount === 0) {
+          const text = element.textContent || "";
+          const translated = translateText(text, allowPartial);
+          if (translated !== text) element.textContent = translated;
+          return;
+        }
 
-      element.childNodes.forEach((node) => {
-        if (node.nodeType !== Node.TEXT_NODE) return;
-        const text = node.textContent || "";
-        const translated = translateText(text, allowPartial);
-        if (translated !== text) node.textContent = translated;
+        translateElementTextNodes(element, allowPartial);
       });
     });
   };
