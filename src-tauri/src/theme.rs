@@ -88,6 +88,30 @@ const PRESETS: [ThemePreset; 5] = [
     },
 ];
 
+fn materialize_original() -> ThemeDefinition {
+    ThemeDefinition {
+        id: "original".to_string(),
+        name: "Original".to_string(),
+        summary: "Use Slock's native appearance without desktop theme overrides.".to_string(),
+        mode: "system".to_string(),
+        canvas: "light-dark(#f7f7f5, #1f1f1c)".to_string(),
+        surface: "light-dark(#ffffff, #252623)".to_string(),
+        surface_strong: "light-dark(#f3f4f1, #2f302c)".to_string(),
+        line: "light-dark(#e2e4de, #3e413a)".to_string(),
+        text: "light-dark(#1f1f1c, #f4f4ef)".to_string(),
+        muted: "light-dark(#6b6f67, #b7bbae)".to_string(),
+        accent: "light-dark(#10a37f, #19c99b)".to_string(),
+        accent_soft:
+            "light-dark(color-mix(in srgb, #10a37f 12%, #ffffff), color-mix(in srgb, #19c99b 22%, #1f1f1c))"
+                .to_string(),
+        preview: [
+            "light-dark(#f7f7f5, #1f1f1c)".to_string(),
+            "light-dark(#f3f4f1, #2f302c)".to_string(),
+            "light-dark(#d7dbd2, #4a4d45)".to_string(),
+        ],
+    }
+}
+
 pub fn normalize_mode(mode: &str) -> &'static str {
     match mode {
         "light" => "light",
@@ -98,25 +122,32 @@ pub fn normalize_mode(mode: &str) -> &'static str {
 }
 
 pub fn meta_catalog(mode: &str, custom: &CustomThemeInput) -> Vec<ThemeMeta> {
-    PRESETS
-        .iter()
-        .map(|preset| materialize_preset(*preset, mode).into())
+    std::iter::once(materialize_original().into())
+        .chain(
+            PRESETS
+                .iter()
+                .map(|preset| materialize_preset(*preset, mode).into()),
+        )
         .chain(std::iter::once(materialize_custom(custom, mode).into()))
         .collect()
 }
 
 pub fn resolve_theme(id: &str, mode: &str, custom: &CustomThemeInput) -> ThemeDefinition {
-    PRESETS
-        .iter()
-        .find(|theme| theme.id == id)
-        .map(|preset| materialize_preset(*preset, mode))
-        .unwrap_or_else(|| {
-            if id == "custom" {
-                materialize_custom(custom, mode)
-            } else {
-                materialize_preset(PRESETS[0], mode)
-            }
-        })
+    if id == "original" {
+        materialize_original()
+    } else {
+        PRESETS
+            .iter()
+            .find(|theme| theme.id == id)
+            .map(|preset| materialize_preset(*preset, mode))
+            .unwrap_or_else(|| {
+                if id == "custom" {
+                    materialize_custom(custom, mode)
+                } else {
+                    materialize_preset(PRESETS[0], mode)
+                }
+            })
+    }
 }
 
 fn materialize_preset(preset: ThemePreset, mode: &str) -> ThemeDefinition {
@@ -220,6 +251,69 @@ pub fn sanitize_hex(value: &str) -> Option<String> {
 }
 
 pub fn injected_script(theme: ThemeDefinition) -> String {
+    if theme.id == "original" {
+        return r#"
+(() => {
+  const styleId = "slock-desktop-theme";
+  const avatarStyleProps = [
+    "inline-size",
+    "block-size",
+    "width",
+    "height",
+    "min-width",
+    "min-height",
+    "max-width",
+    "max-height",
+    "flex-basis",
+    "aspect-ratio",
+    "writing-mode",
+    "transform",
+    "line-height"
+  ];
+  const cleanupKeys = [
+    "slockDesktopAvatar",
+    "slockDesktopSidebarAvatar",
+    "slockDesktopAvatarHasImage",
+    "slockDesktopAvatarFallback",
+    "slockDesktopAvatarImageLayer",
+    "slockDesktopSemanticColor",
+    "slockDesktopSemanticShape",
+    "slockDesktopCountTone",
+    "slockDesktopTaskState",
+    "slockDesktopModuleTabs",
+    "slockDesktopModuleTab",
+    "slockDesktopModuleTabLabel",
+    "slockDesktopModuleTabsScope",
+    "slockDesktopPrimaryList",
+    "slockDesktopPrimaryRow",
+    "slockDesktopPrimaryRowLayout",
+    "slockDesktopPrimaryRowVariant",
+    "slockDesktopTaskRow",
+    "slockDesktopTaskTitle",
+    "slockDesktopTaskStateChip",
+    "slockDesktopMenuItem",
+    "slockDesktopAccountDock",
+    "slockDesktopAccountAction",
+    "slockDesktopPlusAction"
+  ];
+
+  const style = document.getElementById(styleId);
+  if (style) style.remove();
+
+  document.documentElement.removeAttribute("data-slock-desktop-theme");
+  document.documentElement.removeAttribute("data-slock-desktop-mode");
+  document.documentElement.style.removeProperty("color-scheme");
+
+  document.querySelectorAll("*").forEach((element) => {
+    if (!(element instanceof HTMLElement)) return;
+    cleanupKeys.forEach((key) => delete element.dataset[key]);
+    avatarStyleProps.forEach((property) => element.style.removeProperty(property));
+  });
+})();
+"#
+        .to_string();
+    }
+
     let css_payload = serde_json::to_string(&remote_css(&theme)).unwrap_or_else(|_| "\"\"".into());
     let theme_id = serde_json::to_string(&theme.id).unwrap_or_else(|_| "\"default\"".into());
     let mode = serde_json::to_string(&theme.mode).unwrap_or_else(|_| "\"system\"".into());
@@ -623,6 +717,10 @@ fn color_scheme(theme: &ThemeDefinition) -> &'static str {
 }
 
 fn remote_css(theme: &ThemeDefinition) -> String {
+    if theme.id == "original" {
+        return String::new();
+    }
+
     format!(
         r#"
 :root,
