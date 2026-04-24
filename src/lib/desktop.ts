@@ -22,14 +22,27 @@ export interface CustomThemeSnapshot {
 }
 
 export interface ServiceSnapshot {
-  commandPath: string
-  workingDirectory: string
-  args: string[]
+  serverUrl: string
+  selectedServerSlug: string
   autoStartWithWorkspace: boolean
+  authenticated: boolean
   configured: boolean
   running: boolean
   pid: number | null
   lastError: string | null
+  syncError: string | null
+  servers: ServiceServerSnapshot[]
+}
+
+export interface ServiceServerSnapshot {
+  id: string
+  name: string
+  slug: string
+  selected: boolean
+  machineId: string | null
+  machineName: string | null
+  machineStatus: string
+  apiKeyReady: boolean
 }
 
 export interface UpdateSnapshot {
@@ -80,9 +93,8 @@ export async function openWorkspace() {
 export async function saveServiceSettings(service: ServiceSnapshot) {
   return invoke<BootstrapPayload>('save_service_settings', {
     service: {
-      commandPath: service.commandPath,
-      workingDirectory: service.workingDirectory,
-      args: service.args,
+      serverUrl: service.serverUrl,
+      selectedServerSlug: service.selectedServerSlug,
       autoStartWithWorkspace: service.autoStartWithWorkspace,
     },
   })
@@ -94,6 +106,14 @@ export async function startService() {
 
 export async function stopService() {
   return invoke<BootstrapPayload>('stop_service')
+}
+
+export async function refreshServiceServers() {
+  return invoke<BootstrapPayload>('refresh_service_servers')
+}
+
+export async function updateService() {
+  return invoke<BootstrapPayload>('update_service')
 }
 
 export async function saveUpdateSettings(updates: UpdateSnapshot) {

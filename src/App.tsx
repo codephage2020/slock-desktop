@@ -8,11 +8,13 @@ import {
   loadBootstrap,
   openExternalUrl,
   openWorkspace,
+  refreshServiceServers,
   saveCustomTheme,
   saveServiceSettings,
   saveUpdateSettings,
   startService,
   stopService,
+  updateService,
   updateTheme,
   updateLanguage,
   updateThemeMode,
@@ -119,22 +121,29 @@ const COPY = {
     serviceStartup: 'Service startup',
     serviceRunning: 'running',
     serviceIdle: 'idle',
-    serviceCopy: 'Optional local service command for workspace launch.',
-    commandPath: 'Command path',
-    commandPathPlaceholder: '/absolute/path/to/service',
-    workingDirectory: 'Working directory',
-    workingDirectoryPlaceholder: '/absolute/path/to/project',
-    arguments: 'Arguments',
-    argumentsPlaceholder: 'One argument per line\n--port\n3141',
+    serviceOffline: 'offline',
+    serviceNotLinked: 'not linked',
+    serviceSignInRequired: 'sign in required',
+    serviceCopy: 'Desktop reads your server list from the signed-in Slock session, binds a local machine, and launches the daemon for the selected server.',
+    selectedServer: 'Server',
+    selectedServerPlaceholder: 'Choose a server',
+    noServers: 'No servers available on this account yet.',
+    refreshServers: 'Refresh Servers',
+    refreshingServers: 'Refreshing…',
+    serviceSelectionSaved: 'Selected server saved locally.',
+    serviceSignInHint: 'Open Slock once, sign in, and the launcher will sync your server list automatically.',
+    machineStatus: 'Machine status',
     autoStartService: 'Auto-start the service when launching the workspace',
     serviceSaved: 'Service command saved locally.',
-    cloudWorkspaceOnly: 'Leave empty for cloud workspace only.',
+    cloudWorkspaceOnly: 'Choose a server to launch directly into that workspace.',
     saveServiceSettings: 'Save Service Settings',
     savingServiceSettings: 'Saving…',
     startService: 'Start Service',
     startingService: 'Starting…',
     stopService: 'Stop Service',
     stoppingService: 'Stopping…',
+    updateService: 'Update Daemon',
+    updatingService: 'Updating…',
     updateCenterEyebrow: 'Update Center',
     releaseCheck: 'Release check',
     updateAvailable: 'update available',
@@ -213,22 +222,29 @@ const COPY = {
     serviceStartup: '服务启动',
     serviceRunning: '运行中',
     serviceIdle: '空闲',
-    serviceCopy: '可选的本地服务命令，用于启动工作区时联动。',
-    commandPath: '命令路径',
-    commandPathPlaceholder: '/绝对路径/服务命令',
-    workingDirectory: '工作目录',
-    workingDirectoryPlaceholder: '/绝对路径/项目',
-    arguments: '参数',
-    argumentsPlaceholder: '每行一个参数\n--port\n3141',
+    serviceOffline: '离线',
+    serviceNotLinked: '未绑定',
+    serviceSignInRequired: '需要登录',
+    serviceCopy: '桌面端会从已登录的 Slock 会话读取 server 列表，为所选 server 绑定本地 machine，并拉起对应 daemon。',
+    selectedServer: 'Server',
+    selectedServerPlaceholder: '选择一个 server',
+    noServers: '当前账号下还没有可用 server。',
+    refreshServers: '刷新 Server 列表',
+    refreshingServers: '刷新中…',
+    serviceSelectionSaved: '所选 server 已保存到本地。',
+    serviceSignInHint: '先打开一次 Slock 并完成登录，launcher 就会自动同步 server 列表。',
+    machineStatus: '本地 machine 状态',
     autoStartService: '启动工作区时自动启动服务',
     serviceSaved: '服务命令已保存到本地。',
-    cloudWorkspaceOnly: '留空时只打开云端工作区。',
+    cloudWorkspaceOnly: '选择一个 server 后，启动会直接进入对应工作区。',
     saveServiceSettings: '保存服务设置',
     savingServiceSettings: '保存中…',
     startService: '启动服务',
     startingService: '启动中…',
     stopService: '停止服务',
     stoppingService: '停止中…',
+    updateService: '更新 Daemon',
+    updatingService: '更新中…',
     updateCenterEyebrow: '更新中心',
     releaseCheck: '版本检查',
     updateAvailable: '有可用更新',
@@ -282,6 +298,8 @@ const ZH_THEME_COPY: Record<string, { name: string; summary: string }> = {
     summary: '用户定义的个人强调色主题。',
   },
 }
+
+type UiCopy = (typeof COPY)[keyof typeof COPY]
 
 function App() {
   const [snapshot, setSnapshot] = useState<BootstrapPayload | null>(null)
@@ -425,6 +443,32 @@ function App() {
     }
   }
 
+  async function handleServiceRefresh() {
+    try {
+      setBusyAction('refresh-service')
+      setErrorMessage(null)
+      const next = await refreshServiceServers()
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleServiceUpdate() {
+    try {
+      setBusyAction('update-service')
+      setErrorMessage(null)
+      const next = await updateService()
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   async function handleUpdateSettingsSave() {
     if (!snapshot) {
       return
@@ -557,11 +601,17 @@ function App() {
   const copy = getCopy(snapshot.language, snapshot.resolvedLanguage)
   const shellStyle = buildShellStyle(activeTheme)
   const stackButtonLabel = snapshot.workspaceOpen ? copy.focusSlock : copy.openSlock
-  const serviceStatusLabel = snapshot.service.running
-    ? copy.serviceRunning
-    : snapshot.service.configured
-      ? copy.configuredIdle
-      : copy.notConfigured
+  const selectedServiceServer =
+    snapshot.service.servers.find(
+      (server) => server.slug === snapshot.service.selectedServerSlug,
+    ) ??
+    snapshot.service.servers.find((server) => server.selected) ??
+    null
+  const serviceStatusLabel = getServiceStatusLabel(
+    snapshot.service,
+    selectedServiceServer,
+    copy,
+  )
 
   return (
     <main className="studio-shell" data-mode={activeTheme.mode} style={shellStyle}>
@@ -728,36 +778,20 @@ function App() {
 
               <div className="control-body">
                 <label className="field">
-                  <span>{copy.commandPath}</span>
-                  <input
-                    value={snapshot.service.commandPath}
+                  <span>{copy.selectedServer}</span>
+                  <select
+                    value={snapshot.service.selectedServerSlug}
                     onChange={(event) =>
-                      patchService({ commandPath: event.target.value })
+                      patchService({ selectedServerSlug: event.target.value })
                     }
-                    placeholder={copy.commandPathPlaceholder}
-                  />
-                </label>
-
-                <label className="field">
-                  <span>{copy.workingDirectory}</span>
-                  <input
-                    value={snapshot.service.workingDirectory}
-                    onChange={(event) =>
-                      patchService({ workingDirectory: event.target.value })
-                    }
-                    placeholder={copy.workingDirectoryPlaceholder}
-                  />
-                </label>
-
-                <label className="field">
-                  <span>{copy.arguments}</span>
-                  <textarea
-                    value={snapshot.service.args.join('\n')}
-                    onChange={(event) =>
-                      patchService({ args: splitArgs(event.target.value) })
-                    }
-                    placeholder={copy.argumentsPlaceholder}
-                  />
+                  >
+                    <option value="">{copy.selectedServerPlaceholder}</option>
+                    {snapshot.service.servers.map((server) => (
+                      <option key={server.id} value={server.slug}>
+                        {server.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <label className="checkbox-row">
@@ -771,13 +805,24 @@ function App() {
                   <span>{copy.autoStartService}</span>
                 </label>
 
-                {snapshot.service.lastError ? (
+                {selectedServiceServer ? (
+                  <p className="inline-note">
+                    {copy.machineStatus}: {getMachineStatusLabel(selectedServiceServer.machineStatus, copy)}
+                    {selectedServiceServer.machineName ? ` · ${selectedServiceServer.machineName}` : ''}
+                  </p>
+                ) : null}
+
+                {snapshot.service.syncError ? (
+                  <p className="inline-note error">{snapshot.service.syncError}</p>
+                ) : snapshot.service.lastError ? (
                   <p className="inline-note error">{snapshot.service.lastError}</p>
+                ) : !snapshot.service.authenticated ? (
+                  <p className="inline-note">{copy.serviceSignInHint}</p>
+                ) : snapshot.service.servers.length === 0 ? (
+                  <p className="inline-note">{copy.noServers}</p>
                 ) : (
                   <p className="inline-note">
-                    {snapshot.service.configured
-                      ? copy.serviceSaved
-                      : copy.cloudWorkspaceOnly}
+                    {snapshot.service.configured ? copy.serviceSelectionSaved : copy.cloudWorkspaceOnly}
                   </p>
                 )}
 
@@ -793,8 +838,19 @@ function App() {
                   </button>
                   <button
                     className="theme-button"
+                    onClick={handleServiceRefresh}
+                    disabled={busyAction === 'refresh-service'}
+                  >
+                    {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServers}
+                  </button>
+                  <button
+                    className="theme-button"
                     onClick={handleServiceStart}
-                    disabled={busyAction === 'start-service'}
+                    disabled={
+                      busyAction === 'start-service' ||
+                      !snapshot.service.authenticated ||
+                      !selectedServiceServer
+                    }
                   >
                     {busyAction === 'start-service' ? copy.startingService : copy.startService}
                   </button>
@@ -804,6 +860,17 @@ function App() {
                     disabled={busyAction === 'stop-service' || !snapshot.service.running}
                   >
                     {busyAction === 'stop-service' ? copy.stoppingService : copy.stopService}
+                  </button>
+                  <button
+                    className="theme-button muted-button"
+                    onClick={handleServiceUpdate}
+                    disabled={
+                      busyAction === 'update-service' ||
+                      !snapshot.service.authenticated ||
+                      !selectedServiceServer
+                    }
+                  >
+                    {busyAction === 'update-service' ? copy.updatingService : copy.updateService}
                   </button>
                 </div>
               </div>
@@ -1027,15 +1094,46 @@ function getResolvedLanguage(
   return systemLanguage.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unknown desktop error'
+function getServiceStatusLabel(
+  service: BootstrapPayload['service'],
+  selectedServer: BootstrapPayload['service']['servers'][number] | null,
+  copy: UiCopy,
+) {
+  if (service.running) {
+    return copy.serviceRunning
+  }
+
+  if (!service.authenticated) {
+    return copy.serviceSignInRequired
+  }
+
+  if (!selectedServer) {
+    return copy.notConfigured
+  }
+
+  return getMachineStatusLabel(selectedServer.machineStatus, copy)
 }
 
-function splitArgs(value: string) {
-  return value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
+function getMachineStatusLabel(
+  status: string,
+  copy: UiCopy,
+) {
+  switch (status) {
+    case 'online':
+      return copy.serviceRunning
+    case 'offline':
+      return copy.serviceOffline
+    case 'idle':
+      return copy.serviceIdle
+    case 'not linked':
+      return copy.serviceNotLinked
+    default:
+      return status || copy.notConfigured
+  }
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown desktop error'
 }
 
 function normalizeVersion(value: string) {

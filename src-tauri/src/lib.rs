@@ -3,9 +3,11 @@ mod theme;
 mod workspace;
 
 use config::{
-    load_settings, save_settings, AppSettings, CustomThemeSettings, ServiceSettings, UpdateSettings,
+    load_settings, save_settings, AppSettings, CustomThemeSettings, ServiceMachineBinding,
+    ServiceSettings, UpdateSettings,
 };
-use serde::Serialize;
+use reqwest::blocking::{Client, RequestBuilder};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     env,
     process::{Child, Command, Stdio},
@@ -21,6 +23,9 @@ use theme::{meta_catalog, resolve_theme, CustomThemeInput};
 
 const MAIN_LABEL: &str = "main";
 const WORKSPACE_URL: &str = "https://app.slock.ai";
+const DEFAULT_SERVER_URL: &str = "https://api.slock.ai";
+const DAEMON_PACKAGE: &str = "@slock-ai/daemon@latest";
+const DAEMON_MACHINE_NAME: &str = "Slock Desktop";
 const LAUNCHER_WINDOW_WIDTH: f64 = 980.0;
 const LAUNCHER_WINDOW_HEIGHT: f64 = 720.0;
 const LAUNCHER_WINDOW_MIN_WIDTH: f64 = 920.0;
@@ -38,8 +43,8 @@ pub struct DesktopState {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BootstrapPayload {
-    app_name: &'static str,
-    workspace_url: &'static str,
+    app_name: String,
+    workspace_url: String,
     color_scheme: String,
     appearance_mode: String,
     custom_theme: CustomThemeSettings,
@@ -54,19 +59,36 @@ struct BootstrapPayload {
 struct ServiceRuntime {
     child: Option<Child>,
     last_error: Option<String>,
+    active_server_slug: Option<String>,
+    active_machine_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ServiceSnapshot {
-    command_path: String,
-    working_directory: String,
-    args: Vec<String>,
+    server_url: String,
+    selected_server_slug: String,
     auto_start_with_workspace: bool,
+    authenticated: bool,
     configured: bool,
     running: bool,
     pid: Option<u32>,
     last_error: Option<String>,
+    sync_error: Option<String>,
+    servers: Vec<ServiceServerSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ServiceServerSnapshot {
+    id: String,
+    name: String,
+    slug: String,
+    selected: bool,
+    machine_id: Option<String>,
+    machine_name: Option<String>,
+    machine_status: String,
+    api_key_ready: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,6 +98,44 @@ struct UpdateSnapshot {
     repository_slug: String,
     releases_url: String,
     latest_release_api_url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiServer {
+    id: String,
+    name: String,
+    slug: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiMachine {
+    id: String,
+    name: String,
+    #[serde(default)]
+    status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiMachinesEnvelope {
+    #[serde(default)]
+    machines: Vec<ApiMachine>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiMachineRegistration {
+    machine: ApiMachine,
+    api_key: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiRefreshSession {
+    access_token: String,
+    refresh_token: String,
 }
 
 #[tauri::command]
@@ -201,21 +261,49 @@ fn set_language(
 }
 
 #[tauri::command]
+fn save_session_tokens(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    access_token: String,
+    refresh_token: String,
+) -> Result<(), String> {
+    let access_token = access_token.trim().to_string();
+    let refresh_token = refresh_token.trim().to_string();
+    if access_token.is_empty() || refresh_token.is_empty() {
+        return Ok(());
+    }
+
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    if settings.session.access_token == access_token && settings.session.refresh_token == refresh_token
+    {
+        return Ok(());
+    }
+
+    settings.session.access_token = access_token;
+    settings.session.refresh_token = refresh_token;
+    save_settings(&app, &settings)
+}
+
+#[tauri::command]
 fn open_workspace(
     app: AppHandle,
     state: State<'_, DesktopState>,
 ) -> Result<BootstrapPayload, String> {
-    let (color_scheme, appearance_mode, custom_theme, language) = {
+    let (color_scheme, appearance_mode, custom_theme, language, selected_server_slug) = {
         let settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
-        maybe_start_service(&state, &settings.service)?;
+        maybe_start_service(&app, &state, &settings.service, true)?;
         (
             settings.color_scheme.clone(),
             settings.appearance_mode.clone(),
             settings.custom_theme.clone(),
             settings.language.clone(),
+            settings.service.selected_server_slug.clone(),
         )
     };
 
@@ -225,6 +313,7 @@ fn open_workspace(
         &appearance_mode,
         &language,
         &custom_theme_input(&custom_theme),
+        &selected_server_slug,
     )?;
     build_bootstrap(&app, &state)
 }
@@ -259,7 +348,7 @@ fn start_service(
         settings.service.clone()
     };
 
-    force_start_service(&state, &service_settings)?;
+    force_start_service(&app, &state, &service_settings)?;
     build_bootstrap(&app, &state)
 }
 
@@ -269,6 +358,32 @@ fn stop_service(
     state: State<'_, DesktopState>,
 ) -> Result<BootstrapPayload, String> {
     stop_service_process(&state)?;
+    build_bootstrap(&app, &state)
+}
+
+#[tauri::command]
+fn refresh_service_servers(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<BootstrapPayload, String> {
+    build_bootstrap(&app, &state)
+}
+
+#[tauri::command]
+fn update_service(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<BootstrapPayload, String> {
+    let service_settings = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        settings.service.clone()
+    };
+
+    stop_service_process(&state)?;
+    force_start_service(&app, &state, &service_settings)?;
     build_bootstrap(&app, &state)
 }
 
@@ -304,7 +419,7 @@ fn build_bootstrap(
         .map_err(|_| "Unable to lock desktop settings".to_string())?
         .clone();
 
-    let service = collect_service_snapshot(state, &settings.service)?;
+    let service = collect_service_snapshot(app, state, &settings.service)?;
     let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
     let updates = UpdateSnapshot {
         current_version: app.package_info().version.to_string(),
@@ -317,8 +432,8 @@ fn build_bootstrap(
     };
 
     Ok(BootstrapPayload {
-        app_name: "Slock Desktop",
-        workspace_url: WORKSPACE_URL,
+        app_name: "Slock Desktop".to_string(),
+        workspace_url: workspace_url_for_slug(&settings.service.selected_server_slug),
         color_scheme: settings.color_scheme.clone(),
         appearance_mode: appearance_mode.clone(),
         custom_theme: settings.custom_theme.clone(),
@@ -340,9 +455,13 @@ fn enter_workspace_in_main_window(
     theme_mode: &str,
     language: &str,
     custom_theme: &CustomThemeInput,
+    selected_server_slug: &str,
 ) -> Result<(), String> {
     let theme = resolve_theme(theme_id, theme_mode, custom_theme);
     let resolved_language = resolve_desktop_language(language);
+    let target_url = workspace_url_for_slug(selected_server_slug)
+        .parse::<Url>()
+        .map_err(|err| err.to_string())?;
     let window = app
         .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "Main window is unavailable".to_string())?;
@@ -354,6 +473,9 @@ fn enter_workspace_in_main_window(
         let _ = window.set_focus();
         apply_window_theme(&window, theme_mode);
         apply_window_language(app, &window, language, true);
+        if window.url().ok().as_ref() != Some(&target_url) {
+            return window.navigate(target_url).map_err(|err| err.to_string());
+        }
         return apply_workspace_scripts_to_window(
             &window,
             theme,
@@ -364,10 +486,6 @@ fn enter_workspace_in_main_window(
             custom_theme,
         );
     }
-
-    let target_url = WORKSPACE_URL
-        .parse::<Url>()
-        .map_err(|err| err.to_string())?;
 
     apply_window_language(app, &window, language, true);
     apply_window_theme(&window, theme_mode);
@@ -649,7 +767,17 @@ fn is_workspace_url(url: &Url) -> bool {
     url.scheme() == "https" && url.host_str() == Some("app.slock.ai")
 }
 
+fn workspace_url_for_slug(server_slug: &str) -> String {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        WORKSPACE_URL.to_string()
+    } else {
+        format!("{WORKSPACE_URL}/s/{slug}")
+    }
+}
+
 fn collect_service_snapshot(
+    app: &AppHandle,
     state: &DesktopState,
     settings: &ServiceSettings,
 ) -> Result<ServiceSnapshot, String> {
@@ -678,62 +806,113 @@ fn collect_service_snapshot(
         }
     }
 
+    let last_error = runtime.last_error.clone();
+    drop(runtime);
+
+    let authenticated = current_session_tokens(state)?.is_some();
+    let mut sync_error = None;
+    let servers = if authenticated {
+        match fetch_service_servers(app, state, settings) {
+            Ok(servers) => servers,
+            Err(err) => {
+                sync_error = Some(err);
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+    let configured = servers
+        .iter()
+        .find(|server| server.selected)
+        .map(|server| server.api_key_ready)
+        .unwrap_or(false);
+
     Ok(ServiceSnapshot {
-        command_path: settings.command_path.clone(),
-        working_directory: settings.working_directory.clone(),
-        args: settings.args.clone(),
+        server_url: settings.server_url.clone(),
+        selected_server_slug: settings.selected_server_slug.clone(),
         auto_start_with_workspace: settings.auto_start_with_workspace,
-        configured: !settings.command_path.trim().is_empty(),
+        authenticated,
+        configured,
         running,
         pid,
-        last_error: runtime.last_error.clone(),
+        last_error,
+        sync_error,
+        servers,
     })
 }
 
-fn maybe_start_service(state: &DesktopState, settings: &ServiceSettings) -> Result<(), String> {
-    if settings.auto_start_with_workspace && !settings.command_path.trim().is_empty() {
-        force_start_service(state, settings)?;
+fn maybe_start_service(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+    force_for_workspace: bool,
+) -> Result<(), String> {
+    let should_start =
+        (!settings.selected_server_slug.trim().is_empty() && force_for_workspace)
+            || (settings.auto_start_with_workspace
+                && !settings.selected_server_slug.trim().is_empty());
+
+    if should_start {
+        force_start_service(app, state, settings)?;
     }
 
     Ok(())
 }
 
-fn force_start_service(state: &DesktopState, settings: &ServiceSettings) -> Result<(), String> {
-    if settings.command_path.trim().is_empty() {
-        return Err("Service command path is empty".to_string());
-    }
+fn force_start_service(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+) -> Result<(), String> {
+    let selected_server = resolve_selected_server(app, state, settings)?;
+    let binding = ensure_machine_binding(app, state, settings, &selected_server)?;
 
     let mut runtime = state
         .service
         .lock()
         .map_err(|_| "Unable to lock service runtime".to_string())?;
+    let same_target = runtime.active_server_slug.as_deref() == Some(selected_server.slug.as_str())
+        && runtime.active_machine_id.as_deref() == Some(binding.machine_id.as_str());
 
     if let Some(child) = runtime.child.as_mut() {
-        if child
+        let still_running = child
             .try_wait()
             .map_err(|err| format!("Unable to inspect service state: {err}"))?
-            .is_none()
-        {
+            .is_none();
+        if still_running && same_target {
             return Ok(());
+        }
+
+        if still_running {
+            child
+                .kill()
+                .map_err(|err| format!("Failed to stop existing service: {err}"))?;
+            let _ = child.wait();
         }
         runtime.child = None;
     }
 
-    let mut command = Command::new(&settings.command_path);
+    let mut command = Command::new("npx");
     command
-        .args(&settings.args)
+        .args([
+            "--yes",
+            DAEMON_PACKAGE,
+            "--server-url",
+            settings.server_url.as_str(),
+            "--api-key",
+            binding.api_key.as_str(),
+        ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-
-    if !settings.working_directory.trim().is_empty() {
-        command.current_dir(&settings.working_directory);
-    }
 
     let child = command
         .spawn()
         .map_err(|err| format!("Failed to start service: {err}"))?;
     runtime.last_error = None;
+    runtime.active_server_slug = Some(selected_server.slug);
+    runtime.active_machine_id = Some(binding.machine_id);
     runtime.child = Some(child);
     Ok(())
 }
@@ -753,20 +932,353 @@ fn stop_service_process(state: &DesktopState) -> Result<(), String> {
 
     runtime.child = None;
     runtime.last_error = None;
+    runtime.active_server_slug = None;
+    runtime.active_machine_id = None;
     Ok(())
 }
 
 fn sanitize_service_settings(service: ServiceSettings) -> ServiceSettings {
+    let mut machines = Vec::new();
+    for binding in service.machines {
+        let normalized = ServiceMachineBinding {
+            server_id: binding.server_id.trim().to_string(),
+            server_slug: binding.server_slug.trim().to_string(),
+            machine_id: binding.machine_id.trim().to_string(),
+            machine_name: binding.machine_name.trim().to_string(),
+            api_key: binding.api_key.trim().to_string(),
+        };
+        if normalized.server_id.is_empty()
+            || normalized.server_slug.is_empty()
+            || normalized.machine_id.is_empty()
+            || normalized.api_key.is_empty()
+        {
+            continue;
+        }
+        let duplicate = machines.iter().any(|existing: &ServiceMachineBinding| {
+            existing.server_id == normalized.server_id || existing.server_slug == normalized.server_slug
+        });
+        if !duplicate {
+            machines.push(normalized);
+        }
+    }
+
     ServiceSettings {
-        command_path: service.command_path.trim().to_string(),
-        working_directory: service.working_directory.trim().to_string(),
-        args: service
-            .args
-            .into_iter()
-            .map(|arg| arg.trim().to_string())
-            .filter(|arg| !arg.is_empty())
-            .collect(),
+        server_url: sanitize_service_server_url(&service.server_url),
+        selected_server_slug: service.selected_server_slug.trim().to_string(),
         auto_start_with_workspace: service.auto_start_with_workspace,
+        machines,
+    }
+}
+
+fn sanitize_service_server_url(server_url: &str) -> String {
+    let trimmed = server_url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return DEFAULT_SERVER_URL.to_string();
+    }
+    trimmed
+        .strip_suffix("/api")
+        .unwrap_or(trimmed)
+        .to_string()
+}
+
+fn current_session_tokens(
+    state: &DesktopState,
+) -> Result<Option<(String, String)>, String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    let access_token = settings.session.access_token.trim().to_string();
+    let refresh_token = settings.session.refresh_token.trim().to_string();
+    if access_token.is_empty() || refresh_token.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some((access_token, refresh_token)))
+    }
+}
+
+fn api_base_url(server_url: &str) -> String {
+    format!("{}/api", sanitize_service_server_url(server_url))
+}
+
+fn api_client() -> Result<Client, String> {
+    Client::builder()
+        .user_agent("Slock Desktop")
+        .build()
+        .map_err(|err| format!("Unable to create desktop API client: {err}"))
+}
+
+fn refresh_session_tokens(
+    app: &AppHandle,
+    state: &DesktopState,
+    server_url: &str,
+    refresh_token: &str,
+) -> Result<(String, String), String> {
+    let client = api_client()?;
+    let response = client
+        .post(format!("{}/auth/refresh", api_base_url(server_url)))
+        .json(&serde_json::json!({ "refreshToken": refresh_token }))
+        .send()
+        .map_err(|err| format!("Failed to refresh desktop session: {err}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!(
+            "Desktop session refresh failed with {status}: {body}"
+        ));
+    }
+
+    let payload = response
+        .json::<ApiRefreshSession>()
+        .map_err(|err| format!("Failed to parse refreshed desktop session: {err}"))?;
+
+    let access_token = payload.access_token.trim().to_string();
+    let refresh_token = payload.refresh_token.trim().to_string();
+
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    settings.session.access_token = access_token.clone();
+    settings.session.refresh_token = refresh_token.clone();
+    save_settings(app, &settings)?;
+
+    Ok((access_token, refresh_token))
+}
+
+fn send_authenticated(
+    app: &AppHandle,
+    state: &DesktopState,
+    server_url: &str,
+    request: impl Fn(&Client, &str) -> RequestBuilder,
+) -> Result<reqwest::blocking::Response, String> {
+    let client = api_client()?;
+    let Some((access_token, refresh_token)) = current_session_tokens(state)? else {
+        return Err("Open Slock once and sign in, then the desktop launcher can load your server list.".to_string());
+    };
+
+    let mut response = request(&client, &access_token)
+        .send()
+        .map_err(|err| format!("Desktop API request failed: {err}"))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        let (next_access_token, _) = refresh_session_tokens(app, state, server_url, &refresh_token)?;
+        response = request(&client, &next_access_token)
+            .send()
+            .map_err(|err| format!("Desktop API retry failed: {err}"))?;
+    }
+
+    Ok(response)
+}
+
+fn load_authenticated_json<T: DeserializeOwned>(
+    app: &AppHandle,
+    state: &DesktopState,
+    server_url: &str,
+    request: impl Fn(&Client, &str) -> RequestBuilder,
+) -> Result<T, String> {
+    let response = send_authenticated(app, state, server_url, request)?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Desktop API returned {status}: {body}"));
+    }
+
+    response
+        .json::<T>()
+        .map_err(|err| format!("Failed to parse desktop API payload: {err}"))
+}
+
+fn fetch_service_servers(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+) -> Result<Vec<ServiceServerSnapshot>, String> {
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+    let servers = load_authenticated_json::<Vec<ApiServer>>(app, state, &server_url, |client, access_token| {
+        client
+            .get(format!("{api_root}/servers"))
+            .bearer_auth(access_token)
+    })?;
+
+    let mut snapshots = Vec::with_capacity(servers.len());
+    for server in servers {
+        let binding = find_service_binding(settings, &server.id, &server.slug);
+        let machine = if let Some(binding) = binding.as_ref() {
+            fetch_bound_machine(app, state, &server_url, &server.id, &binding.machine_id)?
+        } else {
+            None
+        };
+
+        snapshots.push(ServiceServerSnapshot {
+            id: server.id.clone(),
+            name: server.name,
+            slug: server.slug.clone(),
+            selected: server.slug == settings.selected_server_slug,
+            machine_id: binding.as_ref().map(|item| item.machine_id.clone()),
+            machine_name: machine
+                .as_ref()
+                .map(|item| item.name.clone())
+                .or_else(|| binding.as_ref().map(|item| item.machine_name.clone()).filter(|name| !name.is_empty())),
+            machine_status: machine
+                .map(|item| normalize_machine_status(&item.status))
+                .unwrap_or_else(|| {
+                    if binding.is_some() {
+                        "offline".to_string()
+                    } else {
+                        "not linked".to_string()
+                    }
+                }),
+            api_key_ready: binding
+                .as_ref()
+                .map(|item| !item.api_key.trim().is_empty())
+                .unwrap_or(false),
+        });
+    }
+
+    Ok(snapshots)
+}
+
+fn fetch_bound_machine(
+    app: &AppHandle,
+    state: &DesktopState,
+    server_url: &str,
+    server_id: &str,
+    machine_id: &str,
+) -> Result<Option<ApiMachine>, String> {
+    let api_root = api_base_url(server_url);
+    let payload = load_authenticated_json::<serde_json::Value>(app, state, server_url, |client, access_token| {
+        client
+            .get(format!("{api_root}/servers/{server_id}/machines"))
+            .bearer_auth(access_token)
+    })?;
+
+    let machines = if payload.is_array() {
+        serde_json::from_value::<Vec<ApiMachine>>(payload)
+            .map_err(|err| format!("Failed to parse machine list: {err}"))?
+    } else {
+        serde_json::from_value::<ApiMachinesEnvelope>(payload)
+            .map_err(|err| format!("Failed to parse machine list envelope: {err}"))?
+            .machines
+    };
+
+    Ok(machines.into_iter().find(|machine| machine.id == machine_id))
+}
+
+fn resolve_selected_server(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+) -> Result<ApiServer, String> {
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+    let servers = load_authenticated_json::<Vec<ApiServer>>(app, state, &server_url, |client, access_token| {
+        client
+            .get(format!("{api_root}/servers"))
+            .bearer_auth(access_token)
+    })?;
+
+    if let Some(server) = servers
+        .iter()
+        .find(|server| server.slug == settings.selected_server_slug)
+        .cloned()
+    {
+        return Ok(server);
+    }
+
+    if servers.len() == 1 {
+        let server = servers[0].clone();
+        persist_selected_server_slug(app, state, &server.slug)?;
+        return Ok(server);
+    }
+
+    Err("Pick a server in the launcher before starting Slock.".to_string())
+}
+
+fn ensure_machine_binding(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+    server: &ApiServer,
+) -> Result<ServiceMachineBinding, String> {
+    if let Some(binding) = find_service_binding(settings, &server.id, &server.slug) {
+        if !binding.api_key.trim().is_empty() {
+            return Ok(binding);
+        }
+    }
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+    let payload = load_authenticated_json::<ApiMachineRegistration>(app, state, &server_url, |client, access_token| {
+        client
+            .post(format!("{api_root}/servers/{}/machines", server.id))
+            .bearer_auth(access_token)
+            .json(&serde_json::json!({ "name": DAEMON_MACHINE_NAME }))
+    })?;
+
+    let binding = ServiceMachineBinding {
+        server_id: server.id.clone(),
+        server_slug: server.slug.clone(),
+        machine_id: payload.machine.id,
+        machine_name: payload.machine.name,
+        api_key: payload.api_key,
+    };
+    upsert_service_binding(app, state, binding)
+}
+
+fn find_service_binding(
+    settings: &ServiceSettings,
+    server_id: &str,
+    server_slug: &str,
+) -> Option<ServiceMachineBinding> {
+    settings
+        .machines
+        .iter()
+        .find(|binding| binding.server_id == server_id || binding.server_slug == server_slug)
+        .cloned()
+}
+
+fn upsert_service_binding(
+    app: &AppHandle,
+    state: &DesktopState,
+    binding: ServiceMachineBinding,
+) -> Result<ServiceMachineBinding, String> {
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    settings.service.machines.retain(|item| {
+        item.server_id != binding.server_id && item.server_slug != binding.server_slug
+    });
+    settings.service.machines.push(binding.clone());
+    if settings.service.selected_server_slug.trim().is_empty() {
+        settings.service.selected_server_slug = binding.server_slug.clone();
+    }
+    save_settings(app, &settings)?;
+    Ok(binding)
+}
+
+fn persist_selected_server_slug(
+    app: &AppHandle,
+    state: &DesktopState,
+    server_slug: &str,
+) -> Result<(), String> {
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    settings.service.selected_server_slug = server_slug.trim().to_string();
+    save_settings(app, &settings)
+}
+
+fn normalize_machine_status(status: &str) -> String {
+    let status = status.trim();
+    if status.is_empty() {
+        "offline".to_string()
+    } else {
+        status.to_string()
     }
 }
 
@@ -811,6 +1323,10 @@ fn normalize_app_settings(settings: AppSettings) -> AppSettings {
         appearance_mode,
         custom_theme,
         language: sanitize_language(&settings.language).to_string(),
+        session: config::SessionSettings {
+            access_token: settings.session.access_token.trim().to_string(),
+            refresh_token: settings.session.refresh_token.trim().to_string(),
+        },
         service: sanitize_service_settings(settings.service),
         updates: sanitize_update_settings(settings.updates),
     }
@@ -890,6 +1406,8 @@ pub fn run() {
             service: Mutex::new(ServiceRuntime {
                 child: None,
                 last_error: None,
+                active_server_slug: None,
+                active_machine_id: None,
             }),
         })
         .on_page_load(|webview, payload| {
@@ -975,10 +1493,13 @@ pub fn run() {
             set_theme_mode,
             save_custom_theme,
             set_language,
+            save_session_tokens,
             open_workspace,
             save_service_settings,
+            refresh_service_servers,
             start_service,
             stop_service,
+            update_service,
             save_update_settings,
             open_external_url
         ])

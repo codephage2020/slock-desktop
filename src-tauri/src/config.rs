@@ -6,22 +6,61 @@ const SETTINGS_FILE: &str = "settings.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ServiceMachineBinding {
+    #[serde(default)]
+    pub server_id: String,
+    #[serde(default)]
+    pub server_slug: String,
+    #[serde(default)]
+    pub machine_id: String,
+    #[serde(default)]
+    pub machine_name: String,
+    #[serde(default)]
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ServiceSettings {
-    pub command_path: String,
-    pub working_directory: String,
-    pub args: Vec<String>,
+    #[serde(default = "default_service_server_url")]
+    pub server_url: String,
+    #[serde(default)]
+    pub selected_server_slug: String,
     pub auto_start_with_workspace: bool,
+    #[serde(default)]
+    pub machines: Vec<ServiceMachineBinding>,
+}
+
+impl Default for ServiceMachineBinding {
+    fn default() -> Self {
+        Self {
+            server_id: String::new(),
+            server_slug: String::new(),
+            machine_id: String::new(),
+            machine_name: String::new(),
+            api_key: String::new(),
+        }
+    }
 }
 
 impl Default for ServiceSettings {
     fn default() -> Self {
         Self {
-            command_path: String::new(),
-            working_directory: String::new(),
-            args: Vec::new(),
+            server_url: default_service_server_url(),
+            selected_server_slug: String::new(),
             auto_start_with_workspace: false,
+            machines: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSettings {
+    #[serde(default)]
+    pub access_token: String,
+    #[serde(default)]
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,7 +90,11 @@ pub struct AppSettings {
     pub custom_theme: CustomThemeSettings,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default)]
+    pub session: SessionSettings,
+    #[serde(default)]
     pub service: ServiceSettings,
+    #[serde(default)]
     pub updates: UpdateSettings,
 }
 
@@ -62,6 +105,7 @@ impl Default for AppSettings {
             appearance_mode: default_appearance_mode(),
             custom_theme: CustomThemeSettings::default(),
             language: default_language(),
+            session: SessionSettings::default(),
             service: ServiceSettings::default(),
             updates: UpdateSettings::default(),
         }
@@ -94,6 +138,10 @@ fn default_appearance_mode() -> String {
 
 fn default_language() -> String {
     "system".to_string()
+}
+
+fn default_service_server_url() -> String {
+    "https://api.slock.ai".to_string()
 }
 
 pub fn load_settings<R: Runtime>(app: &AppHandle<R>) -> AppSettings {

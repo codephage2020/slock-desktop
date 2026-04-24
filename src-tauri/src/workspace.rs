@@ -1824,7 +1824,56 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
   };
 
+  const syncSessionTokens = async () => {
+    try {
+      const accessToken = localStorage.getItem("slock_access_token");
+      const refreshToken = localStorage.getItem("slock_refresh_token");
+      if (!accessToken || !refreshToken) return;
+
+      const nextSignature = `${accessToken}::${refreshToken}`;
+      if (window.__slockDesktopSessionSignature === nextSignature) return;
+
+      const invoke = window.__TAURI__?.core?.invoke;
+      if (typeof invoke !== "function") {
+        throw new Error("Tauri invoke API is unavailable");
+      }
+
+      await invoke("save_session_tokens", {
+        accessToken,
+        refreshToken,
+      });
+      window.__slockDesktopSessionSignature = nextSignature;
+    } catch (error) {
+      console.warn("[Slock Desktop] session sync failed", error);
+    }
+  };
+
+  const handleDaemonUpdateClick = async (event) => {
+    const button = event.target instanceof Element ? event.target.closest("button") : null;
+    if (!button) return;
+
+    const label = button.textContent?.trim().toLowerCase();
+    if (label !== "update") return;
+
+    const context = button.closest("[class*='bg-brutal-'], [class*='border-2'], [role='alert']")?.textContent?.toLowerCase() || "";
+    if (!/daemon|outdated|reconnect|machine|computer/.test(context)) return;
+
+    try {
+      const invoke = window.__TAURI__?.core?.invoke;
+      if (typeof invoke !== "function") {
+        throw new Error("Tauri invoke API is unavailable");
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      await invoke("update_service");
+    } catch (error) {
+      console.warn("[Slock Desktop] daemon update bridge failed", error);
+    }
+  };
+
   window.__slockDesktopSettingsClosePanel = closePanel;
+  syncSessionTokens();
 
   if (!window.__slockDesktopSettingsEscapeBound) {
     window.__slockDesktopSettingsEscapeBound = true;
@@ -1844,6 +1893,17 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       if (activeHost && path.includes(activeHost)) return;
       window.__slockDesktopSettingsClosePanel?.();
     });
+  }
+
+  if (!window.__slockDesktopSessionSyncTimer) {
+    window.__slockDesktopSessionSyncTimer = window.setInterval(syncSessionTokens, 4000);
+  }
+
+  if (!window.__slockDesktopUpdateBridgeBound) {
+    window.__slockDesktopUpdateBridgeBound = true;
+    document.addEventListener("click", (event) => {
+      void handleDaemonUpdateClick(event);
+    }, true);
   }
 
   function closePanel() {
