@@ -1045,6 +1045,15 @@ button:hover,
   color: var(--slock-desktop-text) !important;
 }}
 
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .relative.flex.items-center.border-b-2.border-black.px-4.py-3,
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black,
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button,
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button:hover,
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button:focus-visible {{
+  border-color: transparent !important;
+  box-shadow: none !important;
+}}
+
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow,
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow:hover,
 .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow:focus-visible {{
