@@ -358,6 +358,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       invite: "Invite",
       search: "Search",
       searchGlobalPlaceholder: "Search channels, DMs, messages...",
+      searchGlobalPlaceholderEllipsis: "Search channels, DMs, messages…",
+      clearSearch: "Clear search",
+      searchMyMessages: "My messages",
+      searchMyMessagesUpper: "MY MESSAGES",
+      searchAnyTime: "Any time",
+      searchAnyTimeUpper: "ANY TIME",
+      searchEverything: "Search everything",
+      searchEverythingDescription: "Search channels, DMs, people, agents, and message history.",
       optional: "optional",
       optionalWrapped: "(optional)",
       channelNameExample: "e.g. ai-research",
@@ -628,6 +636,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       invite: "邀请",
       search: "搜索",
       searchGlobalPlaceholder: "搜索频道、私信、消息...",
+      searchGlobalPlaceholderEllipsis: "搜索频道、私信、消息...",
+      clearSearch: "清除搜索",
+      searchMyMessages: "我的消息",
+      searchMyMessagesUpper: "我的消息",
+      searchAnyTime: "任意时间",
+      searchAnyTimeUpper: "任意时间",
+      searchEverything: "搜索全部",
+      searchEverythingDescription: "搜索频道、私信、人员、Agent 和消息历史。",
       optional: "可选",
       optionalWrapped: "（可选）",
       channelNameExample: "例如：ai-research",
@@ -1184,11 +1200,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       root.querySelectorAll(selectors).forEach((element) => {
         if (seen.has(element)) return;
         seen.add(element);
-        if (isExcludedTranslationTarget(element)) return;
+        const excludedForText = isExcludedTranslationTarget(element);
 
         translateAttribute(element, "aria-label");
         translateAttribute(element, "title");
         translateAttribute(element, "placeholder");
+
+        if (excludedForText) return;
 
         const allowPartial = canPartiallyTranslate(element);
 
@@ -2456,7 +2474,21 @@ mod tests {
         let script = settings_overlay_script("default", "system", "zh-CN", "zh-CN", &[]);
 
         assert!(script.contains("Search channels, DMs, messages..."));
+        assert!(script.contains("Search channels, DMs, messages…"));
         assert!(script.contains("搜索频道、私信、消息..."));
+        assert!(script.contains("Clear search"));
+        assert!(script.contains("清除搜索"));
+        assert!(script.contains("My messages"));
+        assert!(script.contains("我的消息"));
+        assert!(script.contains("Any time"));
+        assert!(script.contains("任意时间"));
+        assert!(script.contains("Search everything"));
+        assert!(script.contains("搜索全部"));
+        assert!(script.contains("Search channels, DMs, people, agents, and message history."));
+        assert!(script.contains("搜索频道、私信、人员、Agent 和消息历史。"));
         assert!(script.contains("\"input[placeholder]\""));
+        assert!(script.contains("const excludedForText = isExcludedTranslationTarget(element);"));
+        assert!(script.contains("translateAttribute(element, \"placeholder\");"));
+        assert!(script.contains("if (excludedForText) return;"));
     }
 }
