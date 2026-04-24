@@ -1904,6 +1904,17 @@ fn daemon_command_matches(
     }
 
     if command.contains(DAEMON_MACHINE_ID_ARG) {
+        if daemon_command_is_desktop_managed(command)
+            && target_server_slug
+                .filter(|server_slug| !server_slug.trim().is_empty())
+                .map(|server_slug| {
+                    command_arg_value_matches(command, DAEMON_SERVER_SLUG_ARG, server_slug)
+                })
+                .unwrap_or(false)
+        {
+            return true;
+        }
+
         if target_machine_id
             .filter(|machine_id| !machine_id.trim().is_empty())
             .map(|machine_id| command_arg_value_matches(command, DAEMON_MACHINE_ID_ARG, machine_id))
@@ -3316,6 +3327,25 @@ mod tests {
             "https://api.slock.ai",
             Some("open-have"),
             Some("machine-open"),
+            None,
+            None,
+            false,
+        );
+
+        assert_eq!(pids, vec![101]);
+    }
+
+    #[test]
+    fn desktop_managed_daemon_parser_matches_slug_when_machine_binding_is_stale() {
+        let output = r#"
+  101   1 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_service --slock-desktop-server-slug tyan-dyun --slock-desktop-machine-id actual-machine --slock-desktop-managed
+"#;
+
+        let pids = daemon_pids_from_ps_output(
+            output,
+            "https://api.slock.ai",
+            Some("tyan-dyun"),
+            Some("stale-machine"),
             None,
             None,
             false,
