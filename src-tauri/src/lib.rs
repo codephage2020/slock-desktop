@@ -157,8 +157,12 @@ struct ApiRefreshSession {
 }
 
 #[tauri::command]
-fn bootstrap(app: AppHandle, state: State<'_, DesktopState>) -> Result<BootstrapPayload, String> {
-    build_bootstrap(&app, &state, true)
+fn bootstrap(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    refresh: Option<bool>,
+) -> Result<BootstrapPayload, String> {
+    build_bootstrap(&app, &state, refresh.unwrap_or(true))
 }
 
 #[tauri::command]

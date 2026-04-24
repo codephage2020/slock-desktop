@@ -2198,7 +2198,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     });
 
     if (activeSection === "service" && !serviceSnapshot && !serviceBusyAction) {
-      queueMicrotask(() => loadServiceSnapshot());
+      queueMicrotask(async () => {
+        await loadServiceSnapshot("bootstrap", { refresh: false });
+        if (serviceBusyAction) return;
+        loadServiceSnapshot("refresh_service_servers", {}, "service-refresh");
+      });
     }
 
     panel.appendChild(inner);
