@@ -562,7 +562,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
     const markWorkspaceModuleSurfaces = () => {{
       if (!document.body) return;
 
-      const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"],.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow';
+      const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"],.flex.h-full.w-full.flex-col[class*="border-r"],.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow';
       const surfaceProps = [
         "slockDesktopMenuItem",
         "slockDesktopAccountDock",
@@ -1977,6 +1977,7 @@ mod tests {
             r#".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0[class*=\"border\"]"#
         ));
         assert!(script.contains("slockDesktopTaskToolbar"));
+        assert!(script.contains(".flex.h-full.w-full.flex-col[class*=\"border-r\"]"));
         assert!(script.contains("data-slock-desktop-task-toolbar"));
         assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
         assert!(script.contains(r#"main input.min-w-0[placeholder*=\"Search channels\"]"#));
