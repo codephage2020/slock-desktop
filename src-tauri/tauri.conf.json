@@ -14,10 +14,10 @@
     "windows": [
       {
         "title": "Slock Desktop",
-        "width": 1480,
-        "height": 980,
-        "minWidth": 980,
-        "minHeight": 760,
+        "width": 720,
+        "height": 760,
+        "minWidth": 680,
+        "minHeight": 720,
         "resizable": true,
         "fullscreen": false
       }

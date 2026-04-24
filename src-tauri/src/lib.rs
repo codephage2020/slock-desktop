@@ -15,12 +15,20 @@ use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::PageLoadEvent,
     window::Color,
-    AppHandle, Manager, RunEvent, State, Theme, Url,
+    AppHandle, LogicalSize, Manager, RunEvent, State, Theme, Url,
 };
 use theme::{meta_catalog, resolve_theme, CustomThemeInput};
 
 const MAIN_LABEL: &str = "main";
 const WORKSPACE_URL: &str = "https://app.slock.ai";
+const LAUNCHER_WINDOW_WIDTH: f64 = 720.0;
+const LAUNCHER_WINDOW_HEIGHT: f64 = 760.0;
+const LAUNCHER_WINDOW_MIN_WIDTH: f64 = 680.0;
+const LAUNCHER_WINDOW_MIN_HEIGHT: f64 = 720.0;
+const WORKSPACE_WINDOW_WIDTH: f64 = 1480.0;
+const WORKSPACE_WINDOW_HEIGHT: f64 = 980.0;
+const WORKSPACE_WINDOW_MIN_WIDTH: f64 = 980.0;
+const WORKSPACE_WINDOW_MIN_HEIGHT: f64 = 760.0;
 
 pub struct DesktopState {
     settings: Mutex<AppSettings>,
@@ -342,6 +350,7 @@ fn enter_workspace_in_main_window(
     if window_is_workspace(&window) {
         let _ = window.unminimize();
         let _ = window.show();
+        apply_workspace_window_size(&window);
         let _ = window.set_focus();
         apply_window_theme(&window, theme_mode);
         apply_window_language(app, &window, language, true);
@@ -362,8 +371,33 @@ fn enter_workspace_in_main_window(
 
     apply_window_language(app, &window, language, true);
     apply_window_theme(&window, theme_mode);
+    apply_workspace_window_size(&window);
     let _ = window.set_focus();
     window.navigate(target_url).map_err(|err| err.to_string())
+}
+
+fn apply_launcher_window_size(window: &tauri::WebviewWindow) {
+    let _ = window.set_min_size(Some(LogicalSize::new(
+        LAUNCHER_WINDOW_MIN_WIDTH,
+        LAUNCHER_WINDOW_MIN_HEIGHT,
+    )));
+    let _ = window.set_size(LogicalSize::new(
+        LAUNCHER_WINDOW_WIDTH,
+        LAUNCHER_WINDOW_HEIGHT,
+    ));
+    let _ = window.center();
+}
+
+fn apply_workspace_window_size(window: &tauri::WebviewWindow) {
+    let _ = window.set_min_size(Some(LogicalSize::new(
+        WORKSPACE_WINDOW_MIN_WIDTH,
+        WORKSPACE_WINDOW_MIN_HEIGHT,
+    )));
+    let _ = window.set_size(LogicalSize::new(
+        WORKSPACE_WINDOW_WIDTH,
+        WORKSPACE_WINDOW_HEIGHT,
+    ));
+    let _ = window.center();
 }
 
 fn apply_theme_to_workspace(
@@ -930,6 +964,7 @@ pub fn run() {
                     .unwrap_or_else(|_| ("system".to_string(), "system".to_string()));
                 apply_window_language(app.handle(), &window, &language, false);
                 apply_window_theme(&window, &appearance_mode);
+                apply_launcher_window_size(&window);
             }
 
             Ok(())

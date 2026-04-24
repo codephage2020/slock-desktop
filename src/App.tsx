@@ -573,22 +573,6 @@ function App() {
           </section>
         ) : null}
 
-        <section className="launch-center-card">
-          <div className="status-row">
-            <span className="status-dot" />
-            <span>{snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}</span>
-          </div>
-
-          <button
-            className="launch-button"
-            onClick={handleWorkspaceOpen}
-            disabled={busyAction === 'workspace'}
-          >
-            {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
-          </button>
-
-        </section>
-
         <section className="control-card settings-card" aria-labelledby="appearance-settings-title">
           <div className="control-card-head">
             <h2 id="appearance-settings-title">{copy.desktopSettings}</h2>
@@ -944,6 +928,21 @@ function App() {
             </div>
           </div>
         </details>
+
+        <section className="launch-center-card">
+          <div className="status-row">
+            <span className="status-dot" />
+            <span>{snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}</span>
+          </div>
+
+          <button
+            className="launch-button"
+            onClick={handleWorkspaceOpen}
+            disabled={busyAction === 'workspace'}
+          >
+            {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
+          </button>
+        </section>
       </section>
     </main>
   )

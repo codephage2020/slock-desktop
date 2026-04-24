@@ -24,10 +24,12 @@
 
 .studio-shell {
   padding: clamp(16px, 2vw, 24px);
+  display: grid;
+  align-content: start;
 }
 
 .launch-board {
-  width: min(100%, 760px);
+  width: min(100%, 720px);
   margin: 0 auto;
   display: grid;
   gap: 12px;
@@ -62,9 +64,11 @@
 }
 
 .launch-center-card {
-  display: grid;
-  gap: 14px;
-  padding: 18px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
   border-radius: 24px;
 }
 
@@ -72,7 +76,6 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  justify-self: start;
   color: var(--text);
   font-size: 0.78rem;
 }
@@ -112,7 +115,7 @@
 }
 
 .launch-button {
-  width: 100%;
+  min-width: 220px;
   min-height: 56px;
   padding: 14px 18px;
   border: 1px solid transparent;
@@ -442,6 +445,16 @@ details.control-card[open] > summary::after {
 
   .control-card-head {
     align-items: flex-start;
+  }
+
+  .launch-center-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .launch-button {
+    width: 100%;
+    min-width: 0;
   }
 
   .settings-quick-controls,
