@@ -319,7 +319,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
           const backgroundImage = `${{candidate.style.backgroundImage || ""}} ${{computed.backgroundImage || ""}}`;
           return (
             candidate.matches("img,picture,canvas") ||
-            /url\\(/i.test(backgroundImage) ||
+            /url\(/i.test(backgroundImage) ||
             candidate.hasAttribute("data-avatar-src") ||
             candidate.hasAttribute("data-profile-image")
           );
