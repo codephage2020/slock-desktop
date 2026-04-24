@@ -947,6 +947,7 @@ select:focus,
 .border-2 > textarea.max-h-32.w-full.resize-none {{
   background: transparent !important;
   box-shadow: none !important;
+  border-radius: 0 !important;
 }}
 
 .btn-brutal,
