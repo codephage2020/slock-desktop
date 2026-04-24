@@ -944,6 +944,11 @@ select:focus,
     0 0 0 3px color-mix(in srgb, var(--slock-desktop-accent) 12%, transparent) !important;
 }}
 
+.border-2 > textarea.max-h-32.w-full.resize-none {{
+  background: transparent !important;
+  box-shadow: none !important;
+}}
+
 .btn-brutal,
 .btn-brutal-sm,
 button,
@@ -978,6 +983,32 @@ button,
 button:hover,
 [role="button"]:hover {{
   background: var(--slock-desktop-hover) !important;
+}}
+
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .relative.flex.items-center.border-b-2.border-black.px-4.py-3 > .relative.inline-flex.items-center.gap-1\.5.tilt-neg-2.border-2.border-black.bg-black,
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .relative.flex.items-center.border-b-2.border-black.px-4.py-3 > .relative.inline-flex.items-center.gap-1\.5.tilt-neg-2.border-2.border-black.bg-black:hover,
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .relative.flex.items-center.border-b-2.border-black.px-4.py-3 > .relative.inline-flex.items-center.gap-1\.5.tilt-neg-2.border-2.border-black.bg-black:focus-visible {{
+  background: color-mix(in srgb, var(--slock-desktop-surface-strong) 88%, var(--slock-desktop-accent) 12%) !important;
+  border-color: var(--slock-desktop-line-strong) !important;
+  color: var(--slock-desktop-accent) !important;
+}}
+
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white,
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:hover,
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:focus-visible {{
+  background: var(--slock-desktop-selection) !important;
+  color: var(--slock-desktop-text) !important;
+}}
+
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-brutal-yellow\/60 {{
+  background: transparent !important;
+  color: var(--slock-desktop-muted) !important;
+}}
+
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-brutal-yellow\/60:hover,
+.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-brutal-yellow\/60:focus-visible {{
+  background: var(--slock-desktop-hover) !important;
+  color: var(--slock-desktop-text) !important;
 }}
 
 [class*="bg-brutal-yellow"],
@@ -1304,6 +1335,19 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold,
 [data-slock-desktop-count-tone="accent"] {{
   color: color-mix(in srgb, var(--slock-desktop-semantic-current) 78%, var(--slock-desktop-text)) !important;
   font-weight: 650 !important;
+}}
+
+:is(p, li, .break-words, [class*="select-text"]) :is(a, code)[data-slock-desktop-semantic-shape="chip"],
+:is(p, li, .break-words, [class*="select-text"]) :is(a, code)[class*="bg-brutal-"] {{
+  background: transparent !important;
+  box-shadow: none !important;
+}}
+
+:is(p, li, .break-words, [class*="select-text"]) :is(a, code)[data-slock-desktop-semantic-shape="chip"]:hover,
+:is(p, li, .break-words, [class*="select-text"]) :is(a, code)[data-slock-desktop-semantic-shape="chip"]:focus-visible,
+:is(p, li, .break-words, [class*="select-text"]) :is(a, code)[class*="bg-brutal-"]:hover,
+:is(p, li, .break-words, [class*="select-text"]) :is(a, code)[class*="bg-brutal-"]:focus-visible {{
+  background: var(--slock-desktop-hover) !important;
 }}
 
 [data-slock-desktop-avatar="true"][data-slock-desktop-avatar-has-image="true"],
