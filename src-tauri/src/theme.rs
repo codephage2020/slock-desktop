@@ -1702,6 +1702,11 @@ header,
   background: var(--slock-desktop-canvas) !important;
 }}
 
+main :where(.flex.min-h-0.flex-1.flex-col) > .relative > .flex > .flex,
+main :where(.flex.min-h-0.flex-1.flex-col) > .relative > .flex > .flex > .flex {{
+  background: transparent !important;
+}}
+
 [data-slock-desktop-task-toolbar="true"] {{
   background: var(--slock-desktop-canvas) !important;
   border-top-color: transparent !important;
@@ -1780,6 +1785,8 @@ main input.min-w-0[placeholder*="搜索频道"],
 main input[placeholder*="Search channels, DMs, messages"],
 main input[placeholder*="搜索频道、私信、消息"] {{
   border-radius: var(--slock-desktop-radius-xs) !important;
+  background: transparent !important;
+  background-color: transparent !important;
   background-clip: padding-box !important;
   padding-inline: 14px !important;
   box-shadow: none !important;
@@ -2135,5 +2142,23 @@ mod tests {
         assert!(!script.contains(
             "box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slock-desktop-accent) 20%, transparent)"
         ));
+    }
+
+    #[test]
+    fn injected_script_removes_channel_chrome_and_search_input_backgrounds() {
+        let script = injected_script(resolve_theme(
+            "default",
+            "light",
+            &CustomThemeInput {
+                name: "Custom".to_string(),
+                accent: "#10a37f".to_string(),
+            },
+        ));
+
+        assert!(script
+            .contains("main :where(.flex.min-h-0.flex-1.flex-col) > .relative > .flex > .flex"));
+        assert!(script.contains(r#"input[placeholder*=\"搜索频道、私信、消息\"]"#));
+        assert!(script.contains("background-color: transparent !important;"));
+        assert!(script.contains("background-clip: padding-box !important;"));
     }
 }
