@@ -36,6 +36,8 @@ const WORKSPACE_WINDOW_WIDTH: f64 = 1480.0;
 const WORKSPACE_WINDOW_HEIGHT: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_WIDTH: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_HEIGHT: f64 = 760.0;
+const DAEMON_SERVER_SLUG_ARG: &str = "--slock-desktop-server-slug";
+const DAEMON_MACHINE_ID_ARG: &str = "--slock-desktop-machine-id";
 
 pub struct DesktopState {
     settings: Mutex<AppSettings>,
@@ -73,6 +75,21 @@ struct ServiceDaemonProcess {
     pid: u32,
     server_slug: String,
     machine_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedServiceMachine {
+    binding: ServiceMachineBinding,
+    api_key_prefix: Option<String>,
+    machine_status: String,
+}
+
+#[derive(Debug, Clone)]
+struct ServiceStartTarget {
+    binding: ServiceMachineBinding,
+    api_key: String,
+    api_key_prefix: Option<String>,
+    machine_status: String,
 }
 
 #[derive(Default)]
@@ -123,6 +140,8 @@ struct ServiceServerSnapshot {
     machine_name: Option<String>,
     machine_status: String,
     api_key_ready: bool,
+    #[serde(skip_serializing)]
+    api_key_prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,6 +181,8 @@ struct ApiMachine {
     name: String,
     #[serde(default)]
     status: String,
+    #[serde(default)]
+    api_key_prefix: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -453,6 +474,7 @@ fn stop_service(
     };
 
     stop_service_process(
+        &app,
         &state,
         Some(&service_settings),
         selected_server_slug.as_deref(),
@@ -485,7 +507,7 @@ fn resolve_app_close_request(
     };
 
     if behavior == CloseAppServiceBehavior::Stop {
-        stop_service_process(&state, Some(&service_settings), None)?;
+        stop_service_process(&app, &state, Some(&service_settings), None)?;
     }
 
     mark_app_close_confirmed(&state);
@@ -516,7 +538,7 @@ fn update_service(
         settings.service.clone()
     };
 
-    stop_service_process(&state, Some(&service_settings), None)?;
+    stop_service_process(&app, &state, Some(&service_settings), None)?;
     force_start_service(&app, &state, &service_settings)?;
     build_bootstrap(&app, &state, false)
 }
@@ -551,7 +573,7 @@ fn handle_window_close_requested(app: &AppHandle, state: &DesktopState) {
 
     match current_close_app_behavior(state) {
         CloseAppServiceBehavior::Ask => {
-            if service_may_be_running(state) {
+            if service_may_be_running(app, state) {
                 request_app_close_prompt(app, state);
             } else {
                 mark_app_close_confirmed(state);
@@ -559,7 +581,7 @@ fn handle_window_close_requested(app: &AppHandle, state: &DesktopState) {
             }
         }
         behavior => {
-            apply_remembered_close_behavior(state, behavior);
+            apply_remembered_close_behavior(app, state, behavior);
             mark_app_close_confirmed(state);
             app.exit(0);
         }
@@ -573,7 +595,7 @@ fn handle_app_exit_requested(app: &AppHandle, state: &DesktopState) -> bool {
 
     match current_close_app_behavior(state) {
         CloseAppServiceBehavior::Ask => {
-            if service_may_be_running(state) {
+            if service_may_be_running(app, state) {
                 request_app_close_prompt(app, state);
                 false
             } else {
@@ -581,24 +603,28 @@ fn handle_app_exit_requested(app: &AppHandle, state: &DesktopState) -> bool {
             }
         }
         behavior => {
-            apply_remembered_close_behavior(state, behavior);
+            apply_remembered_close_behavior(app, state, behavior);
             true
         }
     }
 }
 
-fn handle_app_exit(state: &DesktopState) {
+fn handle_app_exit(app: &AppHandle, state: &DesktopState) {
     if current_close_app_behavior(state) == CloseAppServiceBehavior::Stop {
         let service_settings = state
             .settings
             .lock()
             .ok()
             .map(|settings| settings.service.clone());
-        let _ = stop_service_process(state, service_settings.as_ref(), None);
+        let _ = stop_service_process(app, state, service_settings.as_ref(), None);
     }
 }
 
-fn apply_remembered_close_behavior(state: &DesktopState, behavior: CloseAppServiceBehavior) {
+fn apply_remembered_close_behavior(
+    app: &AppHandle,
+    state: &DesktopState,
+    behavior: CloseAppServiceBehavior,
+) {
     if behavior != CloseAppServiceBehavior::Stop {
         return;
     }
@@ -607,7 +633,7 @@ fn apply_remembered_close_behavior(state: &DesktopState, behavior: CloseAppServi
         .lock()
         .ok()
         .map(|settings| settings.service.clone());
-    let _ = stop_service_process(state, service_settings.as_ref(), None);
+    let _ = stop_service_process(app, state, service_settings.as_ref(), None);
 }
 
 fn current_close_app_behavior(state: &DesktopState) -> CloseAppServiceBehavior {
@@ -800,7 +826,7 @@ fn close_request_confirmed(state: &DesktopState) -> bool {
     false
 }
 
-fn service_may_be_running(state: &DesktopState) -> bool {
+fn service_may_be_running(app: &AppHandle, state: &DesktopState) -> bool {
     let service_settings = state
         .settings
         .lock()
@@ -820,12 +846,25 @@ fn service_may_be_running(state: &DesktopState) -> bool {
     }
 
     let target_slug = service_settings.selected_server_slug.trim();
-    let target_api_key = find_service_binding(&service_settings, "", target_slug)
-        .map(|binding| binding.api_key)
-        .filter(|api_key| !api_key.trim().is_empty());
-    find_daemon_process_ids(target_api_key.as_deref(), &service_settings.server_url)
-        .map(|pids| !pids.is_empty())
-        .unwrap_or(false)
+    if target_slug.is_empty() {
+        return false;
+    }
+
+    let Ok(Some(target)) =
+        resolve_service_machine_for_slug(app, state, &service_settings, target_slug)
+    else {
+        return false;
+    };
+    find_daemon_process_ids(
+        &service_settings.server_url,
+        Some(target_slug),
+        Some(target.binding.machine_id.as_str()).filter(|machine_id| !machine_id.trim().is_empty()),
+        target.api_key_prefix.as_deref(),
+        Some(target.binding.api_key.as_str()).filter(|api_key| !api_key.trim().is_empty()),
+        false,
+    )
+    .map(|pids| !pids.is_empty())
+    .unwrap_or(false)
 }
 
 fn close_app_behavior_from_action(action: &str) -> Option<CloseAppServiceBehavior> {
@@ -1352,18 +1391,12 @@ fn collect_service_snapshot(
     }
 
     if !running {
-        let selected_machine_started = servers
-            .iter()
-            .find(|server| server.selected)
-            .map(|server| machine_counts_as_started(&server.machine_status))
-            .unwrap_or(false);
-        if selected_machine_started {
-            if let Ok(Some(process)) = selected_service_daemon_process(settings) {
-                running = true;
-                pid = Some(process.pid);
-                active_server_slug = process.server_slug.clone();
-                let _ = mark_service_daemon_process_running(state, &process);
-            }
+        if let Ok(Some(process)) = selected_service_daemon_process_from_servers(settings, &servers)
+        {
+            running = true;
+            pid = Some(process.pid);
+            active_server_slug = process.server_slug.clone();
+            let _ = mark_service_daemon_process_running(state, &process);
         }
     }
 
@@ -1435,16 +1468,21 @@ fn force_start_service(
     settings: &ServiceSettings,
 ) -> Result<(), String> {
     let selected_server = resolve_selected_server(app, state, settings)?;
-    if let Some(existing_binding) =
-        find_service_binding(settings, &selected_server.id, &selected_server.slug)
-    {
-        let daemon_pids = service_daemon_pids_for_binding(settings, &existing_binding)?;
-        for pid in daemon_pids {
-            terminate_daemon_process(pid)?;
-        }
-    }
+    let target = ensure_machine_binding(app, state, settings, &selected_server)?;
+    let binding = target.binding.clone();
 
-    let binding = ensure_machine_binding(app, state, settings, &selected_server)?;
+    let mut daemon_pids = service_daemon_pids_for_binding(
+        settings,
+        &binding,
+        target.api_key_prefix.as_deref(),
+        false,
+    )?;
+    if daemon_pids.is_empty() && machine_counts_as_started(&target.machine_status) {
+        daemon_pids = unique_untagged_daemon_process_ids(&settings.server_url)?;
+    }
+    for pid in daemon_pids {
+        terminate_daemon_process(pid)?;
+    }
 
     let mut runtime = state
         .service
@@ -1471,12 +1509,26 @@ fn force_start_service(
         runtime.child = None;
     }
 
-    if !service_daemon_pids_for_binding(settings, &binding)?.is_empty() {
+    let mut daemon_pids = service_daemon_pids_for_binding(
+        settings,
+        &binding,
+        target.api_key_prefix.as_deref(),
+        false,
+    )?;
+    if daemon_pids.is_empty() && machine_counts_as_started(&target.machine_status) {
+        daemon_pids = unique_untagged_daemon_process_ids(&settings.server_url)?;
+    }
+    if !daemon_pids.is_empty() {
         runtime.last_error = None;
         runtime.active_server_slug = Some(selected_server.slug);
         runtime.active_machine_id = Some(binding.machine_id);
         runtime.child = None;
         return Ok(());
+    }
+
+    let api_key = target.api_key.trim();
+    if api_key.is_empty() {
+        return Err("Selected server did not return a daemon API key.".to_string());
     }
 
     let mut command = Command::new("npx");
@@ -1487,7 +1539,11 @@ fn force_start_service(
             "--server-url",
             settings.server_url.as_str(),
             "--api-key",
-            binding.api_key.as_str(),
+            api_key,
+            DAEMON_SERVER_SLUG_ARG,
+            binding.server_slug.as_str(),
+            DAEMON_MACHINE_ID_ARG,
+            binding.machine_id.as_str(),
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -1518,6 +1574,7 @@ fn mark_service_daemon_process_running(
 }
 
 fn stop_service_process(
+    app: &AppHandle,
     state: &DesktopState,
     service_settings: Option<&ServiceSettings>,
     target_server_slug: Option<&str>,
@@ -1559,9 +1616,9 @@ fn stop_service_process(
         }
     }
 
-    let target_api_key = service_settings
-        .and_then(|settings| {
-            let target_slug = requested_server_slug
+    let target_slug = service_settings
+        .map(|settings| {
+            requested_server_slug
                 .as_deref()
                 .filter(|slug| !slug.trim().is_empty())
                 .or_else(|| {
@@ -1569,16 +1626,52 @@ fn stop_service_process(
                         .as_deref()
                         .filter(|slug| !slug.trim().is_empty())
                 })
-                .unwrap_or_else(|| settings.selected_server_slug.as_str());
-            find_service_binding(settings, "", target_slug)
+                .unwrap_or_else(|| settings.selected_server_slug.as_str())
         })
-        .map(|binding| binding.api_key)
-        .filter(|api_key| !api_key.trim().is_empty());
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty());
+    let resolved_target = match (service_settings, target_slug) {
+        (Some(settings), Some(slug)) => {
+            resolve_service_machine_for_slug(app, state, settings, slug)?
+        }
+        _ => None,
+    };
+    let target_binding = resolved_target
+        .as_ref()
+        .map(|target| target.binding.clone())
+        .or_else(|| {
+            service_settings.and_then(|settings| {
+                target_slug.and_then(|slug| find_service_binding(settings, "", slug))
+            })
+        });
     let target_server_url = service_settings
         .map(|settings| settings.server_url.as_str())
         .unwrap_or(DEFAULT_SERVER_URL);
 
-    let daemon_pids = find_daemon_process_ids(target_api_key.as_deref(), target_server_url)?;
+    let mut daemon_pids = find_daemon_process_ids(
+        target_server_url,
+        target_slug,
+        target_binding
+            .as_ref()
+            .map(|binding| binding.machine_id.as_str())
+            .filter(|machine_id| !machine_id.trim().is_empty()),
+        resolved_target
+            .as_ref()
+            .and_then(|target| target.api_key_prefix.as_deref()),
+        target_binding
+            .as_ref()
+            .map(|binding| binding.api_key.as_str())
+            .filter(|api_key| !api_key.trim().is_empty()),
+        false,
+    )?;
+    if daemon_pids.is_empty()
+        && resolved_target
+            .as_ref()
+            .map(|target| machine_counts_as_started(&target.machine_status))
+            .unwrap_or(false)
+    {
+        daemon_pids = unique_untagged_daemon_process_ids(target_server_url)?;
+    }
     for pid in daemon_pids {
         terminate_daemon_process(pid)?;
     }
@@ -1596,8 +1689,12 @@ fn stop_service_process(
 }
 
 fn find_daemon_process_ids(
-    target_api_key: Option<&str>,
     target_server_url: &str,
+    target_server_slug: Option<&str>,
+    target_machine_id: Option<&str>,
+    api_key_prefix: Option<&str>,
+    legacy_api_key: Option<&str>,
+    include_untagged: bool,
 ) -> Result<Vec<u32>, String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
@@ -1612,14 +1709,56 @@ fn find_daemon_process_ids(
         let listing = String::from_utf8_lossy(&output.stdout);
         Ok(daemon_pids_from_ps_output(
             &listing,
-            target_api_key,
+            target_server_url,
+            target_server_slug,
+            target_machine_id,
+            api_key_prefix,
+            legacy_api_key,
+            include_untagged,
+        ))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = target_server_url;
+        let _ = target_server_slug;
+        let _ = target_machine_id;
+        let _ = api_key_prefix;
+        let _ = legacy_api_key;
+        let _ = include_untagged;
+        Ok(Vec::new())
+    }
+}
+
+fn unique_untagged_daemon_process_ids(target_server_url: &str) -> Result<Vec<u32>, String> {
+    let pids = find_untagged_daemon_process_ids(target_server_url)?;
+    if pids.len() == 1 {
+        Ok(pids)
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+fn find_untagged_daemon_process_ids(target_server_url: &str) -> Result<Vec<u32>, String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let output = Command::new("ps")
+            .args(["-axo", "pid=,command="])
+            .output()
+            .map_err(|err| format!("Failed to inspect daemon processes: {err}"))?;
+        if !output.status.success() {
+            return Err("Failed to inspect daemon processes".to_string());
+        }
+
+        let listing = String::from_utf8_lossy(&output.stdout);
+        Ok(untagged_daemon_pids_from_ps_output(
+            &listing,
             target_server_url,
         ))
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
-        let _ = target_api_key;
         let _ = target_server_url;
         Ok(Vec::new())
     }
@@ -1627,8 +1766,12 @@ fn find_daemon_process_ids(
 
 fn daemon_pids_from_ps_output(
     output: &str,
-    target_api_key: Option<&str>,
     target_server_url: &str,
+    target_server_slug: Option<&str>,
+    target_machine_id: Option<&str>,
+    api_key_prefix: Option<&str>,
+    legacy_api_key: Option<&str>,
+    include_untagged: bool,
 ) -> Vec<u32> {
     output
         .lines()
@@ -1638,7 +1781,33 @@ fn daemon_pids_from_ps_output(
             let (pid_text, command_text) = trimmed.split_at(split_index);
             let pid = pid_text.parse::<u32>().ok()?;
             let command = command_text.trim();
-            if daemon_command_matches(command, target_api_key, target_server_url) {
+            if daemon_command_matches(
+                command,
+                target_server_url,
+                target_server_slug,
+                target_machine_id,
+                api_key_prefix,
+                legacy_api_key,
+                include_untagged,
+            ) {
+                Some(pid)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn untagged_daemon_pids_from_ps_output(output: &str, target_server_url: &str) -> Vec<u32> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let split_index = trimmed.find(char::is_whitespace)?;
+            let (pid_text, command_text) = trimmed.split_at(split_index);
+            let pid = pid_text.parse::<u32>().ok()?;
+            let command = command_text.trim();
+            if daemon_command_is_untagged(command, target_server_url) {
                 Some(pid)
             } else {
                 None
@@ -1649,23 +1818,108 @@ fn daemon_pids_from_ps_output(
 
 fn daemon_command_matches(
     command: &str,
-    target_api_key: Option<&str>,
     target_server_url: &str,
+    target_server_slug: Option<&str>,
+    target_machine_id: Option<&str>,
+    api_key_prefix: Option<&str>,
+    legacy_api_key: Option<&str>,
+    include_untagged: bool,
 ) -> bool {
     let daemon_marker = command.contains("@slock-ai/daemon") || command.contains("slock-ai/daemon");
     if !daemon_marker || !command.contains("--server-url") || !command.contains(target_server_url) {
         return false;
     }
 
-    if let Some(api_key) = target_api_key.filter(|api_key| !api_key.trim().is_empty()) {
-        return command.contains("--api-key") && command.contains(api_key);
+    if command.contains(DAEMON_MACHINE_ID_ARG) {
+        return target_machine_id
+            .filter(|machine_id| !machine_id.trim().is_empty())
+            .map(|machine_id| command_arg_value_matches(command, DAEMON_MACHINE_ID_ARG, machine_id))
+            .unwrap_or(false);
     }
 
-    true
+    if command.contains(DAEMON_SERVER_SLUG_ARG) {
+        return target_server_slug
+            .filter(|server_slug| !server_slug.trim().is_empty())
+            .map(|server_slug| {
+                command_arg_value_matches(command, DAEMON_SERVER_SLUG_ARG, server_slug)
+            })
+            .unwrap_or(false);
+    }
+
+    if let Some(prefix) = api_key_prefix.filter(|prefix| !prefix.trim().is_empty()) {
+        return command_arg_value_starts_with(command, "--api-key", prefix);
+    }
+
+    if let Some(api_key) = legacy_api_key.filter(|api_key| !api_key.trim().is_empty()) {
+        return command_arg_value_matches(command, "--api-key", api_key);
+    }
+
+    include_untagged
 }
 
-fn selected_service_daemon_process(
+fn daemon_command_is_untagged(command: &str, target_server_url: &str) -> bool {
+    let daemon_marker = command.contains("@slock-ai/daemon") || command.contains("slock-ai/daemon");
+    daemon_marker
+        && command.contains("--server-url")
+        && command.contains(target_server_url)
+        && !command.contains(DAEMON_MACHINE_ID_ARG)
+        && !command.contains(DAEMON_SERVER_SLUG_ARG)
+}
+
+fn command_arg_value_starts_with(command: &str, arg: &str, expected_prefix: &str) -> bool {
+    let expected_prefix = expected_prefix.trim();
+    if expected_prefix.is_empty() {
+        return false;
+    }
+
+    let equals_prefix = format!("{arg}=");
+    let mut parts = command.split_whitespace();
+    while let Some(part) = parts.next() {
+        if part == arg {
+            return parts
+                .next()
+                .map(|value| value.starts_with(expected_prefix))
+                .unwrap_or(false);
+        }
+        if part
+            .strip_prefix(equals_prefix.as_str())
+            .map(|value| value.starts_with(expected_prefix))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn command_arg_value_matches(command: &str, arg: &str, expected: &str) -> bool {
+    let expected = expected.trim();
+    if expected.is_empty() {
+        return false;
+    }
+
+    let equals_prefix = format!("{arg}=");
+    let mut parts = command.split_whitespace();
+    while let Some(part) = parts.next() {
+        if part == arg {
+            return parts.next().map(|value| value == expected).unwrap_or(false);
+        }
+        if part
+            .strip_prefix(equals_prefix.as_str())
+            .map(|value| value == expected)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn selected_service_daemon_process_from_servers(
     settings: &ServiceSettings,
+    servers: &[ServiceServerSnapshot],
 ) -> Result<Option<ServiceDaemonProcess>, String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
@@ -1678,62 +1932,80 @@ fn selected_service_daemon_process(
         }
 
         let listing = String::from_utf8_lossy(&output.stdout);
-        Ok(selected_service_daemon_process_from_ps_output(
-            settings, &listing,
+        Ok(selected_service_daemon_process_from_server_snapshots(
+            settings, servers, &listing,
         ))
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = settings;
+        let _ = servers;
         Ok(None)
     }
 }
 
-fn selected_service_daemon_process_from_ps_output(
+fn selected_service_daemon_process_from_server_snapshots(
     settings: &ServiceSettings,
+    servers: &[ServiceServerSnapshot],
     output: &str,
 ) -> Option<ServiceDaemonProcess> {
-    let target_slug = settings.selected_server_slug.trim();
-    if target_slug.is_empty() {
-        return None;
-    }
-
-    let binding = find_service_binding(settings, "", target_slug)?;
-    service_daemon_process_from_binding(settings, target_slug, &binding, output)
+    let target = servers.iter().find(|server| server.selected)?;
+    let legacy_api_key = find_service_binding(settings, &target.id, &target.slug)
+        .map(|binding| binding.api_key)
+        .unwrap_or_default();
+    service_daemon_process_from_target(
+        settings,
+        &target.slug,
+        target.machine_id.as_deref(),
+        target.api_key_prefix.as_deref(),
+        Some(legacy_api_key.as_str()).filter(|api_key| !api_key.trim().is_empty()),
+        output,
+    )
 }
 
-fn service_daemon_process_from_binding(
+fn service_daemon_process_from_target(
     settings: &ServiceSettings,
     server_slug: &str,
-    binding: &ServiceMachineBinding,
+    machine_id: Option<&str>,
+    api_key_prefix: Option<&str>,
+    legacy_api_key: Option<&str>,
     output: &str,
 ) -> Option<ServiceDaemonProcess> {
-    let api_key = binding.api_key.trim();
-    if api_key.is_empty() {
-        return None;
-    }
-
-    daemon_pids_from_ps_output(output, Some(api_key), &settings.server_url)
-        .into_iter()
-        .next()
-        .map(|pid| ServiceDaemonProcess {
-            pid,
-            server_slug: server_slug.to_string(),
-            machine_id: Some(binding.machine_id.trim().to_string())
-                .filter(|machine_id| !machine_id.is_empty()),
-        })
+    daemon_pids_from_ps_output(
+        output,
+        &settings.server_url,
+        Some(server_slug),
+        machine_id,
+        api_key_prefix,
+        legacy_api_key,
+        false,
+    )
+    .into_iter()
+    .next()
+    .map(|pid| ServiceDaemonProcess {
+        pid,
+        server_slug: server_slug.to_string(),
+        machine_id: machine_id
+            .map(|machine_id| machine_id.trim().to_string())
+            .filter(|machine_id| !machine_id.is_empty()),
+    })
 }
 
 fn service_daemon_pids_for_binding(
     settings: &ServiceSettings,
     binding: &ServiceMachineBinding,
+    api_key_prefix: Option<&str>,
+    include_untagged: bool,
 ) -> Result<Vec<u32>, String> {
-    let api_key = binding.api_key.trim();
-    if api_key.is_empty() {
-        return Ok(Vec::new());
-    }
-    find_daemon_process_ids(Some(api_key), &settings.server_url)
+    find_daemon_process_ids(
+        &settings.server_url,
+        Some(binding.server_slug.as_str()),
+        Some(binding.machine_id.as_str()).filter(|machine_id| !machine_id.trim().is_empty()),
+        api_key_prefix,
+        Some(binding.api_key.as_str()).filter(|api_key| !api_key.trim().is_empty()),
+        include_untagged,
+    )
 }
 
 fn terminate_daemon_process(pid: u32) -> Result<(), String> {
@@ -1794,12 +2066,11 @@ fn sanitize_service_settings(service: ServiceSettings) -> ServiceSettings {
             server_slug: binding.server_slug.trim().to_string(),
             machine_id: binding.machine_id.trim().to_string(),
             machine_name: binding.machine_name.trim().to_string(),
-            api_key: binding.api_key.trim().to_string(),
+            api_key: String::new(),
         };
         if normalized.server_id.is_empty()
             || normalized.server_slug.is_empty()
             || normalized.machine_id.is_empty()
-            || normalized.api_key.is_empty()
         {
             continue;
         }
@@ -2106,6 +2377,9 @@ fn fetch_service_servers(
                     "not linked".to_string()
                 }
             });
+        let api_key_prefix = active_machine
+            .map(|machine| machine.api_key_prefix.trim().to_string())
+            .filter(|prefix| !prefix.is_empty());
 
         snapshots.push(ServiceServerSnapshot {
             id: server.id.clone(),
@@ -2126,10 +2400,12 @@ fn fetch_service_servers(
                 })
                 .or_else(|| active_machine.map(|machine| machine.name.clone())),
             machine_status,
-            api_key_ready: binding
-                .as_ref()
-                .map(|item| !item.api_key.trim().is_empty())
-                .unwrap_or(false),
+            api_key_ready: api_key_prefix.is_some()
+                || binding
+                    .as_ref()
+                    .map(|item| !item.machine_id.trim().is_empty())
+                    .unwrap_or(false),
+            api_key_prefix,
         });
     }
 
@@ -2172,6 +2448,39 @@ fn resolve_selected_server(
     state: &DesktopState,
     settings: &ServiceSettings,
 ) -> Result<ApiServer, String> {
+    let selected_slug = settings.selected_server_slug.trim();
+    if !selected_slug.is_empty() {
+        return resolve_service_server(app, state, settings, selected_slug);
+    }
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+    let servers = load_authenticated_json::<Vec<ApiServer>>(
+        app,
+        state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers"))
+                .bearer_auth(access_token)
+        },
+    )?;
+
+    if servers.len() == 1 {
+        let server = servers[0].clone();
+        persist_selected_server_slug(app, state, &server.slug)?;
+        return Ok(server);
+    }
+
+    Err("Pick a server in the launcher before starting Slock.".to_string())
+}
+
+fn resolve_service_server(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+    server_slug: &str,
+) -> Result<ApiServer, String> {
     let server_url = settings.server_url.clone();
     let api_root = api_base_url(&server_url);
     let servers = load_authenticated_json::<Vec<ApiServer>>(
@@ -2187,19 +2496,57 @@ fn resolve_selected_server(
 
     if let Some(server) = servers
         .iter()
-        .find(|server| server.slug == settings.selected_server_slug)
+        .find(|server| server.slug == server_slug)
         .cloned()
     {
         return Ok(server);
     }
 
-    if servers.len() == 1 {
-        let server = servers[0].clone();
-        persist_selected_server_slug(app, state, &server.slug)?;
-        return Ok(server);
-    }
-
     Err("Pick a server in the launcher before starting Slock.".to_string())
+}
+
+fn resolve_service_machine_for_slug(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+    server_slug: &str,
+) -> Result<Option<ResolvedServiceMachine>, String> {
+    let server = resolve_service_server(app, state, settings, server_slug)?;
+    resolve_existing_service_machine(app, state, settings, &server)
+}
+
+fn resolve_existing_service_machine(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+    server: &ApiServer,
+) -> Result<Option<ResolvedServiceMachine>, String> {
+    let existing_binding = find_service_binding(settings, &server.id, &server.slug);
+    let machines = fetch_server_machines(app, state, &settings.server_url, &server.id)?;
+    let Some(machine) = select_existing_machine(existing_binding.as_ref(), &machines) else {
+        return Ok(None);
+    };
+
+    let api_key_prefix =
+        Some(machine.api_key_prefix.trim().to_string()).filter(|prefix| !prefix.is_empty());
+    let machine_status = normalize_machine_status(&machine.status);
+    let legacy_api_key = existing_binding
+        .as_ref()
+        .map(|binding| binding.api_key.trim().to_string())
+        .filter(|api_key| !api_key.is_empty())
+        .unwrap_or_default();
+
+    Ok(Some(ResolvedServiceMachine {
+        binding: ServiceMachineBinding {
+            server_id: server.id.clone(),
+            server_slug: server.slug.clone(),
+            machine_id: machine.id,
+            machine_name: machine.name,
+            api_key: legacy_api_key,
+        },
+        api_key_prefix,
+        machine_status,
+    }))
 }
 
 fn ensure_machine_binding(
@@ -2207,20 +2554,25 @@ fn ensure_machine_binding(
     state: &DesktopState,
     settings: &ServiceSettings,
     server: &ApiServer,
-) -> Result<ServiceMachineBinding, String> {
-    let existing_binding = find_service_binding(settings, &server.id, &server.slug);
+) -> Result<ServiceStartTarget, String> {
     let server_url = settings.server_url.clone();
-    let machines = fetch_server_machines(app, state, &server_url, &server.id)?;
-    if let Some(machine) = select_existing_machine(existing_binding.as_ref(), &machines) {
-        let api_key = rotate_machine_api_key(app, state, &server_url, &server.id, &machine.id)?;
-        let binding = ServiceMachineBinding {
-            server_id: server.id.clone(),
-            server_slug: server.slug.clone(),
-            machine_id: machine.id,
-            machine_name: machine.name,
+    if let Some(target) = resolve_existing_service_machine(app, state, settings, server)? {
+        let api_key = rotate_machine_api_key(
+            app,
+            state,
+            &server_url,
+            &server.id,
+            &target.binding.machine_id,
+        )?;
+        let mut binding = target.binding;
+        binding.api_key = String::new();
+        let binding = upsert_service_binding(app, state, binding)?;
+        return Ok(ServiceStartTarget {
+            binding,
             api_key,
-        };
-        return upsert_service_binding(app, state, binding);
+            api_key_prefix: target.api_key_prefix,
+            machine_status: target.machine_status,
+        });
     }
 
     let api_root = api_base_url(&server_url);
@@ -2242,9 +2594,15 @@ fn ensure_machine_binding(
         server_slug: server.slug.clone(),
         machine_id: payload.machine.id,
         machine_name: payload.machine.name,
-        api_key: payload.api_key,
+        api_key: String::new(),
     };
-    upsert_service_binding(app, state, binding)
+    let binding = upsert_service_binding(app, state, binding)?;
+    Ok(ServiceStartTarget {
+        binding,
+        api_key: payload.api_key,
+        api_key_prefix: None,
+        machine_status: normalize_machine_status(&payload.machine.status),
+    })
 }
 
 fn select_existing_machine(
@@ -2703,7 +3061,7 @@ pub fn run() {
                     api.prevent_exit();
                 }
             }
-            RunEvent::Exit => handle_app_exit(&state),
+            RunEvent::Exit => handle_app_exit(app, &state),
             _ => {}
         }
     });
@@ -2715,9 +3073,9 @@ mod tests {
         app_close_prompt_script, close_app_behavior_from_action, close_app_behavior_from_id,
         close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
         sanitize_service_settings, select_existing_machine,
-        selected_service_daemon_process_from_ps_output, should_start_service_for_workspace,
-        workspace_session_seed_script, ApiMachine, CloseAppPromptCopy, CloseAppServiceBehavior,
-        WorkspaceSessionSeed,
+        selected_service_daemon_process_from_server_snapshots, should_start_service_for_workspace,
+        untagged_daemon_pids_from_ps_output, workspace_session_seed_script, ApiMachine,
+        CloseAppPromptCopy, CloseAppServiceBehavior, ServiceServerSnapshot, WorkspaceSessionSeed,
     };
     use crate::config::{ServiceMachineBinding, ServiceSettings};
 
@@ -2727,31 +3085,87 @@ mod tests {
 
         assert!(daemon_command_matches(
             command,
+            "https://api.slock.ai",
+            None,
+            None,
+            None,
             Some("sk_machine_current"),
-            "https://api.slock.ai"
+            false,
         ));
         assert!(!daemon_command_matches(
             command,
+            "https://api.slock.ai",
+            None,
+            None,
+            None,
             Some("sk_machine_other"),
-            "https://api.slock.ai"
+            false,
         ));
         assert!(!daemon_command_matches(
             command,
+            "https://other.slock.ai",
+            None,
+            None,
+            None,
             Some("sk_machine_current"),
-            "https://other.slock.ai"
+            false,
+        ));
+    }
+
+    #[test]
+    fn daemon_command_matching_prefers_stable_desktop_markers() {
+        let command = "node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_rotating --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open";
+
+        assert!(daemon_command_matches(
+            command,
+            "https://api.slock.ai",
+            Some("open-have"),
+            Some("machine-open"),
+            None,
+            Some("old-key"),
+            false,
+        ));
+        assert!(!daemon_command_matches(
+            command,
+            "https://api.slock.ai",
+            Some("open-have"),
+            Some("machine-other"),
+            None,
+            Some("sk_rotating"),
+            false,
         ));
     }
 
     #[test]
     fn daemon_pid_parser_keeps_only_matching_target_processes() {
         let output = r#"
-  101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_current
-  102 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_other
-  103 node /tmp/another-command --server-url https://api.slock.ai --api-key sk_machine_current
+  101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_current --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open
+  102 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_other --slock-desktop-server-slug tyan-dyun --slock-desktop-machine-id machine-tyan
+  103 node /tmp/another-command --server-url https://api.slock.ai --api-key sk_machine_current --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open
 "#;
 
-        let pids =
-            daemon_pids_from_ps_output(output, Some("sk_machine_current"), "https://api.slock.ai");
+        let pids = daemon_pids_from_ps_output(
+            output,
+            "https://api.slock.ai",
+            Some("open-have"),
+            Some("machine-open"),
+            None,
+            None,
+            false,
+        );
+
+        assert_eq!(pids, vec![101]);
+    }
+
+    #[test]
+    fn untagged_daemon_parser_ignores_desktop_marked_processes() {
+        let output = r#"
+  101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_old
+  102 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_new --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open
+  103 node /tmp/npx/@slock-ai/daemon --server-url https://other.slock.ai --api-key sk_other
+"#;
+
+        let pids = untagged_daemon_pids_from_ps_output(output, "https://api.slock.ai");
 
         assert_eq!(pids, vec![101]);
     }
@@ -2768,7 +3182,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_service_process_detection_uses_bound_api_key() {
+    fn selected_service_process_detection_uses_desktop_markers() {
         let settings = ServiceSettings {
             selected_server_slug: "open-have".to_string(),
             machines: vec![
@@ -2790,11 +3204,37 @@ mod tests {
             ..ServiceSettings::default()
         };
         let output = r#"
-  101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_tyan
-  102 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_open
+  101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_tyan --slock-desktop-server-slug tyan-dyun --slock-desktop-machine-id machine-tyan
+  102 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_rotated --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open
 "#;
 
-        let process = selected_service_daemon_process_from_ps_output(&settings, output);
+        let servers = vec![
+            ServiceServerSnapshot {
+                id: "server-open".to_string(),
+                name: "Open".to_string(),
+                slug: "open-have".to_string(),
+                selected: true,
+                machine_id: Some("machine-open".to_string()),
+                machine_name: Some("Open machine".to_string()),
+                machine_status: "offline".to_string(),
+                api_key_ready: true,
+                api_key_prefix: None,
+            },
+            ServiceServerSnapshot {
+                id: "server-tyan".to_string(),
+                name: "Tyan".to_string(),
+                slug: "tyan-dyun".to_string(),
+                selected: false,
+                machine_id: Some("machine-tyan".to_string()),
+                machine_name: Some("Tyan machine".to_string()),
+                machine_status: "offline".to_string(),
+                api_key_ready: true,
+                api_key_prefix: None,
+            },
+        ];
+
+        let process =
+            selected_service_daemon_process_from_server_snapshots(&settings, &servers, output);
 
         assert_eq!(process.as_ref().map(|process| process.pid), Some(102));
         assert_eq!(
@@ -2821,11 +3261,13 @@ mod tests {
                 id: "other".to_string(),
                 name: "Other machine".to_string(),
                 status: "online".to_string(),
+                api_key_prefix: String::new(),
             },
             ApiMachine {
                 id: "bound".to_string(),
                 name: "Bound machine".to_string(),
                 status: "offline".to_string(),
+                api_key_prefix: String::new(),
             },
         ];
 
@@ -2843,6 +3285,7 @@ mod tests {
             id: "existing".to_string(),
             name: "Existing machine".to_string(),
             status: "offline".to_string(),
+            api_key_prefix: String::new(),
         }];
 
         let selected = select_existing_machine(None, &machines);
@@ -2879,9 +3322,18 @@ mod tests {
 
         let sanitized = sanitize_service_settings(ServiceSettings {
             close_app_behavior: "later".to_string(),
+            machines: vec![ServiceMachineBinding {
+                server_id: "server".to_string(),
+                server_slug: "open-have".to_string(),
+                machine_id: "machine".to_string(),
+                machine_name: "Machine".to_string(),
+                api_key: "sk_rotating".to_string(),
+            }],
             ..ServiceSettings::default()
         });
         assert_eq!(sanitized.close_app_behavior, "ask");
+        assert_eq!(sanitized.machines.len(), 1);
+        assert_eq!(sanitized.machines[0].api_key, "");
     }
 
     #[test]

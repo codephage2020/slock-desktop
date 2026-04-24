@@ -15,7 +15,7 @@ pub struct ServiceMachineBinding {
     pub machine_id: String,
     #[serde(default)]
     pub machine_name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub api_key: String,
 }
 
