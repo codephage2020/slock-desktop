@@ -1691,6 +1691,10 @@ header,
   box-shadow: none !important;
 }}
 
+input.min-w-0[placeholder*="Search channels"],
+input.min-w-0[placeholder*="搜索频道"],
+input[placeholder*="Search channels, DMs, messages"],
+input[placeholder*="搜索频道、私信、消息"],
 main input.min-w-0[placeholder*="Search channels"],
 main input.min-w-0[placeholder*="搜索频道"],
 main input[placeholder*="Search channels, DMs, messages"],
@@ -1990,6 +1994,8 @@ mod tests {
         assert!(script.contains(".flex.h-full.w-full.flex-col[class*=\"border-r\"]"));
         assert!(script.contains("data-slock-desktop-task-toolbar"));
         assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
+        assert!(script.contains(r#"input.min-w-0[placeholder*=\"Search channels\"]"#));
+        assert!(script.contains(r#"input.min-w-0[placeholder*=\"搜索频道\"]"#));
         assert!(script.contains(r#"main input.min-w-0[placeholder*=\"Search channels\"]"#));
         assert!(script.contains(r#"main input.min-w-0[placeholder*=\"搜索频道\"]"#));
         assert!(script.contains("padding-inline: 14px !important;"));
