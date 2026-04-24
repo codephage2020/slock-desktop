@@ -237,6 +237,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     return invoke(command, args);
   };
   const normalizeStatus = (status) => String(status || "").trim().toLowerCase();
+  const machineStatusCountsAsStarted = (status) =>
+    ["online", "running", "healthy", "idle"].includes(normalizeStatus(status));
   const machineStatusLabel = (status) => {
     const normalized = normalizeStatus(status);
     if (["online", "running", "healthy"].includes(normalized)) return t("serviceRunning");
@@ -2138,15 +2140,16 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         } else if (serviceAction === "stop") {
           const selected = selectedServiceServer();
           const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug || "";
-          const runningSlug =
-            serviceSnapshot?.activeServerSlug ||
-            (serviceSnapshot?.running ? selectedServerSlug : "");
-          if (!serviceSnapshot?.running || !selectedServerSlug || selectedServerSlug !== runningSlug) {
+          const runtimeRunning =
+            serviceSnapshot?.running &&
+            (!serviceSnapshot?.activeServerSlug || serviceSnapshot.activeServerSlug === selectedServerSlug);
+          const machineRunning = selected ? machineStatusCountsAsStarted(selected.machineStatus) : false;
+          if (!selectedServerSlug || (!runtimeRunning && !machineRunning)) {
             serviceError = t("serviceNotRunning");
             render();
             return;
           }
-          loadServiceSnapshot("stop_service", {}, "service-stop");
+          loadServiceSnapshot("stop_service", { selectedServerSlug }, "service-stop");
         } else if (serviceAction === "select" && serverSlug) {
           loadServiceSnapshot(
             "select_service_server",

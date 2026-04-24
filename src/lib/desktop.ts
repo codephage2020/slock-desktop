@@ -109,8 +109,8 @@ export async function startService() {
   return invoke<BootstrapPayload>('start_service')
 }
 
-export async function stopService() {
-  return invoke<BootstrapPayload>('stop_service')
+export async function stopService(selectedServerSlug?: string) {
+  return invoke<BootstrapPayload>('stop_service', { selectedServerSlug })
 }
 
 export async function refreshServiceServers() {

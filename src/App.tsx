@@ -422,16 +422,21 @@ function App() {
     }
 
     const currentCopy = getCopy(snapshot.language, snapshot.resolvedLanguage)
-    const selectedSlug =
-      snapshot.service.selectedServerSlug ||
-      snapshot.service.servers.find((server) => server.selected)?.slug ||
-      snapshot.service.servers[0]?.slug ||
-      ''
-    const runningSlug =
-      snapshot.service.activeServerSlug ||
-      (snapshot.service.running ? selectedSlug : '')
+    const selectedServer =
+      snapshot.service.servers.find(
+        (server) => server.slug === snapshot.service.selectedServerSlug,
+      ) ??
+      snapshot.service.servers.find((server) => server.selected) ??
+      snapshot.service.servers[0]
+    const selectedSlug = selectedServer?.slug ?? snapshot.service.selectedServerSlug
+    const runtimeRunning =
+      snapshot.service.running &&
+      (!snapshot.service.activeServerSlug || snapshot.service.activeServerSlug === selectedSlug)
+    const machineRunning = selectedServer
+      ? machineStatusCountsAsStarted(selectedServer.machineStatus)
+      : false
 
-    if (!snapshot.service.running || !selectedSlug || selectedSlug !== runningSlug) {
+    if (!selectedSlug || (!runtimeRunning && !machineRunning)) {
       setErrorMessage(currentCopy.serviceNotRunning)
       return
     }
@@ -439,7 +444,7 @@ function App() {
     try {
       setBusyAction('stop-service')
       setErrorMessage(null)
-      const next = await stopService()
+      const next = await stopService(selectedSlug)
       startTransition(() => setSnapshot(next))
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
@@ -1102,7 +1107,7 @@ function getMachineStatusLabel(
   status: string,
   copy: UiCopy,
 ) {
-  switch (status) {
+  switch (status.trim().toLowerCase()) {
     case 'online':
     case 'running':
     case 'healthy':
@@ -1115,6 +1120,18 @@ function getMachineStatusLabel(
       return copy.serviceNotLinked
     default:
       return status || copy.notConfigured
+  }
+}
+
+function machineStatusCountsAsStarted(status: string) {
+  switch (status.trim().toLowerCase()) {
+    case 'online':
+    case 'running':
+    case 'healthy':
+    case 'idle':
+      return true
+    default:
+      return false
   }
 }
 

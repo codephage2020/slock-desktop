@@ -395,6 +395,7 @@ fn start_service(
 fn stop_service(
     app: AppHandle,
     state: State<'_, DesktopState>,
+    selected_server_slug: Option<String>,
 ) -> Result<BootstrapPayload, String> {
     let service_settings = {
         let settings = state
@@ -404,7 +405,11 @@ fn stop_service(
         settings.service.clone()
     };
 
-    stop_service_process(&state, Some(&service_settings))?;
+    stop_service_process(
+        &state,
+        Some(&service_settings),
+        selected_server_slug.as_deref(),
+    )?;
     build_bootstrap(&app, &state, true)
 }
 
@@ -431,7 +436,7 @@ fn update_service(
         settings.service.clone()
     };
 
-    stop_service_process(&state, Some(&service_settings))?;
+    stop_service_process(&state, Some(&service_settings), None)?;
     force_start_service(&app, &state, &service_settings)?;
     build_bootstrap(&app, &state, false)
 }
@@ -1016,31 +1021,55 @@ fn force_start_service(
 fn stop_service_process(
     state: &DesktopState,
     service_settings: Option<&ServiceSettings>,
+    target_server_slug: Option<&str>,
 ) -> Result<(), String> {
     let mut runtime = state
         .service
         .lock()
         .map_err(|_| "Unable to lock service runtime".to_string())?;
     let active_server_slug = runtime.active_server_slug.clone();
+    let requested_server_slug = target_server_slug
+        .map(|slug| slug.trim().to_string())
+        .filter(|slug| !slug.is_empty());
+    let should_stop_tracked_child = requested_server_slug
+        .as_deref()
+        .map(|slug| active_server_slug.as_deref() == Some(slug))
+        .unwrap_or(true);
 
-    if let Some(child) = runtime.child.as_mut() {
+    if should_stop_tracked_child {
+        if let Some(child) = runtime.child.as_mut() {
+            let still_running = child
+                .try_wait()
+                .map_err(|err| format!("Unable to inspect service state: {err}"))?
+                .is_none();
+            if still_running {
+                child
+                    .kill()
+                    .map_err(|err| format!("Failed to stop service: {err}"))?;
+            }
+            let _ = child.wait();
+        }
+        runtime.child = None;
+    } else if let Some(child) = runtime.child.as_mut() {
         let still_running = child
             .try_wait()
             .map_err(|err| format!("Unable to inspect service state: {err}"))?
             .is_none();
-        if still_running {
-            child
-                .kill()
-                .map_err(|err| format!("Failed to stop service: {err}"))?;
+        if !still_running {
+            runtime.child = None;
         }
-        let _ = child.wait();
     }
 
     let target_api_key = service_settings
         .and_then(|settings| {
-            let target_slug = active_server_slug
+            let target_slug = requested_server_slug
                 .as_deref()
                 .filter(|slug| !slug.trim().is_empty())
+                .or_else(|| {
+                    active_server_slug
+                        .as_deref()
+                        .filter(|slug| !slug.trim().is_empty())
+                })
                 .unwrap_or_else(|| settings.selected_server_slug.as_str());
             find_service_binding(settings, "", target_slug)
         })
@@ -1055,10 +1084,15 @@ fn stop_service_process(
         terminate_daemon_process(pid)?;
     }
 
-    runtime.child = None;
-    runtime.last_error = None;
-    runtime.active_server_slug = None;
-    runtime.active_machine_id = None;
+    let should_clear_runtime = requested_server_slug
+        .as_deref()
+        .map(|slug| active_server_slug.as_deref() == Some(slug))
+        .unwrap_or(true);
+    if should_clear_runtime {
+        runtime.last_error = None;
+        runtime.active_server_slug = None;
+        runtime.active_machine_id = None;
+    }
     Ok(())
 }
 
@@ -1916,7 +1950,7 @@ pub fn run() {
     app.run(|app: &AppHandle, event: RunEvent| {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
             let state = app.state::<DesktopState>();
-            let _ = stop_service_process(&state, None);
+            let _ = stop_service_process(&state, None, None);
         }
     });
 }
