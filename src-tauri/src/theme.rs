@@ -1647,13 +1647,6 @@ header,
   background: var(--slock-desktop-canvas) !important;
 }}
 
-.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex :is(div,section,header,[role="tablist"],[role="tabpanel"]),
-.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex :is(.relative.flex.items-center,.flex.overflow-x-auto,[class*="border-b-2"].bg-white,[class*="bg-white"]:not(button):not([role="button"])),
-.flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex :is(div,section,header,[role="tablist"],[role="tabpanel"]),
-.flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex :is(.relative.flex.items-center,.flex.overflow-x-auto,[class*="border-b-2"].bg-white,[class*="bg-white"]:not(button):not([role="button"])) {{
-  background: var(--slock-desktop-canvas) !important;
-}}
-
 .flex.w-full.items-center.gap-2,
 .group.flex.items-center {{
   border-radius: var(--slock-desktop-radius-sm) !important;
@@ -1926,8 +1919,6 @@ mod tests {
             script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex")
         );
         assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex"));
-        assert!(script.contains("bg-white"));
-        assert!(script.contains("not(button):not([role=\\\"button\\\"])"));
         assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
     }
 }
