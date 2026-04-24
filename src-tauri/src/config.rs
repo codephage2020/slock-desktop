@@ -27,6 +27,8 @@ pub struct ServiceSettings {
     #[serde(default)]
     pub selected_server_slug: String,
     pub auto_start_with_workspace: bool,
+    #[serde(default = "default_close_app_behavior")]
+    pub close_app_behavior: String,
     #[serde(default)]
     pub machines: Vec<ServiceMachineBinding>,
 }
@@ -49,6 +51,7 @@ impl Default for ServiceSettings {
             server_url: default_service_server_url(),
             selected_server_slug: String::new(),
             auto_start_with_workspace: false,
+            close_app_behavior: default_close_app_behavior(),
             machines: Vec::new(),
         }
     }
@@ -142,6 +145,10 @@ fn default_language() -> String {
 
 fn default_service_server_url() -> String {
     "https://api.slock.ai".to_string()
+}
+
+fn default_close_app_behavior() -> String {
+    "ask".to_string()
 }
 
 pub fn load_settings<R: Runtime>(app: &AppHandle<R>) -> AppSettings {

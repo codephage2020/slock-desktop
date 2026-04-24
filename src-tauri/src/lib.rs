@@ -19,7 +19,7 @@ use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::PageLoadEvent,
     window::Color,
-    AppHandle, LogicalSize, Manager, RunEvent, State, Theme, Url,
+    AppHandle, LogicalSize, Manager, RunEvent, State, Theme, Url, WindowEvent,
 };
 use theme::{meta_catalog, resolve_theme, CustomThemeInput};
 
@@ -40,6 +40,7 @@ const WORKSPACE_WINDOW_MIN_HEIGHT: f64 = 760.0;
 pub struct DesktopState {
     settings: Mutex<AppSettings>,
     service: Mutex<ServiceRuntime>,
+    app_close: Mutex<AppCloseRuntime>,
 }
 
 #[derive(Debug, Serialize)]
@@ -67,6 +68,19 @@ struct ServiceRuntime {
     cached_sync_error: Option<String>,
 }
 
+#[derive(Default)]
+struct AppCloseRuntime {
+    prompt_visible: bool,
+    confirmed_exit: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CloseAppServiceBehavior {
+    Ask,
+    Keep,
+    Stop,
+}
+
 #[derive(Debug, Clone)]
 struct WorkspaceSessionSeed {
     access_token: String,
@@ -81,6 +95,7 @@ struct ServiceSnapshot {
     selected_server_slug: String,
     active_server_slug: String,
     auto_start_with_workspace: bool,
+    close_app_behavior: String,
     authenticated: bool,
     configured: bool,
     running: bool,
@@ -110,6 +125,19 @@ struct UpdateSnapshot {
     repository_slug: String,
     releases_url: String,
     latest_release_api_url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloseAppPromptCopy {
+    title: &'static str,
+    description: String,
+    server_label: String,
+    keep_server: &'static str,
+    close_server: &'static str,
+    cancel: &'static str,
+    remember: &'static str,
+    error: &'static str,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -426,6 +454,39 @@ fn stop_service(
 }
 
 #[tauri::command]
+fn resolve_app_close_request(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    action: String,
+    remember: bool,
+) -> Result<(), String> {
+    let Some(behavior) = close_app_behavior_from_action(&action) else {
+        mark_app_close_prompt_visible(&state, false);
+        return Ok(());
+    };
+
+    let service_settings = {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        if remember {
+            settings.service.close_app_behavior = close_app_behavior_id(behavior).to_string();
+            save_settings(&app, &settings)?;
+        }
+        settings.service.clone()
+    };
+
+    if behavior == CloseAppServiceBehavior::Stop {
+        stop_service_process(&state, Some(&service_settings), None)?;
+    }
+
+    mark_app_close_confirmed(&state);
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
 fn refresh_service_servers(
     app: AppHandle,
     state: State<'_, DesktopState>,
@@ -473,6 +534,315 @@ fn save_update_settings(
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     open_url_in_browser(&url)
+}
+
+fn handle_window_close_requested(app: &AppHandle, state: &DesktopState) {
+    if close_request_confirmed(state) {
+        app.exit(0);
+        return;
+    }
+
+    match current_close_app_behavior(state) {
+        CloseAppServiceBehavior::Ask => {
+            if service_may_be_running(state) {
+                request_app_close_prompt(app, state);
+            } else {
+                mark_app_close_confirmed(state);
+                app.exit(0);
+            }
+        }
+        behavior => {
+            apply_remembered_close_behavior(state, behavior);
+            mark_app_close_confirmed(state);
+            app.exit(0);
+        }
+    }
+}
+
+fn handle_app_exit_requested(app: &AppHandle, state: &DesktopState) -> bool {
+    if close_request_confirmed(state) {
+        return true;
+    }
+
+    match current_close_app_behavior(state) {
+        CloseAppServiceBehavior::Ask => {
+            if service_may_be_running(state) {
+                request_app_close_prompt(app, state);
+                false
+            } else {
+                true
+            }
+        }
+        behavior => {
+            apply_remembered_close_behavior(state, behavior);
+            true
+        }
+    }
+}
+
+fn handle_app_exit(state: &DesktopState) {
+    if current_close_app_behavior(state) == CloseAppServiceBehavior::Stop {
+        let service_settings = state
+            .settings
+            .lock()
+            .ok()
+            .map(|settings| settings.service.clone());
+        let _ = stop_service_process(state, service_settings.as_ref(), None);
+    }
+}
+
+fn apply_remembered_close_behavior(state: &DesktopState, behavior: CloseAppServiceBehavior) {
+    if behavior != CloseAppServiceBehavior::Stop {
+        return;
+    }
+    let service_settings = state
+        .settings
+        .lock()
+        .ok()
+        .map(|settings| settings.service.clone());
+    let _ = stop_service_process(state, service_settings.as_ref(), None);
+}
+
+fn current_close_app_behavior(state: &DesktopState) -> CloseAppServiceBehavior {
+    state
+        .settings
+        .lock()
+        .ok()
+        .map(|settings| close_app_behavior_from_id(&settings.service.close_app_behavior))
+        .unwrap_or(CloseAppServiceBehavior::Ask)
+}
+
+fn request_app_close_prompt(app: &AppHandle, state: &DesktopState) {
+    if !mark_app_close_prompt_requested(state) {
+        return;
+    }
+
+    let copy = app_close_prompt_copy(state);
+    let script = app_close_prompt_script(&copy);
+    let result = app
+        .get_webview_window(MAIN_LABEL)
+        .ok_or_else(|| "Main window is unavailable".to_string())
+        .and_then(|window| {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+            window.eval(&script).map_err(|err| err.to_string())
+        });
+
+    if let Err(err) = result {
+        log::warn!("failed to show app close prompt: {err}");
+        mark_app_close_prompt_visible(state, false);
+    }
+}
+
+fn app_close_prompt_copy(state: &DesktopState) -> CloseAppPromptCopy {
+    let (language, selected_server_slug) = state
+        .settings
+        .lock()
+        .map(|settings| {
+            (
+                resolve_desktop_language(&settings.language).to_string(),
+                settings.service.selected_server_slug.clone(),
+            )
+        })
+        .unwrap_or_else(|_| ("en-US".to_string(), String::new()));
+    let server_label = if selected_server_slug.trim().is_empty() {
+        "Slock daemon".to_string()
+    } else {
+        selected_server_slug
+    };
+
+    if language == "zh-CN" {
+        CloseAppPromptCopy {
+            title: "退出 Slock",
+            description: "退出 Slock 后，Server 可以继续运行，也可以随应用一起关闭。".to_string(),
+            server_label: format!("当前 Server：{server_label}"),
+            keep_server: "保留 Server 并退出",
+            close_server: "关闭 Server 并退出",
+            cancel: "取消",
+            remember: "记住这次选择",
+            error: "关闭处理失败，请重试。",
+        }
+    } else {
+        CloseAppPromptCopy {
+            title: "Quit Slock",
+            description: "After Slock quits, the server can stay running or close with the app."
+                .to_string(),
+            server_label: format!("Current server: {server_label}"),
+            keep_server: "Keep server running and quit",
+            close_server: "Close server and quit",
+            cancel: "Cancel",
+            remember: "Remember this choice",
+            error: "Close handling failed. Try again.",
+        }
+    }
+}
+
+fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
+    let payload = serde_json::to_string(copy).unwrap_or_else(|_| "{}".to_string());
+    format!(
+        r#"(function () {{
+  const copy = {payload};
+  const hostId = "slock-desktop-close-host";
+  document.getElementById(hostId)?.remove();
+  const host = document.createElement("div");
+  host.id = hostId;
+  host.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.32);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1f2937;";
+  host.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="slock-close-title" style="width:min(420px,calc(100vw - 32px));border:1px solid rgba(15,23,42,.14);border-radius:18px;background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.24);padding:22px;">
+      <h2 id="slock-close-title" data-close-copy="title" style="margin:0;font-size:18px;line-height:1.3;font-weight:700;color:#111827;"></h2>
+      <p data-close-copy="description" style="margin:10px 0 0;font-size:14px;line-height:1.55;color:#4b5563;"></p>
+      <p data-close-copy="serverLabel" style="margin:12px 0 0;font-size:12px;line-height:1.4;color:#6b7280;"></p>
+      <label style="display:flex;align-items:center;gap:8px;margin:18px 0 0;font-size:13px;color:#374151;">
+        <input data-close-remember type="checkbox" style="width:16px;height:16px;accent-color:#10a37f;" />
+        <span data-close-copy="remember"></span>
+      </label>
+      <p data-close-error style="display:none;margin:14px 0 0;font-size:13px;line-height:1.4;color:#b42318;"></p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap;">
+        <button type="button" data-close-action="cancel" data-close-copy="cancel" style="border:1px solid #d1d5db;border-radius:10px;background:#fff;color:#374151;font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>
+        <button type="button" data-close-action="closeServer" data-close-copy="closeServer" style="border:1px solid #d92d20;border-radius:10px;background:#fff;color:#b42318;font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>
+        <button type="button" data-close-action="keepServer" data-close-copy="keepServer" style="border:1px solid #10a37f;border-radius:10px;background:#10a37f;color:#fff;font-size:13px;font-weight:700;padding:9px 12px;cursor:pointer;"></button>
+      </div>
+    </div>`;
+  document.body.appendChild(host);
+  host.querySelectorAll("[data-close-copy]").forEach((element) => {{
+    const key = element.getAttribute("data-close-copy");
+    element.textContent = copy[key] || "";
+  }});
+  const invoke = window.__TAURI__?.core?.invoke;
+  const error = host.querySelector("[data-close-error]");
+  const remember = host.querySelector("[data-close-remember]");
+  const setBusy = (busy) => {{
+    host.querySelectorAll("button").forEach((button) => {{
+      button.disabled = busy;
+      button.style.opacity = busy ? ".65" : "1";
+      button.style.cursor = busy ? "default" : "pointer";
+    }});
+  }};
+  host.addEventListener("click", async (event) => {{
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const button = target?.closest("[data-close-action]");
+    if (!button) return;
+    const action = button.getAttribute("data-close-action");
+    if (action === "cancel") {{
+      host.remove();
+      if (invoke) await invoke("resolve_app_close_request", {{ action, remember: false }});
+      return;
+    }}
+    if (!invoke) {{
+      error.textContent = copy.error;
+      error.style.display = "block";
+      return;
+    }}
+    try {{
+      setBusy(true);
+      error.style.display = "none";
+      await invoke("resolve_app_close_request", {{ action, remember: !!remember?.checked }});
+    }} catch (err) {{
+      setBusy(false);
+      error.textContent = err && typeof err === "object" && "message" in err ? err.message : String(err || copy.error);
+      error.style.display = "block";
+    }}
+  }});
+  host.addEventListener("keydown", async (event) => {{
+    if (event.key !== "Escape") return;
+    host.remove();
+    if (invoke) await invoke("resolve_app_close_request", {{ action: "cancel", remember: false }});
+  }});
+  host.tabIndex = -1;
+  host.focus();
+}})();"#
+    )
+}
+
+fn mark_app_close_prompt_requested(state: &DesktopState) -> bool {
+    let mut runtime = match state.app_close.lock() {
+        Ok(runtime) => runtime,
+        Err(_) => return true,
+    };
+    if runtime.prompt_visible {
+        return false;
+    }
+    runtime.prompt_visible = true;
+    true
+}
+
+fn mark_app_close_prompt_visible(state: &DesktopState, visible: bool) {
+    if let Ok(mut runtime) = state.app_close.lock() {
+        runtime.prompt_visible = visible;
+    }
+}
+
+fn mark_app_close_confirmed(state: &DesktopState) {
+    if let Ok(mut runtime) = state.app_close.lock() {
+        runtime.prompt_visible = false;
+        runtime.confirmed_exit = true;
+    }
+}
+
+fn close_request_confirmed(state: &DesktopState) -> bool {
+    let mut runtime = match state.app_close.lock() {
+        Ok(runtime) => runtime,
+        Err(_) => return false,
+    };
+    if runtime.confirmed_exit {
+        runtime.confirmed_exit = false;
+        runtime.prompt_visible = false;
+        return true;
+    }
+    false
+}
+
+fn service_may_be_running(state: &DesktopState) -> bool {
+    let service_settings = state
+        .settings
+        .lock()
+        .ok()
+        .map(|settings| settings.service.clone());
+    let Some(service_settings) = service_settings else {
+        return false;
+    };
+
+    if let Ok(mut runtime) = state.service.lock() {
+        if let Some(child) = runtime.child.as_mut() {
+            if child.try_wait().ok().flatten().is_none() {
+                return true;
+            }
+            runtime.child = None;
+        }
+    }
+
+    let target_slug = service_settings.selected_server_slug.trim();
+    let target_api_key = find_service_binding(&service_settings, "", target_slug)
+        .map(|binding| binding.api_key)
+        .filter(|api_key| !api_key.trim().is_empty());
+    find_daemon_process_ids(target_api_key.as_deref(), &service_settings.server_url)
+        .map(|pids| !pids.is_empty())
+        .unwrap_or(false)
+}
+
+fn close_app_behavior_from_action(action: &str) -> Option<CloseAppServiceBehavior> {
+    match action {
+        "keepServer" => Some(CloseAppServiceBehavior::Keep),
+        "closeServer" => Some(CloseAppServiceBehavior::Stop),
+        _ => None,
+    }
+}
+
+fn close_app_behavior_from_id(value: &str) -> CloseAppServiceBehavior {
+    match value {
+        "keep" => CloseAppServiceBehavior::Keep,
+        "stop" => CloseAppServiceBehavior::Stop,
+        _ => CloseAppServiceBehavior::Ask,
+    }
+}
+
+fn close_app_behavior_id(behavior: CloseAppServiceBehavior) -> &'static str {
+    match behavior {
+        CloseAppServiceBehavior::Ask => "ask",
+        CloseAppServiceBehavior::Keep => "keep",
+        CloseAppServiceBehavior::Stop => "stop",
+    }
 }
 
 fn build_bootstrap(
@@ -931,6 +1301,10 @@ fn collect_service_snapshot(
             selected_server_slug: settings.selected_server_slug.clone(),
             active_server_slug,
             auto_start_with_workspace: settings.auto_start_with_workspace,
+            close_app_behavior: close_app_behavior_id(close_app_behavior_from_id(
+                &settings.close_app_behavior,
+            ))
+            .to_string(),
             authenticated,
             configured: false,
             running,
@@ -981,6 +1355,10 @@ fn collect_service_snapshot(
         selected_server_slug: settings.selected_server_slug.clone(),
         active_server_slug,
         auto_start_with_workspace: settings.auto_start_with_workspace,
+        close_app_behavior: close_app_behavior_id(close_app_behavior_from_id(
+            &settings.close_app_behavior,
+        ))
+        .to_string(),
         authenticated,
         configured,
         running,
@@ -1310,6 +1688,10 @@ fn sanitize_service_settings(service: ServiceSettings) -> ServiceSettings {
         server_url: sanitize_service_server_url(&service.server_url),
         selected_server_slug: service.selected_server_slug.trim().to_string(),
         auto_start_with_workspace: service.auto_start_with_workspace,
+        close_app_behavior: close_app_behavior_id(close_app_behavior_from_id(
+            &service.close_app_behavior,
+        ))
+        .to_string(),
         machines,
     }
 }
@@ -2080,6 +2462,7 @@ pub fn run() {
                 cached_servers: Vec::new(),
                 cached_sync_error: None,
             }),
+            app_close: Mutex::new(AppCloseRuntime::default()),
         })
         .on_page_load(|webview, payload| {
             if webview.label() != MAIN_LABEL || !is_workspace_url(payload.url()) {
@@ -2186,6 +2569,7 @@ pub fn run() {
             select_service_server,
             start_service,
             stop_service,
+            resolve_app_close_request,
             update_service,
             save_update_settings,
             open_external_url
@@ -2194,9 +2578,23 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|app: &AppHandle, event: RunEvent| {
-        if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
-            let state = app.state::<DesktopState>();
-            let _ = stop_service_process(&state, None, None);
+        let state = app.state::<DesktopState>();
+        match event {
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { api, .. },
+                ..
+            } if label == MAIN_LABEL => {
+                api.prevent_close();
+                handle_window_close_requested(app, &state);
+            }
+            RunEvent::ExitRequested { api, .. } => {
+                if !handle_app_exit_requested(app, &state) {
+                    api.prevent_exit();
+                }
+            }
+            RunEvent::Exit => handle_app_exit(&state),
+            _ => {}
         }
     });
 }
@@ -2204,10 +2602,12 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        daemon_command_matches, daemon_pids_from_ps_output, select_existing_machine,
-        workspace_session_seed_script, ApiMachine, WorkspaceSessionSeed,
+        app_close_prompt_script, close_app_behavior_from_action, close_app_behavior_from_id,
+        close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
+        sanitize_service_settings, select_existing_machine, workspace_session_seed_script,
+        ApiMachine, CloseAppPromptCopy, CloseAppServiceBehavior, WorkspaceSessionSeed,
     };
-    use crate::config::ServiceMachineBinding;
+    use crate::config::{ServiceMachineBinding, ServiceSettings};
 
     #[test]
     fn daemon_command_matching_respects_target_api_key() {
@@ -2288,6 +2688,58 @@ mod tests {
             selected.map(|machine| machine.id),
             Some("existing".to_string())
         );
+    }
+
+    #[test]
+    fn close_app_behavior_sanitizes_actions_and_settings() {
+        assert_eq!(
+            close_app_behavior_from_action("keepServer"),
+            Some(CloseAppServiceBehavior::Keep)
+        );
+        assert_eq!(
+            close_app_behavior_from_action("closeServer"),
+            Some(CloseAppServiceBehavior::Stop)
+        );
+        assert_eq!(close_app_behavior_from_action("cancel"), None);
+        assert_eq!(
+            close_app_behavior_id(close_app_behavior_from_id("keep")),
+            "keep"
+        );
+        assert_eq!(
+            close_app_behavior_id(close_app_behavior_from_id("stop")),
+            "stop"
+        );
+        assert_eq!(
+            close_app_behavior_id(close_app_behavior_from_id("later")),
+            "ask"
+        );
+
+        let sanitized = sanitize_service_settings(ServiceSettings {
+            close_app_behavior: "later".to_string(),
+            ..ServiceSettings::default()
+        });
+        assert_eq!(sanitized.close_app_behavior, "ask");
+    }
+
+    #[test]
+    fn close_app_prompt_script_wires_decision_actions() {
+        let script = app_close_prompt_script(&CloseAppPromptCopy {
+            title: "Quit Slock",
+            description: "After Slock quits, the server can stay running or close with the app."
+                .to_string(),
+            server_label: "Current server: open-have".to_string(),
+            keep_server: "Keep server running and quit",
+            close_server: "Close server and quit",
+            cancel: "Cancel",
+            remember: "Remember this choice",
+            error: "Close handling failed. Try again.",
+        });
+
+        assert!(script.contains("slock-desktop-close-host"));
+        assert!(script.contains("data-close-remember"));
+        assert!(script.contains("data-close-action=\"keepServer\""));
+        assert!(script.contains("data-close-action=\"closeServer\""));
+        assert!(script.contains("resolve_app_close_request"));
     }
 
     #[test]

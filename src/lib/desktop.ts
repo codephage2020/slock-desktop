@@ -26,6 +26,7 @@ export interface ServiceSnapshot {
   selectedServerSlug: string
   activeServerSlug: string
   autoStartWithWorkspace: boolean
+  closeAppBehavior: 'ask' | 'keep' | 'stop'
   authenticated: boolean
   configured: boolean
   running: boolean
@@ -101,6 +102,7 @@ export async function saveServiceSettings(service: ServiceSnapshot) {
       serverUrl: service.serverUrl,
       selectedServerSlug: service.selectedServerSlug,
       autoStartWithWorkspace: service.autoStartWithWorkspace,
+      closeAppBehavior: service.closeAppBehavior,
     },
   })
 }
