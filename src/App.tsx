@@ -668,45 +668,47 @@ function App() {
                   </div>
                 </div>
 
-                <div className="compact-setting-group">
-                  <div className="setting-copy compact-copy">
-                    <p className="setting-label">{copy.customTheme}</p>
+                {snapshot.colorScheme === 'custom' ? (
+                  <div className="compact-setting-group">
+                    <div className="setting-copy compact-copy">
+                      <p className="setting-label">{copy.customTheme}</p>
+                    </div>
+
+                    <div className="custom-theme-controls">
+                      <label className="field compact-field">
+                        <span>{copy.customThemeName}</span>
+                        <input
+                          value={snapshot.customTheme.name}
+                          onChange={(event) =>
+                            patchCustomTheme({ name: event.target.value })
+                          }
+                          placeholder={copy.customThemeNamePlaceholder}
+                        />
+                      </label>
+
+                      <label className="field compact-field color-field">
+                        <span>{copy.customThemeAccent}</span>
+                        <input
+                          type="color"
+                          value={snapshot.customTheme.accent}
+                          onChange={(event) =>
+                            patchCustomTheme({ accent: event.target.value })
+                          }
+                          aria-label={copy.customThemeAccentAria}
+                        />
+                      </label>
+
+                      <button
+                        className="theme-button"
+                        type="button"
+                        onClick={handleCustomThemeSave}
+                        disabled={busyAction === 'custom-theme'}
+                      >
+                        {busyAction === 'custom-theme' ? copy.saving : copy.saveCustomTheme}
+                      </button>
+                    </div>
                   </div>
-
-                  <div className="custom-theme-controls">
-                    <label className="field compact-field">
-                      <span>{copy.customThemeName}</span>
-                      <input
-                        value={snapshot.customTheme.name}
-                        onChange={(event) =>
-                          patchCustomTheme({ name: event.target.value })
-                        }
-                        placeholder={copy.customThemeNamePlaceholder}
-                      />
-                    </label>
-
-                    <label className="field compact-field color-field">
-                      <span>{copy.customThemeAccent}</span>
-                      <input
-                        type="color"
-                        value={snapshot.customTheme.accent}
-                        onChange={(event) =>
-                          patchCustomTheme({ accent: event.target.value })
-                        }
-                        aria-label={copy.customThemeAccentAria}
-                      />
-                    </label>
-
-                    <button
-                      className="theme-button"
-                      type="button"
-                      onClick={handleCustomThemeSave}
-                      disabled={busyAction === 'custom-theme'}
-                    >
-                      {busyAction === 'custom-theme' ? copy.saving : copy.saveCustomTheme}
-                    </button>
-                  </div>
-                </div>
+                ) : null}
               </div>
             </section>
           </section>
