@@ -715,9 +715,19 @@ function App() {
             <section className="control-card service-launch-card" aria-labelledby="service-launch-title">
               <div className="control-card-head">
                 <h2 id="service-launch-title">{copy.serviceStartup}</h2>
-                <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
-                  {serviceStatusLabel}
-                </span>
+                <div className="service-launch-head-actions">
+                  <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
+                    {serviceStatusLabel}
+                  </span>
+                  <button
+                    className="theme-button muted-button compact-action-button"
+                    onClick={handleServiceRefresh}
+                    disabled={busyAction === 'refresh-service'}
+                    title={copy.refreshServers}
+                  >
+                    {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServersShort}
+                  </button>
+                </div>
               </div>
 
               {snapshot.service.syncError ? (
@@ -731,17 +741,6 @@ function App() {
               ) : (
                 <p className="inline-note">{copy.cloudWorkspaceOnly}</p>
               )}
-
-              <div className="service-launch-toolbar">
-                <button
-                  className="theme-button muted-button compact-action-button"
-                  onClick={handleServiceRefresh}
-                  disabled={busyAction === 'refresh-service'}
-                  title={copy.refreshServers}
-                >
-                  {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServersShort}
-                </button>
-              </div>
 
               <div className="service-server-list" role="list" aria-label={copy.selectedServer}>
                 {snapshot.service.servers.map((server) => {

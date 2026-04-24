@@ -296,12 +296,20 @@ fn open_workspace(
     selected_server_slug: Option<String>,
 ) -> Result<BootstrapPayload, String> {
     persist_service_target_slug(&app, &state, selected_server_slug, false)?;
+    let service_settings = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        settings.service.clone()
+    };
+    maybe_start_service(&app, &state, &service_settings, true)?;
+
     let (color_scheme, appearance_mode, custom_theme, language, selected_server_slug) = {
         let settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
-        maybe_start_service(&app, &state, &settings.service, true)?;
         (
             settings.color_scheme.clone(),
             settings.appearance_mode.clone(),
@@ -1186,6 +1194,7 @@ fn fetch_server_machines(
         |client, access_token| {
             client
                 .get(format!("{api_root}/servers/{server_id}/machines"))
+                .header("X-Server-Id", server_id)
                 .bearer_auth(access_token)
         },
     )?;
@@ -1258,6 +1267,7 @@ fn ensure_machine_binding(
         |client, access_token| {
             client
                 .post(format!("{api_root}/servers/{}/machines", server.id))
+                .header("X-Server-Id", server.id.as_str())
                 .bearer_auth(access_token)
                 .json(&serde_json::json!({ "name": DAEMON_MACHINE_NAME }))
         },

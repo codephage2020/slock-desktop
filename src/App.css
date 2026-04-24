@@ -178,15 +178,18 @@
   grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
-.service-launch-toolbar {
+.service-launch-head-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .compact-action-button {
   min-height: 34px;
   padding: 8px 10px;
   font-size: 0.8rem;
+  flex: 0 0 auto;
 }
 
 .service-server-list {
