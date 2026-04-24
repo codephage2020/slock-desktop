@@ -1546,10 +1546,28 @@ fn fetch_service_servers(
         },
     )?;
 
+    let machines_by_server: Vec<Vec<ApiMachine>> = std::thread::scope(|scope| {
+        let handles: Vec<_> = servers
+            .iter()
+            .map(|server| {
+                let server_id = server.id.clone();
+                let server_url = server_url.clone();
+                scope.spawn(move || fetch_server_machines(app, state, &server_url, &server_id))
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .map_err(|_| "Machine fetch thread panicked".to_string())?
+            })
+            .collect::<Result<Vec<_>, String>>()
+    })?;
+
     let mut snapshots = Vec::with_capacity(servers.len());
-    for server in servers {
+    for (server, machines) in servers.into_iter().zip(machines_by_server.into_iter()) {
         let binding = find_service_binding(settings, &server.id, &server.slug);
-        let machines = fetch_server_machines(app, state, &server_url, &server.id)?;
         let bound_machine = binding.as_ref().and_then(|binding| {
             machines
                 .iter()

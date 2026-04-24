@@ -1634,6 +1634,8 @@ header,
 
 .flex.min-h-0.flex-1.flex-col > :is(.relative.flex.items-center, .flex.overflow-x-auto)[class*="border-b-2"],
 .flex.min-h-0.flex-1.flex-col > :is(.relative.flex.items-center, .flex.overflow-x-auto)[class*="border-t-2"],
+.flex.min-h-0.flex-1.flex-col > .flex.h-\[62px\],
+.flex.min-h-0.flex-1.flex-col > .flex.h-\[62px\].shrink-0,
 .flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex[class*="border"] {{
   border-top-color: transparent !important;
   border-bottom-color: transparent !important;
