@@ -282,7 +282,8 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
     "slockDesktopTaskState",
     "slockDesktopMenuItem",
     "slockDesktopAccountDock",
-    "slockDesktopAccountAction"
+    "slockDesktopAccountAction",
+    "slockDesktopTaskToolbar"
   ];
 
   const style = document.getElementById(styleId);
@@ -566,10 +567,11 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         "slockDesktopMenuItem",
         "slockDesktopAccountDock",
         "slockDesktopAccountAction",
-        "slockDesktopProfileControl"
+        "slockDesktopProfileControl",
+        "slockDesktopTaskToolbar"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-profile-control]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-profile-control],[data-slock-desktop-task-toolbar]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -580,6 +582,28 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         if (element.matches("input,textarea,select")) return;
         element.dataset.slockDesktopMenuItem = "true";
       }};
+
+      const normalizeSurfaceText = (value) =>
+        String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+      const taskToolbarSelectors = [
+        'main .relative > .flex > .flex > .flex',
+        'main .flex > .flex > .flex > .flex'
+      ].join(',');
+      document.querySelectorAll(taskToolbarSelectors).forEach((element) => {{
+        if (!(element instanceof HTMLElement)) return;
+        if (element.closest('#slock-desktop-settings-host,nav,aside,form')) return;
+        const rect = element.getBoundingClientRect();
+        if (rect.width < 360 || rect.height < 32 || rect.height > 180) return;
+        const label = normalizeSurfaceText(element.textContent);
+        const hasTaskAction = /new task|create task|add task|新建任务|创建任务|添加任务/.test(label);
+        const hasTaskFilter =
+          /(todo|to do|待办)/.test(label) &&
+          /(in progress|doing|进行中)/.test(label) &&
+          /(done|完成)/.test(label);
+        if (hasTaskAction && hasTaskFilter) {{
+          element.dataset.slockDesktopTaskToolbar = "true";
+        }}
+      }});
 
       document
         .querySelectorAll(
@@ -1647,6 +1671,10 @@ header,
   background: var(--slock-desktop-canvas) !important;
 }}
 
+[data-slock-desktop-task-toolbar="true"] {{
+  background: var(--slock-desktop-canvas) !important;
+}}
+
 .flex.w-full.items-center.gap-2,
 .group.flex.items-center {{
   border-radius: var(--slock-desktop-radius-sm) !important;
@@ -1919,6 +1947,8 @@ mod tests {
             script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex")
         );
         assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex"));
+        assert!(script.contains("slockDesktopTaskToolbar"));
+        assert!(script.contains("data-slock-desktop-task-toolbar"));
         assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
     }
 }
