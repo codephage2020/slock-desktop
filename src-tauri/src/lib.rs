@@ -1788,17 +1788,63 @@ fn resolve_desktop_language(language: &str) -> &'static str {
 }
 
 fn resolve_system_language() -> &'static str {
-    let locale = env::var("LC_ALL")
+    if let Some(lang) = read_system_language() {
+        if lang.to_ascii_lowercase().starts_with("zh") {
+            return "zh-CN";
+        }
+        if !lang.is_empty() {
+            return "en-US";
+        }
+    }
+    "en-US"
+}
+
+#[cfg(target_os = "macos")]
+fn read_system_language() -> Option<String> {
+    if let Ok(output) = Command::new("defaults")
+        .args(["read", "-g", "AppleLocale"])
+        .output()
+    {
+        if output.status.success() {
+            let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    if let Ok(output) = Command::new("defaults")
+        .args(["read", "-g", "AppleLanguages"])
+        .output()
+    {
+        if output.status.success() {
+            let raw = String::from_utf8_lossy(&output.stdout);
+            for line in raw.lines() {
+                let trimmed = line.trim_start().trim_end_matches(',');
+                let stripped = trimmed.trim_matches('"');
+                if !stripped.is_empty()
+                    && stripped != "("
+                    && stripped != ")"
+                    && !stripped.starts_with('(')
+                {
+                    return Some(stripped.to_string());
+                }
+            }
+        }
+    }
+    env_locale()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_system_language() -> Option<String> {
+    env_locale()
+}
+
+fn env_locale() -> Option<String> {
+    env::var("LC_ALL")
         .or_else(|_| env::var("LC_MESSAGES"))
         .or_else(|_| env::var("LANG"))
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-
-    if locale.starts_with("zh") {
-        "zh-CN"
-    } else {
-        "en-US"
-    }
+        .ok()
+        .filter(|value| !value.is_empty())
 }
 
 fn custom_theme_input(custom_theme: &CustomThemeSettings) -> CustomThemeInput {
