@@ -561,7 +561,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
     const markWorkspaceModuleSurfaces = () => {{
       if (!document.body) return;
 
-      const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"]';
+      const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"],.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow';
       const surfaceProps = [
         "slockDesktopMenuItem",
         "slockDesktopAccountDock",
@@ -1050,6 +1050,12 @@ button:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button:focus-visible {{
+  border-color: transparent !important;
+  box-shadow: none !important;
+}}
+
+.flex.min-h-0.flex-1.flex-col > .relative.flex.items-center.border-b-2.border-black,
+.flex.min-h-0.flex-1.flex-col > .flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none {{
   border-color: transparent !important;
   box-shadow: none !important;
 }}
