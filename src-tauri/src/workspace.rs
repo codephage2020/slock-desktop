@@ -1247,6 +1247,20 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         });
       });
     }
+
+    collectSearchRoots().forEach((root) => {
+      root.querySelectorAll("main p, main p span, main [class*='empty-state'], main [class*='empty-state'] p").forEach((element) => {
+        if (!(element instanceof Element)) return;
+        if (host.contains(element)) return;
+        if (element.childElementCount !== 0) return;
+        const text = element.textContent?.trim();
+        if (!text || text.length < 16) return;
+        const translated = translations.get(text);
+        if (translated && translated !== text) {
+          element.textContent = (element.textContent || "").replace(text, translated);
+        }
+      });
+    });
   };
 
   const bindSlockMenuTranslator = () => {

@@ -1442,7 +1442,7 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold:not([data-slock-de
   box-shadow: 0 0 0 2px var(--slock-desktop-surface) !important;
 }}
 
-[data-slock-desktop-semantic-color][data-slock-desktop-semantic-shape="chip"],
+[data-slock-desktop-semantic-color][data-slock-desktop-semantic-shape="chip"]:not([data-slock-desktop-account-action="true"]),
 [data-slock-desktop-task-state] {{
   background: color-mix(in srgb, var(--slock-desktop-semantic-current) 18%, var(--slock-desktop-surface)) !important;
   border-color: color-mix(in srgb, var(--slock-desktop-semantic-current) 38%, var(--slock-desktop-line)) !important;
@@ -1821,7 +1821,7 @@ aside .h-12.w-12,
   box-shadow: 0 0 0 2px var(--slock-desktop-surface) !important;
 }}
 
-[data-slock-desktop-semantic-color][data-slock-desktop-semantic-shape="chip"],
+[data-slock-desktop-semantic-color][data-slock-desktop-semantic-shape="chip"]:not([data-slock-desktop-account-action="true"]),
 [data-slock-desktop-task-state] {{
   background: color-mix(in srgb, var(--slock-desktop-semantic-current) 18%, var(--slock-desktop-surface)) !important;
   border-color: color-mix(in srgb, var(--slock-desktop-semantic-current) 38%, var(--slock-desktop-line)) !important;
