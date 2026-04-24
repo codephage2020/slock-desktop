@@ -1691,6 +1691,7 @@ main input[placeholder*="Search channels, DMs, messages"],
 main input[placeholder*="搜索频道、私信、消息"] {{
   border-radius: var(--slock-desktop-radius-xs) !important;
   background-clip: padding-box !important;
+  padding-inline: 14px !important;
   box-shadow: none !important;
 }}
 
@@ -1982,6 +1983,7 @@ mod tests {
         assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
         assert!(script.contains(r#"main input.min-w-0[placeholder*=\"Search channels\"]"#));
         assert!(script.contains(r#"main input.min-w-0[placeholder*=\"搜索频道\"]"#));
+        assert!(script.contains("padding-inline: 14px !important;"));
         assert!(!script.contains("canvasChromeSelectors"));
         assert!(!script.contains("querySelectorAll(canvasChromeSelectors)"));
         assert!(!script.contains("slockDesktopCanvasChrome"));
