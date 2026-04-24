@@ -283,7 +283,8 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
     "slockDesktopMenuItem",
     "slockDesktopAccountDock",
     "slockDesktopAccountAction",
-    "slockDesktopTaskToolbar"
+    "slockDesktopTaskToolbar",
+    "slockDesktopRoute"
   ];
 
   const style = document.getElementById(styleId);
@@ -291,6 +292,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 
   document.documentElement.removeAttribute("data-slock-desktop-theme");
   document.documentElement.removeAttribute("data-slock-desktop-mode");
+  document.documentElement.removeAttribute("data-slock-desktop-route");
   document.documentElement.style.removeProperty("color-scheme");
 
   document.querySelectorAll("*").forEach((element) => {
@@ -561,6 +563,12 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 
     const markWorkspaceModuleSurfaces = () => {{
       if (!document.body) return;
+
+      if (/\/search\b/i.test(window.location.pathname)) {{
+        document.documentElement.dataset.slockDesktopRoute = "search";
+      }} else {{
+        document.documentElement.removeAttribute("data-slock-desktop-route");
+      }}
 
       const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"],.flex.h-full.w-full.flex-col[class*="border-r"],.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow';
       const surfaceProps = [
@@ -1707,6 +1715,13 @@ main :where(.flex.min-h-0.flex-1.flex-col) > .relative > .flex > .flex > .flex {
   background: transparent !important;
 }}
 
+html[data-slock-desktop-route="search"] main .relative > .flex > .flex > .shrink-0 {{
+  background: var(--slock-desktop-canvas) !important;
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
+  box-shadow: none !important;
+}}
+
 .flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex,
 .flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex {{
   background: transparent !important;
@@ -1774,7 +1789,10 @@ main :where(.flex.min-h-0.flex-1.flex-col) > .relative > .flex > .flex > .flex {
 
 main .shrink-0 > .flex > .relative > .inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]),
 main .shrink-0 > .flex > .relative > button.inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]),
-main .shrink-0 > .flex > .relative > [role="button"].inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]) {{
+main .shrink-0 > .flex > .relative > [role="button"].inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]),
+main .shrink-0 > .flex > .relative > .inline-flex[class*="bg-brutal-yellow\/40"],
+main .shrink-0 > .flex > .relative > button.inline-flex[class*="bg-brutal-yellow\/40"],
+main .shrink-0 > .flex > .relative > [role="button"].inline-flex[class*="bg-brutal-yellow\/40"] {{
   background: var(--slock-desktop-selection) !important;
   border-color: transparent !important;
   color: var(--slock-desktop-text) !important;
@@ -2110,6 +2128,10 @@ mod tests {
         assert!(script.contains("slockDesktopTaskToolbar"));
         assert!(script.contains(".flex.h-full.w-full.flex-col[class*=\"border-r\"]"));
         assert!(script.contains("data-slock-desktop-task-toolbar"));
+        assert!(script.contains("slockDesktopRoute"));
+        assert!(script.contains(
+            "html[data-slock-desktop-route=\\\"search\\\"] main .relative > .flex > .flex > .shrink-0"
+        ));
         assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
         assert!(script.contains(r#"input.min-w-0[placeholder*=\"Search channels\"]"#));
         assert!(script.contains(r#"input.min-w-0[placeholder*=\"搜索频道\"]"#));
@@ -2145,6 +2167,9 @@ mod tests {
         assert!(script.contains(
             "main .shrink-0 > .flex > .relative > .inline-flex[class*=\\\"bg-brutal\\\"]"
         ));
+        assert!(script.contains(
+            "main .shrink-0 > .flex > .relative > .inline-flex[class*=\\\"bg-brutal-yellow\\\\/40\\\"]"
+        ));
         assert!(!script.contains("background: var(--slock-desktop-tab-selected) !important;"));
         assert!(!script.contains(
             "box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slock-desktop-accent) 20%, transparent)"
@@ -2165,6 +2190,9 @@ mod tests {
         assert!(script
             .contains("main :where(.flex.min-h-0.flex-1.flex-col) > .relative > .flex > .flex"));
         assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex"));
+        assert!(script.contains(
+            "html[data-slock-desktop-route=\\\"search\\\"] main .relative > .flex > .flex > .shrink-0"
+        ));
         assert!(script.contains(r#"input[placeholder*=\"搜索频道、私信、消息\"]"#));
         assert!(script.contains("background-color: transparent !important;"));
         assert!(script.contains("background-clip: padding-box !important;"));
