@@ -1020,16 +1020,16 @@ button,
   box-shadow: var(--slock-desktop-soft-shadow) !important;
 }}
 
-.btn-brutal.bg-brutal-pink:not([data-slock-desktop-account-action="true"]),
-.btn-brutal.bg-brutal-lime:not([data-slock-desktop-account-action="true"]),
-.btn-brutal.bg-brutal-cyan:not([data-slock-desktop-account-action="true"]),
-.btn-brutal.bg-brutal-yellow:not([data-slock-desktop-account-action="true"]),
-.btn-brutal.bg-brutal-orange:not([data-slock-desktop-account-action="true"]),
-.btn-brutal-sm.bg-brutal-pink:not([data-slock-desktop-account-action="true"]),
-.btn-brutal-sm.bg-brutal-lime:not([data-slock-desktop-account-action="true"]),
-.btn-brutal-sm.bg-brutal-cyan:not([data-slock-desktop-account-action="true"]),
-.btn-brutal-sm.bg-brutal-yellow:not([data-slock-desktop-account-action="true"]),
-.btn-brutal-sm.bg-brutal-orange:not([data-slock-desktop-account-action="true"]) {{
+.btn-brutal.bg-brutal-pink,
+.btn-brutal.bg-brutal-lime,
+.btn-brutal.bg-brutal-cyan,
+.btn-brutal.bg-brutal-yellow,
+.btn-brutal.bg-brutal-orange,
+.btn-brutal-sm.bg-brutal-pink,
+.btn-brutal-sm.bg-brutal-lime,
+.btn-brutal-sm.bg-brutal-cyan,
+.btn-brutal-sm.bg-brutal-yellow,
+.btn-brutal-sm.bg-brutal-orange {{
   background: var(--slock-desktop-accent) !important;
   color: var(--slock-desktop-surface) !important;
   border-color: transparent !important;
