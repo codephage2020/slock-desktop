@@ -996,8 +996,8 @@ button:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:hover,
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-white:focus-visible {{
-  background: var(--slock-desktop-selection) !important;
-  color: var(--slock-desktop-text) !important;
+  background: var(--slock-desktop-accent) !important;
+  color: var(--slock-desktop-surface) !important;
 }}
 
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .flex.border-b-2.border-black > button.bg-brutal-yellow\/60 {{
@@ -1030,6 +1030,37 @@ button:hover,
 [class*="bg-brutal-lime"],
 [class*="hover\:bg-brutal-lime"] {{
   background-color: var(--slock-desktop-selection) !important;
+}}
+
+[class*="bg-brutal-yellow\/40"],
+[class*="bg-brutal-lavender\/40"],
+[class*="bg-brutal-pink\/40"],
+[class*="bg-brutal-cyan\/40"],
+[class*="bg-brutal-lime\/40"],
+[class*="bg-brutal-orange\/40"] {{
+  background-color: transparent !important;
+  border-color: transparent !important;
+}}
+
+[class*="bg-brutal-yellow\/40"]:hover,
+[class*="bg-brutal-yellow\/40"]:focus-visible,
+[class*="bg-brutal-lavender\/40"]:hover,
+[class*="bg-brutal-lavender\/40"]:focus-visible,
+[class*="bg-brutal-pink\/40"]:hover,
+[class*="bg-brutal-pink\/40"]:focus-visible,
+[class*="bg-brutal-cyan\/40"]:hover,
+[class*="bg-brutal-cyan\/40"]:focus-visible,
+[class*="bg-brutal-lime\/40"]:hover,
+[class*="bg-brutal-lime\/40"]:focus-visible,
+[class*="bg-brutal-orange\/40"]:hover,
+[class*="bg-brutal-orange\/40"]:focus-visible {{
+  background-color: var(--slock-desktop-hover) !important;
+  border-color: var(--slock-desktop-line) !important;
+}}
+
+span[class*="text-[10px]"][class*="border"][class*="bg-brutal-"],
+span[class*="text-[10px]"][class*="border-black"][class*="bg-brutal-"] {{
+  border-radius: 2px !important;
 }}
 
 [class*="text-brutal-yellow"],
