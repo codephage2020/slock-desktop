@@ -1660,7 +1660,11 @@ header,
 .flex.min-h-0.flex-1.flex-col > :is(.relative.flex.items-center, .flex.overflow-x-auto)[class*="border-t-2"],
 .flex.min-h-0.flex-1.flex-col > .flex.h-\[62px\],
 .flex.min-h-0.flex-1.flex-col > .flex.h-\[62px\].shrink-0,
-.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex[class*="border"] {{
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex[class*="border"],
+.flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex[class*="border"],
+.flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex[class*="border"],
+.flex.min-h-0.flex-1.flex-col > .flex > .relative > .absolute > .flex[class*="border"],
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0[class*="border"] {{
   border-top-color: transparent !important;
   border-bottom-color: transparent !important;
   box-shadow: none !important;
@@ -1966,6 +1970,12 @@ mod tests {
             .contains(".flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex"));
         assert!(script
             .contains(".flex.min-h-0.flex-1.flex-col > .flex > .relative > .absolute > .flex"));
+        assert!(script.contains(
+            r#".flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex > .flex[class*=\"border\"]"#
+        ));
+        assert!(script.contains(
+            r#".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .shrink-0[class*=\"border\"]"#
+        ));
         assert!(script.contains("slockDesktopTaskToolbar"));
         assert!(script.contains("data-slock-desktop-task-toolbar"));
         assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
