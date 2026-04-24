@@ -1642,6 +1642,11 @@ header,
   box-shadow: none !important;
 }}
 
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex,
+.flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex {{
+  background: var(--slock-desktop-canvas) !important;
+}}
+
 .flex.w-full.items-center.gap-2,
 .group.flex.items-center {{
   border-radius: var(--slock-desktop-radius-sm) !important;
@@ -1897,5 +1902,23 @@ mod tests {
             "element.dataset.slockDesktopCountTone = filledCountChrome ? \"plain\" : \"accent\";"
         ));
         assert!(script.contains("var(--slock-semantic-pink) 90%"));
+    }
+
+    #[test]
+    fn injected_script_paints_inner_workspace_chrome_like_main_background() {
+        let script = injected_script(resolve_theme(
+            "default",
+            "light",
+            &CustomThemeInput {
+                name: "Custom".to_string(),
+                accent: "#10a37f".to_string(),
+            },
+        ));
+
+        assert!(
+            script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex")
+        );
+        assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex"));
+        assert!(script.contains("background: var(--slock-desktop-canvas) !important;"));
     }
 }
