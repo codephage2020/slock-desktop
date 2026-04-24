@@ -1435,11 +1435,18 @@ fn api_base_url(server_url: &str) -> String {
     format!("{}/api", sanitize_service_server_url(server_url))
 }
 
+static API_CLIENT: std::sync::OnceLock<Client> = std::sync::OnceLock::new();
+
 fn api_client() -> Result<Client, String> {
-    Client::builder()
+    if let Some(client) = API_CLIENT.get() {
+        return Ok(client.clone());
+    }
+    let client = Client::builder()
         .user_agent("Slock Desktop")
         .build()
-        .map_err(|err| format!("Unable to create desktop API client: {err}"))
+        .map_err(|err| format!("Unable to create desktop API client: {err}"))?;
+    let _ = API_CLIENT.set(client.clone());
+    Ok(client)
 }
 
 fn refresh_session_tokens(
