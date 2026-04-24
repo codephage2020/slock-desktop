@@ -447,7 +447,9 @@ fn save_service_settings(
 fn start_service(
     app: AppHandle,
     state: State<'_, DesktopState>,
+    selected_server_slug: Option<String>,
 ) -> Result<BootstrapPayload, String> {
+    persist_service_target_slug(&app, &state, selected_server_slug, false)?;
     let service_settings = {
         let settings = state
             .settings
@@ -1212,10 +1214,6 @@ fn apply_workspace_scripts_to_window(
             &meta_catalog(active_theme_mode, custom_theme),
         ))
         .map_err(|err| err.to_string())?;
-    #[cfg(debug_assertions)]
-    if let Err(err) = window.eval(workspace::agentation_script()) {
-        log::warn!("failed to inject workspace Agentation: {err}");
-    }
     Ok(())
 }
 
@@ -1264,10 +1262,6 @@ fn apply_workspace_scripts_to_webview(
             &meta_catalog(active_theme_mode, custom_theme),
         ))
         .map_err(|err| err.to_string())?;
-    #[cfg(debug_assertions)]
-    if let Err(err) = webview.eval(workspace::agentation_script()) {
-        log::warn!("failed to inject workspace Agentation: {err}");
-    }
     Ok(())
 }
 
@@ -1469,60 +1463,52 @@ fn force_start_service(
     settings: &ServiceSettings,
 ) -> Result<(), String> {
     let selected_server = resolve_selected_server(app, state, settings)?;
-    let target = ensure_machine_binding(app, state, settings, &selected_server)?;
-    let binding = target.binding.clone();
 
-    let mut daemon_pids = service_daemon_pids_for_binding(
-        settings,
-        &binding,
-        target.api_key_prefix.as_deref(),
-        false,
-    )?;
-    if daemon_pids.is_empty() && machine_counts_as_started(&target.machine_status) {
-        daemon_pids = unique_untagged_daemon_process_ids(&settings.server_url)?;
-    }
-    terminate_daemon_processes(daemon_pids)?;
-
-    let mut runtime = state
-        .service
-        .lock()
-        .map_err(|_| "Unable to lock service runtime".to_string())?;
-    let same_target = runtime.active_server_slug.as_deref() == Some(selected_server.slug.as_str())
-        && runtime.active_machine_id.as_deref() == Some(binding.machine_id.as_str());
-
-    if let Some(child) = runtime.child.as_mut() {
-        let still_running = child
-            .try_wait()
-            .map_err(|err| format!("Unable to inspect service state: {err}"))?
-            .is_none();
-        if still_running && same_target {
+    if let Some(target) = resolve_existing_service_machine(app, state, settings, &selected_server)?
+    {
+        if let Some(process) = service_daemon_process_for_resolved_target(settings, &target)? {
+            adopt_service_daemon_process(state, &process)?;
             return Ok(());
         }
 
-        if still_running {
-            child
-                .kill()
-                .map_err(|err| format!("Failed to stop existing service: {err}"))?;
-            let _ = child.wait();
+        if machine_counts_as_started(&target.machine_status) {
+            if let Some(process) = unique_untagged_service_daemon_process(
+                &settings.server_url,
+                &selected_server.slug,
+                Some(target.binding.machine_id.as_str()),
+            )? {
+                adopt_service_daemon_process(state, &process)?;
+                return Ok(());
+            }
         }
-        runtime.child = None;
     }
 
-    let mut daemon_pids = service_daemon_pids_for_binding(
-        settings,
-        &binding,
-        target.api_key_prefix.as_deref(),
-        false,
-    )?;
-    if daemon_pids.is_empty() && machine_counts_as_started(&target.machine_status) {
-        daemon_pids = unique_untagged_daemon_process_ids(&settings.server_url)?;
-    }
-    if !daemon_pids.is_empty() {
-        runtime.last_error = None;
-        runtime.active_server_slug = Some(selected_server.slug);
-        runtime.active_machine_id = Some(binding.machine_id);
-        runtime.child = None;
+    let target = ensure_machine_binding(app, state, settings, &selected_server)?;
+    let binding = target.binding.clone();
+
+    if prepare_runtime_for_service_target(
+        state,
+        &selected_server.slug,
+        Some(binding.machine_id.as_str()),
+        true,
+    )? {
         return Ok(());
+    }
+
+    if let Some(process) = service_daemon_process_for_start_target(settings, &target)? {
+        adopt_service_daemon_process(state, &process)?;
+        return Ok(());
+    }
+
+    if machine_counts_as_started(&target.machine_status) {
+        if let Some(process) = unique_untagged_service_daemon_process(
+            &settings.server_url,
+            &selected_server.slug,
+            Some(binding.machine_id.as_str()),
+        )? {
+            adopt_service_daemon_process(state, &process)?;
+            return Ok(());
+        }
     }
 
     let api_key = target.api_key.trim();
@@ -1552,11 +1538,187 @@ fn force_start_service(
     let child = command
         .spawn()
         .map_err(|err| format!("Failed to start service: {err}"))?;
+    let mut runtime = state
+        .service
+        .lock()
+        .map_err(|_| "Unable to lock service runtime".to_string())?;
     runtime.last_error = None;
     runtime.active_server_slug = Some(selected_server.slug);
     runtime.active_machine_id = Some(binding.machine_id);
     runtime.child = Some(child);
     Ok(())
+}
+
+fn prepare_runtime_for_service_target(
+    state: &DesktopState,
+    server_slug: &str,
+    machine_id: Option<&str>,
+    keep_matching_child: bool,
+) -> Result<bool, String> {
+    let target_machine_id = machine_id
+        .map(str::trim)
+        .filter(|machine_id| !machine_id.is_empty());
+    let mut runtime = state
+        .service
+        .lock()
+        .map_err(|_| "Unable to lock service runtime".to_string())?;
+    let same_target = runtime.active_server_slug.as_deref() == Some(server_slug)
+        && runtime.active_machine_id.as_deref() == target_machine_id;
+    let mut matching_child_running = false;
+    let mut clear_child = false;
+
+    if let Some(child) = runtime.child.as_mut() {
+        let still_running = child
+            .try_wait()
+            .map_err(|err| format!("Unable to inspect service state: {err}"))?
+            .is_none();
+
+        if still_running && same_target {
+            matching_child_running = true;
+            clear_child = !keep_matching_child;
+        } else {
+            // A running child for another server remains alive so multiple server daemons can coexist.
+            clear_child = true;
+        }
+    }
+
+    if clear_child {
+        runtime.child = None;
+    }
+
+    if matching_child_running {
+        runtime.last_error = None;
+        runtime.active_server_slug = Some(server_slug.to_string());
+        runtime.active_machine_id = target_machine_id.map(str::to_string);
+    }
+
+    Ok(matching_child_running)
+}
+
+fn adopt_service_daemon_process(
+    state: &DesktopState,
+    process: &ServiceDaemonProcess,
+) -> Result<(), String> {
+    prepare_runtime_for_service_target(
+        state,
+        &process.server_slug,
+        process.machine_id.as_deref(),
+        false,
+    )?;
+
+    let mut runtime = state
+        .service
+        .lock()
+        .map_err(|_| "Unable to lock service runtime".to_string())?;
+    runtime.last_error = None;
+    runtime.active_server_slug = Some(process.server_slug.clone());
+    runtime.active_machine_id = process.machine_id.clone();
+    runtime.child = None;
+    Ok(())
+}
+
+fn service_daemon_process_for_resolved_target(
+    settings: &ServiceSettings,
+    target: &ResolvedServiceMachine,
+) -> Result<Option<ServiceDaemonProcess>, String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let output = Command::new("ps")
+            .args(["-axo", "pid=,ppid=,command="])
+            .output()
+            .map_err(|err| format!("Failed to inspect daemon processes: {err}"))?;
+        if !output.status.success() {
+            return Err("Failed to inspect daemon processes".to_string());
+        }
+
+        let listing = String::from_utf8_lossy(&output.stdout);
+        Ok(service_daemon_process_from_resolved_target(
+            settings, target, &listing,
+        ))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = settings;
+        let _ = target;
+        Ok(None)
+    }
+}
+
+fn service_daemon_process_for_start_target(
+    settings: &ServiceSettings,
+    target: &ServiceStartTarget,
+) -> Result<Option<ServiceDaemonProcess>, String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let output = Command::new("ps")
+            .args(["-axo", "pid=,ppid=,command="])
+            .output()
+            .map_err(|err| format!("Failed to inspect daemon processes: {err}"))?;
+        if !output.status.success() {
+            return Err("Failed to inspect daemon processes".to_string());
+        }
+
+        let listing = String::from_utf8_lossy(&output.stdout);
+        Ok(service_daemon_process_from_start_target(
+            settings, target, &listing,
+        ))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = settings;
+        let _ = target;
+        Ok(None)
+    }
+}
+
+fn service_daemon_process_from_resolved_target(
+    settings: &ServiceSettings,
+    target: &ResolvedServiceMachine,
+    output: &str,
+) -> Option<ServiceDaemonProcess> {
+    service_daemon_process_from_target(
+        settings,
+        &target.binding.server_slug,
+        Some(target.binding.machine_id.as_str()),
+        target.api_key_prefix.as_deref(),
+        Some(target.binding.api_key.as_str()).filter(|api_key| !api_key.trim().is_empty()),
+        output,
+    )
+}
+
+fn service_daemon_process_from_start_target(
+    settings: &ServiceSettings,
+    target: &ServiceStartTarget,
+    output: &str,
+) -> Option<ServiceDaemonProcess> {
+    service_daemon_process_from_target(
+        settings,
+        &target.binding.server_slug,
+        Some(target.binding.machine_id.as_str()),
+        target.api_key_prefix.as_deref(),
+        Some(target.api_key.as_str()).filter(|api_key| !api_key.trim().is_empty()),
+        output,
+    )
+}
+
+fn unique_untagged_service_daemon_process(
+    target_server_url: &str,
+    server_slug: &str,
+    machine_id: Option<&str>,
+) -> Result<Option<ServiceDaemonProcess>, String> {
+    Ok(unique_untagged_daemon_process_ids(target_server_url)?
+        .into_iter()
+        .next()
+        .map(|pid| ServiceDaemonProcess {
+            pid,
+            server_slug: server_slug.to_string(),
+            machine_id: machine_id
+                .map(str::trim)
+                .filter(|machine_id| !machine_id.is_empty())
+                .map(str::to_string),
+        }))
 }
 
 fn mark_service_daemon_process_running(
@@ -1592,6 +1754,31 @@ fn stop_service_process(
         .map(|slug| active_server_slug.as_deref() == Some(slug))
         .unwrap_or(true);
     let mut stopped_tracked_child = false;
+    let target_slug = service_settings
+        .map(|settings| {
+            requested_server_slug
+                .as_deref()
+                .filter(|slug| !slug.trim().is_empty())
+                .or_else(|| {
+                    active_server_slug
+                        .as_deref()
+                        .filter(|slug| !slug.trim().is_empty())
+                })
+                .unwrap_or_else(|| settings.selected_server_slug.as_str())
+        })
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty());
+    let target_server_url = service_settings
+        .map(|settings| settings.server_url.as_str())
+        .unwrap_or(DEFAULT_SERVER_URL);
+    let mut daemon_pids = match target_slug {
+        Some(slug) => {
+            find_daemon_process_ids(target_server_url, Some(slug), None, None, None, false)?
+        }
+        None => Vec::new(),
+    };
+    let mut stopped_daemon_process = !daemon_pids.is_empty();
+    terminate_daemon_processes(daemon_pids)?;
 
     if should_stop_tracked_child {
         if let Some(child) = runtime.child.as_mut() {
@@ -1600,9 +1787,7 @@ fn stop_service_process(
                 .map_err(|err| format!("Unable to inspect service state: {err}"))?
                 .is_none();
             if still_running {
-                child
-                    .kill()
-                    .map_err(|err| format!("Failed to stop service: {err}"))?;
+                terminate_process_tree(child.id())?;
                 stopped_tracked_child = true;
             }
             let _ = child.wait();
@@ -1618,25 +1803,15 @@ fn stop_service_process(
         }
     }
 
-    let target_slug = service_settings
-        .map(|settings| {
-            requested_server_slug
-                .as_deref()
-                .filter(|slug| !slug.trim().is_empty())
-                .or_else(|| {
-                    active_server_slug
-                        .as_deref()
-                        .filter(|slug| !slug.trim().is_empty())
-                })
-                .unwrap_or_else(|| settings.selected_server_slug.as_str())
-        })
-        .map(str::trim)
-        .filter(|slug| !slug.is_empty());
-    let resolved_target = match (service_settings, target_slug) {
-        (Some(settings), Some(slug)) => {
-            resolve_service_machine_for_slug(app, state, settings, slug)?
+    let resolved_target = if stopped_daemon_process {
+        None
+    } else {
+        match (service_settings, target_slug) {
+            (Some(settings), Some(slug)) => {
+                resolve_service_machine_for_slug(app, state, settings, slug)?
+            }
+            _ => None,
         }
-        _ => None,
     };
     let target_binding = resolved_target
         .as_ref()
@@ -1646,26 +1821,26 @@ fn stop_service_process(
                 target_slug.and_then(|slug| find_service_binding(settings, "", slug))
             })
         });
-    let target_server_url = service_settings
-        .map(|settings| settings.server_url.as_str())
-        .unwrap_or(DEFAULT_SERVER_URL);
-
-    let mut daemon_pids = find_daemon_process_ids(
-        target_server_url,
-        target_slug,
-        target_binding
-            .as_ref()
-            .map(|binding| binding.machine_id.as_str())
-            .filter(|machine_id| !machine_id.trim().is_empty()),
-        resolved_target
-            .as_ref()
-            .and_then(|target| target.api_key_prefix.as_deref()),
-        target_binding
-            .as_ref()
-            .map(|binding| binding.api_key.as_str())
-            .filter(|api_key| !api_key.trim().is_empty()),
-        false,
-    )?;
+    daemon_pids = if stopped_daemon_process {
+        Vec::new()
+    } else {
+        find_daemon_process_ids(
+            target_server_url,
+            target_slug,
+            target_binding
+                .as_ref()
+                .map(|binding| binding.machine_id.as_str())
+                .filter(|machine_id| !machine_id.trim().is_empty()),
+            resolved_target
+                .as_ref()
+                .and_then(|target| target.api_key_prefix.as_deref()),
+            target_binding
+                .as_ref()
+                .map(|binding| binding.api_key.as_str())
+                .filter(|api_key| !api_key.trim().is_empty()),
+            false,
+        )?
+    };
     if daemon_pids.is_empty()
         && resolved_target
             .as_ref()
@@ -1674,7 +1849,7 @@ fn stop_service_process(
     {
         daemon_pids = unique_untagged_daemon_process_ids(target_server_url)?;
     }
-    let stopped_daemon_process = !daemon_pids.is_empty();
+    stopped_daemon_process = stopped_daemon_process || !daemon_pids.is_empty();
     terminate_daemon_processes(daemon_pids)?;
 
     let should_clear_runtime = requested_server_slug
@@ -1864,6 +2039,26 @@ fn process_entries_from_ps_output(output: &str) -> Vec<ProcessEntry> {
         .collect()
 }
 
+fn process_tree_pids_from_entries(root_pid: u32, entries: &[ProcessEntry]) -> Vec<u32> {
+    let mut pids = vec![root_pid];
+    let mut stack = vec![root_pid];
+
+    while let Some(parent_pid) = stack.pop() {
+        for child in entries
+            .iter()
+            .filter(|entry| entry.ppid == Some(parent_pid))
+        {
+            if pids.contains(&child.pid) {
+                continue;
+            }
+            pids.push(child.pid);
+            stack.push(child.pid);
+        }
+    }
+
+    pids
+}
+
 fn process_entry_has_agent_descendant(pid: u32, entries: &[ProcessEntry]) -> bool {
     let mut stack: Vec<u32> = entries
         .iter()
@@ -1910,8 +2105,10 @@ fn daemon_command_matches(
     legacy_api_key: Option<&str>,
     include_untagged: bool,
 ) -> bool {
-    let daemon_marker = command.contains("@slock-ai/daemon") || command.contains("slock-ai/daemon");
-    if !daemon_marker || !command.contains("--server-url") || !command.contains(target_server_url) {
+    if !daemon_command_has_marker(command)
+        || !command.contains("--server-url")
+        || !command.contains(target_server_url)
+    {
         return false;
     }
 
@@ -1968,12 +2165,22 @@ fn daemon_command_matches(
 }
 
 fn daemon_command_is_untagged(command: &str, target_server_url: &str) -> bool {
-    let daemon_marker = command.contains("@slock-ai/daemon") || command.contains("slock-ai/daemon");
-    daemon_marker
+    daemon_command_has_marker(command)
         && command.contains("--server-url")
         && command.contains(target_server_url)
         && !command.contains(DAEMON_MACHINE_ID_ARG)
         && !command.contains(DAEMON_SERVER_SLUG_ARG)
+}
+
+fn daemon_command_has_marker(command: &str) -> bool {
+    command.contains("@slock-ai/daemon")
+        || command.contains("slock-ai/daemon")
+        || command.split_whitespace().any(|part| {
+            part.rsplit(['/', '\\'])
+                .next()
+                .map(|name| name == "slock-daemon")
+                .unwrap_or(false)
+        })
 }
 
 fn command_arg_value_starts_with(command: &str, arg: &str, expected_prefix: &str) -> bool {
@@ -2102,28 +2309,36 @@ fn service_daemon_process_from_target(
     })
 }
 
-fn service_daemon_pids_for_binding(
-    settings: &ServiceSettings,
-    binding: &ServiceMachineBinding,
-    api_key_prefix: Option<&str>,
-    include_untagged: bool,
-) -> Result<Vec<u32>, String> {
-    find_daemon_process_ids(
-        &settings.server_url,
-        Some(binding.server_slug.as_str()),
-        Some(binding.machine_id.as_str()).filter(|machine_id| !machine_id.trim().is_empty()),
-        api_key_prefix,
-        Some(binding.api_key.as_str()).filter(|api_key| !api_key.trim().is_empty()),
-        include_untagged,
-    )
-}
-
 fn terminate_daemon_processes(mut pids: Vec<u32>) -> Result<(), String> {
     pids.sort_unstable_by(|left, right| right.cmp(left));
     pids.dedup();
 
     for pid in pids {
         terminate_daemon_process(pid)?;
+    }
+
+    Ok(())
+}
+
+fn terminate_process_tree(root_pid: u32) -> Result<(), String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let output = Command::new("ps")
+            .args(["-axo", "pid=,ppid=,command="])
+            .output()
+            .map_err(|err| format!("Failed to inspect process tree {root_pid}: {err}"))?;
+        if !output.status.success() {
+            return Err(format!("Failed to inspect process tree {root_pid}"));
+        }
+
+        let listing = String::from_utf8_lossy(&output.stdout);
+        let entries = process_entries_from_ps_output(&listing);
+        terminate_daemon_processes(process_tree_pids_from_entries(root_pid, &entries))?;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        terminate_daemon_process(root_pid)?;
     }
 
     Ok(())
@@ -3199,12 +3414,17 @@ mod tests {
     use super::{
         app_close_prompt_script, close_app_behavior_from_action, close_app_behavior_from_id,
         close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
-        sanitize_service_settings, select_existing_machine,
-        selected_service_daemon_process_from_server_snapshots, should_start_service_for_workspace,
-        untagged_daemon_pids_from_ps_output, workspace_session_seed_script, ApiMachine,
-        CloseAppPromptCopy, CloseAppServiceBehavior, ServiceServerSnapshot, WorkspaceSessionSeed,
+        prepare_runtime_for_service_target, process_entries_from_ps_output,
+        process_tree_pids_from_entries, sanitize_service_settings, select_existing_machine,
+        selected_service_daemon_process_from_server_snapshots,
+        service_daemon_process_from_resolved_target, should_start_service_for_workspace,
+        terminate_daemon_process, untagged_daemon_pids_from_ps_output,
+        workspace_session_seed_script, ApiMachine, AppCloseRuntime, CloseAppPromptCopy,
+        CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine, ServiceRuntime,
+        ServiceServerSnapshot, WorkspaceSessionSeed,
     };
-    use crate::config::{ServiceMachineBinding, ServiceSettings};
+    use crate::config::{AppSettings, ServiceMachineBinding, ServiceSettings};
+    use std::{process::Command, sync::Mutex};
 
     #[test]
     fn daemon_command_matching_respects_target_api_key() {
@@ -3367,6 +3587,87 @@ mod tests {
     }
 
     #[test]
+    fn resolved_service_target_detects_running_daemon_before_key_rotation() {
+        let settings = ServiceSettings::default();
+        let target = ResolvedServiceMachine {
+            binding: ServiceMachineBinding {
+                server_id: "server-open".to_string(),
+                server_slug: "open-have".to_string(),
+                machine_id: "machine-open".to_string(),
+                machine_name: "Open machine".to_string(),
+                api_key: String::new(),
+            },
+            api_key_prefix: None,
+            machine_status: "running".to_string(),
+        };
+        let output = r#"
+  101   1 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_previous --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open --slock-desktop-managed
+"#;
+
+        let process = service_daemon_process_from_resolved_target(&settings, &target, output);
+
+        assert_eq!(process.as_ref().map(|process| process.pid), Some(101));
+        assert_eq!(
+            process.as_ref().map(|process| process.server_slug.as_str()),
+            Some("open-have")
+        );
+        assert_eq!(
+            process.and_then(|process| process.machine_id),
+            Some("machine-open".to_string())
+        );
+    }
+
+    #[test]
+    fn tracked_service_process_tree_includes_npx_wrapper_and_daemon_child() {
+        let output = r#"
+  101   1 npm exec @slock-ai/daemon@latest --server-url https://api.slock.ai --api-key sk_current --slock-desktop-server-slug open-have --slock-desktop-machine-id ***
+  102 101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_current --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open --slock-desktop-managed
+  103 102 node /opt/homebrew/bin/codex app-server --listen stdio://
+  104   1 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_other --slock-desktop-server-slug tyan-dyun --slock-desktop-machine-id machine-tyan --slock-desktop-managed
+"#;
+
+        let entries = process_entries_from_ps_output(output);
+        let pids = process_tree_pids_from_entries(101, &entries);
+
+        assert_eq!(pids, vec![101, 102, 103]);
+    }
+
+    #[test]
+    fn preparing_runtime_for_another_server_detaches_without_stopping_existing_child() {
+        let child = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep child");
+        let pid = child.id();
+        let state = DesktopState {
+            settings: Mutex::new(AppSettings::default()),
+            service: Mutex::new(ServiceRuntime {
+                child: Some(child),
+                last_error: None,
+                active_server_slug: Some("tyan-dyun".to_string()),
+                active_machine_id: Some("machine-tyan".to_string()),
+                cached_servers: Vec::new(),
+                cached_sync_error: None,
+            }),
+            app_close: Mutex::new(AppCloseRuntime::default()),
+        };
+
+        let matched =
+            prepare_runtime_for_service_target(&state, "open-have", Some("machine-open"), true)
+                .expect("prepare runtime");
+        let child_still_running = Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        let _ = terminate_daemon_process(pid);
+
+        assert!(!matched);
+        assert!(child_still_running);
+        assert!(state.service.lock().unwrap().child.is_none());
+    }
+
+    #[test]
     fn untagged_daemon_parser_ignores_desktop_marked_processes() {
         let output = r#"
   101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_old
@@ -3453,6 +3754,49 @@ mod tests {
         assert_eq!(
             process.and_then(|process| process.machine_id),
             Some("machine-open".to_string())
+        );
+    }
+
+    #[test]
+    fn selected_service_process_detection_matches_daemon_bin_name() {
+        let settings = ServiceSettings {
+            selected_server_slug: "tyan-dyun".to_string(),
+            machines: vec![ServiceMachineBinding {
+                server_id: "server-tyan".to_string(),
+                server_slug: "tyan-dyun".to_string(),
+                machine_id: "machine-tyan".to_string(),
+                machine_name: "Tyan machine".to_string(),
+                api_key: "sk_machine_tyan".to_string(),
+            }],
+            ..ServiceSettings::default()
+        };
+        let output = r#"
+  101   1 node /Users/example/.npm/_npx/277f35d2ed0078b9/node_modules/.bin/slock-daemon --server-url https://api.slock.ai --api-key sk_machine_tyan --slock-desktop-server-slug tyan-dyun --slock-desktop-machine-id machine-tyan --slock-desktop-managed
+"#;
+
+        let servers = vec![ServiceServerSnapshot {
+            id: "server-tyan".to_string(),
+            name: "Tyan".to_string(),
+            slug: "tyan-dyun".to_string(),
+            selected: true,
+            machine_id: Some("machine-tyan".to_string()),
+            machine_name: Some("Tyan machine".to_string()),
+            machine_status: "running".to_string(),
+            api_key_ready: true,
+            api_key_prefix: None,
+        }];
+
+        let process =
+            selected_service_daemon_process_from_server_snapshots(&settings, &servers, output);
+
+        assert_eq!(process.as_ref().map(|process| process.pid), Some(101));
+        assert_eq!(
+            process.as_ref().map(|process| process.server_slug.as_str()),
+            Some("tyan-dyun")
+        );
+        assert_eq!(
+            process.and_then(|process| process.machine_id),
+            Some("machine-tyan".to_string())
         );
     }
 

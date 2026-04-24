@@ -107,8 +107,8 @@ export async function saveServiceSettings(service: ServiceSnapshot) {
   })
 }
 
-export async function startService() {
-  return invoke<BootstrapPayload>('start_service')
+export async function startService(selectedServerSlug?: string) {
+  return invoke<BootstrapPayload>('start_service', { selectedServerSlug })
 }
 
 export async function stopService(selectedServerSlug?: string) {

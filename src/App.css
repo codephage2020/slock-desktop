@@ -194,37 +194,62 @@
 
 .icon-action-button {
   appearance: none;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 0;
-  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 58%, transparent);
   color: var(--muted);
   cursor: pointer;
   border-radius: 999px;
   transition:
     color 180ms ease,
     background 180ms ease,
+    border-color 180ms ease,
     transform 180ms ease;
+}
+
+.icon-action-button svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .icon-action-button:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+  border-color: color-mix(in srgb, var(--text) 18%, var(--line));
   transform: translateY(-1px);
+}
+
+.icon-action-button.positive:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
 }
 
 .icon-action-button.danger:hover {
   color: color-mix(in srgb, #c24141 82%, var(--text));
   background: color-mix(in srgb, #c24141 10%, var(--surface-strong));
+  border-color: color-mix(in srgb, #c24141 30%, var(--line));
 }
 
 .icon-action-button:disabled {
   cursor: default;
   opacity: 0.7;
   transform: none;
+}
+
+.service-action-icon.spinning {
+  animation: service-action-spin 900ms linear infinite;
+}
+
+@keyframes service-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .service-server-list {
@@ -482,6 +507,10 @@ details.control-card[open] > summary::after {
 
 .custom-theme-controls .theme-button {
   grid-column: 1 / -1;
+}
+
+.settings-card .custom-theme-controls {
+  grid-template-columns: minmax(0, 1fr) 90px;
 }
 
 .field {

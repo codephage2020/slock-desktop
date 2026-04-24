@@ -10,6 +10,7 @@ import {
   refreshServiceServers,
   saveCustomTheme,
   selectServiceServer,
+  startService,
   saveUpdateSettings,
   stopService,
   updateTheme,
@@ -106,7 +107,7 @@ const COPY = {
     openSlock: 'Open Slock',
     launching: 'Launching…',
     running: 'Running',
-    configuredIdle: 'Configured / idle',
+    configuredIdle: 'Configured / not running',
     notConfigured: 'Not configured',
     desktopStateError: 'Desktop state error',
     previewLabel: 'preview',
@@ -117,11 +118,11 @@ const COPY = {
     localServiceEyebrow: 'Local Service',
     serviceStartup: 'Service startup',
     serviceRunning: 'running',
-    serviceIdle: 'idle',
-    serviceOffline: 'offline',
+    serviceIdle: 'not running',
+    serviceOffline: 'not running',
     serviceNotLinked: 'no local binding',
     serviceSignInRequired: 'sign in required',
-    serviceCopy: 'Desktop reads your server list from the signed-in Slock session and starts the selected server in the background when it is offline.',
+    serviceCopy: 'Desktop reads your server list from the signed-in Slock session and starts the selected server in the background when it is not running.',
     selectedServer: 'Server',
     selectedServerPlaceholder: 'Choose a server',
     noServers: 'No servers available on this account yet.',
@@ -210,7 +211,7 @@ const COPY = {
     openSlock: '打开 Slock',
     launching: '启动中…',
     running: '运行中',
-    configuredIdle: '已配置 / 空闲',
+    configuredIdle: '已配置 / 未运行',
     notConfigured: '未配置',
     desktopStateError: '桌面状态错误',
     previewLabel: '预览',
@@ -221,11 +222,11 @@ const COPY = {
     localServiceEyebrow: '本地服务',
     serviceStartup: '服务启动',
     serviceRunning: '运行中',
-    serviceIdle: '空闲',
-    serviceOffline: '离线',
+    serviceIdle: '未运行',
+    serviceOffline: '未运行',
     serviceNotLinked: '未创建本地绑定',
     serviceSignInRequired: '需要登录',
-    serviceCopy: '桌面端会从已登录的 Slock 会话读取 server 列表；所选 server 未在线时，会在后台自动拉起对应 daemon。',
+    serviceCopy: '桌面端会从已登录的 Slock 会话读取 server 列表；所选 server 未运行时，会在后台自动拉起对应 daemon。',
     selectedServer: 'Server',
     selectedServerPlaceholder: '选择一个 server',
     noServers: '当前账号下还没有可用 server。',
@@ -447,6 +448,37 @@ function App() {
     }
   }
 
+  async function handleServiceStart() {
+    if (!snapshot) {
+      return
+    }
+
+    const currentCopy = getCopy(snapshot.language, snapshot.resolvedLanguage)
+    const selectedServer =
+      snapshot.service.servers.find(
+        (server) => server.slug === snapshot.service.selectedServerSlug,
+      ) ??
+      snapshot.service.servers.find((server) => server.selected) ??
+      snapshot.service.servers[0]
+    const selectedSlug = selectedServer?.slug ?? snapshot.service.selectedServerSlug
+
+    if (!selectedSlug) {
+      setErrorMessage(currentCopy.selectedServerPlaceholder)
+      return
+    }
+
+    try {
+      setBusyAction('start-service')
+      setErrorMessage(null)
+      const next = await startService(selectedSlug)
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   async function handleServiceServerSelect(selectedServerSlug: string) {
     try {
       setBusyAction(`select-service:${selectedServerSlug}`)
@@ -591,6 +623,12 @@ function App() {
     selectedServiceServer,
     copy,
   )
+  const serviceActionBusy =
+    busyAction === 'start-service' ||
+    busyAction === 'stop-service' ||
+    busyAction === 'workspace' ||
+    busyAction === 'refresh-service' ||
+    Boolean(busyAction?.startsWith('select-service:'))
 
   return (
     <main className="studio-shell" data-mode={activeTheme.mode} style={shellStyle}>
@@ -757,15 +795,33 @@ function App() {
                     {serviceStatusLabel}
                   </span>
                   <button
+                    className="icon-action-button positive"
+                    onClick={handleServiceStart}
+                    disabled={
+                      serviceActionBusy ||
+                      !snapshot.service.authenticated ||
+                      !selectedServiceServer
+                    }
+                    aria-label={copy.startService}
+                    title={copy.startService}
+                  >
+                    <ServiceActionIcon type="start" busy={busyAction === 'start-service'} />
+                    <span className="sr-only">
+                      {busyAction === 'start-service' ? copy.startingService : copy.startService}
+                    </span>
+                  </button>
+                  <button
                     className="icon-action-button danger"
                     onClick={handleServiceStop}
-                    disabled={busyAction === 'stop-service'}
+                    disabled={
+                      serviceActionBusy ||
+                      !snapshot.service.authenticated ||
+                      !selectedServiceServer
+                    }
                     aria-label={copy.closeServer}
                     title={copy.closeServer}
                   >
-                    <span aria-hidden="true">
-                      {busyAction === 'stop-service' ? '…' : '⏻'}
-                    </span>
+                    <ServiceActionIcon type="stop" busy={busyAction === 'stop-service'} />
                     <span className="sr-only">
                       {busyAction === 'stop-service' ? copy.closingServer : copy.closeServer}
                     </span>
@@ -777,9 +833,7 @@ function App() {
                     aria-label={copy.refreshServers}
                     title={copy.refreshServers}
                   >
-                    <span aria-hidden="true">
-                      {busyAction === 'refresh-service' ? '↻' : '⟳'}
-                    </span>
+                    <ServiceActionIcon type="refresh" busy={busyAction === 'refresh-service'} />
                     <span className="sr-only">
                       {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServers}
                     </span>
@@ -824,8 +878,10 @@ function App() {
                       aria-pressed={selected}
                       disabled={
                         busyAction?.startsWith('select-service:') ||
+                        busyAction === 'start-service' ||
                         busyAction === 'workspace' ||
-                        busyAction === 'stop-service'
+                        busyAction === 'stop-service' ||
+                        busyAction === 'refresh-service'
                       }
                       onClick={() => handleServiceServerSelect(server.slug)}
                     >
@@ -864,7 +920,7 @@ function App() {
                   className="launch-button"
                   onClick={() => handleWorkspaceOpen(selectedServiceSlug)}
                   disabled={
-                    busyAction === 'workspace' ||
+                    serviceActionBusy ||
                     !snapshot.service.authenticated ||
                     !selectedServiceServer
                   }
@@ -1054,6 +1110,85 @@ function getThemeDisplay(
   }
 }
 
+type ServiceActionIconType = 'start' | 'stop' | 'refresh'
+
+function ServiceActionIcon({
+  type,
+  busy = false,
+}: {
+  type: ServiceActionIconType
+  busy?: boolean
+}) {
+  if (busy) {
+    return (
+      <svg
+        className="service-action-icon spinning"
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M21 12a9 9 0 0 1-9 9" />
+        <path d="M3 12a9 9 0 0 1 9-9" />
+      </svg>
+    )
+  }
+
+  if (type === 'start') {
+    return (
+      <svg
+        className="service-action-icon"
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polygon points="9 7 17 12 9 17 9 7" />
+      </svg>
+    )
+  }
+
+  if (type === 'stop') {
+    return (
+      <svg
+        className="service-action-icon"
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 3v9" />
+        <path d="M18.4 6.6a8 8 0 1 1-12.8 0" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 2v6h-6" />
+      <path d="M21 8A9 9 0 1 0 12 21a9 9 0 0 0 8.2-5.3" />
+    </svg>
+  )
+}
+
 function getCopy(
   language: BootstrapPayload['language'],
   resolvedLanguage: BootstrapPayload['resolvedLanguage'] = 'en-US',
@@ -1111,11 +1246,12 @@ function getMachineStatusLabel(
     case 'online':
     case 'running':
     case 'healthy':
+    case 'idle':
+    case 'ready':
       return copy.serviceRunning
     case 'offline':
+    case 'stopped':
       return copy.serviceOffline
-    case 'idle':
-      return copy.serviceIdle
     case 'not linked':
       return copy.serviceNotLinked
     default:
@@ -1134,11 +1270,19 @@ function getServiceServerStatusLabel(
     return copy.serviceRunning
   }
 
+  if (server.slug === activeServerSlug || server.selected) {
+    return service.configured ? copy.serviceIdle : copy.serviceNotLinked
+  }
+
   return getMachineStatusLabel(server.machineStatus, copy)
 }
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unknown desktop error'
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return typeof error === 'string' ? error : 'Unknown desktop error'
 }
 
 function normalizeVersion(value: string) {

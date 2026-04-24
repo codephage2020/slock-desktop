@@ -25,37 +25,6 @@ pub fn settings_overlay_script(
         .replace("__SLOCK_DESKTOP_RESOLVED_LANGUAGE__", &resolved_language)
 }
 
-pub fn agentation_script() -> &'static str {
-    WORKSPACE_AGENTATION_SCRIPT
-}
-
-const WORKSPACE_AGENTATION_SCRIPT: &str = r#"
-(() => {
-  const rootId = "slock-desktop-agentation-root";
-  if (window.__slockDesktopAgentationMounted) return;
-  window.__slockDesktopAgentationMounted = true;
-
-  const mount = document.getElementById(rootId) || document.createElement("div");
-  mount.id = rootId;
-  if (!mount.isConnected) document.body.appendChild(mount);
-
-  Promise.all([
-    import("https://esm.sh/react@19.2.5"),
-    import("https://esm.sh/react-dom@19.2.5/client?deps=react@19.2.5"),
-    import("https://esm.sh/agentation@3.0.2?deps=react@19.2.5,react-dom@19.2.5"),
-  ])
-    .then(([React, ReactDOM, AgentationModule]) => {
-      if (window.__slockDesktopAgentationRoot) return;
-      window.__slockDesktopAgentationRoot = ReactDOM.createRoot(mount);
-      window.__slockDesktopAgentationRoot.render(React.createElement(AgentationModule.Agentation));
-    })
-    .catch((error) => {
-      window.__slockDesktopAgentationMounted = false;
-      console.warn("[Slock Desktop] Agentation workspace injection failed.", error);
-    });
-})();
-"#;
-
 const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 (() => {
   const hostId = "slock-desktop-settings-host";
@@ -95,8 +64,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       selectedServerPlaceholder: "Choose a server",
       serviceStatus: "Service status",
       serviceRunning: "running",
-      serviceIdle: "idle",
-      serviceOffline: "offline",
+      serviceIdle: "not running",
+      serviceOffline: "not running",
       serviceNotLinked: "no local binding",
       serviceSignInRequired: "sign in required",
       machineStatus: "Machine status",
@@ -105,6 +74,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       loadingService: "Loading server settings...",
       refreshServers: "Refresh servers",
       refreshingServers: "Refreshing...",
+      startService: "Start service",
       closeServer: "Close server",
       closingServer: "Closing...",
       serviceNotRunning: "Selected server service is not running.",
@@ -149,8 +119,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       selectedServerPlaceholder: "选择一个 server",
       serviceStatus: "服务状态",
       serviceRunning: "运行中",
-      serviceIdle: "空闲",
-      serviceOffline: "离线",
+      serviceIdle: "未运行",
+      serviceOffline: "未运行",
       serviceNotLinked: "未创建本地绑定",
       serviceSignInRequired: "需要登录",
       machineStatus: "本地 machine 状态",
@@ -159,6 +129,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       loadingService: "正在读取 server 设置...",
       refreshServers: "刷新 Server",
       refreshingServers: "刷新中...",
+      startService: "启动服务",
       closeServer: "关闭 Server",
       closingServer: "关闭中...",
       serviceNotRunning: "所选 server 服务未运行。",
@@ -237,15 +208,26 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     return invoke(command, args);
   };
   const normalizeStatus = (status) => String(status || "").trim().toLowerCase();
-  const machineStatusLabel = (status) => {
-    const normalized = normalizeStatus(status);
-    if (["online", "running", "healthy"].includes(normalized)) return t("serviceRunning");
-    if (["idle", "ready"].includes(normalized)) return t("serviceIdle");
-    if (["not linked", "unbound", "missing"].includes(normalized)) return t("serviceNotLinked");
-    if (!normalized || ["offline", "stopped"].includes(normalized)) return t("serviceOffline");
-    return status;
-  };
-  const selectedServiceServer = () => {
+	  const machineStatusLabel = (status) => {
+	    const normalized = normalizeStatus(status);
+	    if (["online", "running", "healthy", "idle", "ready"].includes(normalized)) return t("serviceRunning");
+	    if (["not linked", "unbound", "missing"].includes(normalized)) return t("serviceNotLinked");
+	    if (!normalized || ["offline", "stopped"].includes(normalized)) return t("serviceOffline");
+	    return status;
+	  };
+	  const actionIcon = (name, busy = false) => {
+	    if (busy) {
+	      return `<svg class="service-action-icon spinning" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9"></path><path d="M3 12a9 9 0 0 1 9-9"></path></svg>`;
+	    }
+	    if (name === "start") {
+	      return `<svg class="service-action-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="9 7 17 12 9 17 9 7"></polygon></svg>`;
+	    }
+	    if (name === "stop") {
+	      return `<svg class="service-action-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"></path><path d="M18.4 6.6a8 8 0 1 1-12.8 0"></path></svg>`;
+	    }
+	    return `<svg class="service-action-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M21 8A9 9 0 1 0 12 21a9 9 0 0 0 8.2-5.3"></path></svg>`;
+	  };
+	  const selectedServiceServer = () => {
     const service = serviceSnapshot;
     if (!service) return null;
     return (
@@ -1788,23 +1770,36 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	      flex: 0 0 auto;
 	    }
 
-	    .settings-icon-button {
-	      width: 30px;
-	      height: 30px;
-	      display: inline-grid;
-	      place-items: center;
-	      padding: 0;
-	      border: 0;
-	      border-radius: var(--desktop-radius-pill);
-	      background: transparent;
-	      color: var(--desktop-muted);
-	      font-size: 14px;
-	    }
+		    .settings-icon-button {
+		      width: 32px;
+		      height: 32px;
+		      display: inline-grid;
+		      place-items: center;
+		      padding: 0;
+		      border: 1px solid color-mix(in srgb, var(--desktop-border) 72%, transparent);
+		      border-radius: var(--desktop-radius-pill);
+		      background: color-mix(in srgb, var(--desktop-surface-secondary) 58%, transparent);
+		      color: var(--desktop-muted);
+		      font-size: 14px;
+		    }
 
-	    .settings-icon-button.danger:hover {
-	      color: color-mix(in srgb, #c24141 82%, var(--desktop-text));
-	      background: color-mix(in srgb, #c24141 10%, var(--desktop-surface-secondary));
-	    }
+		    .settings-icon-button svg {
+		      width: 16px;
+		      height: 16px;
+		      display: block;
+		    }
+
+		    .settings-icon-button.positive:hover {
+		      color: var(--desktop-accent);
+		      background: var(--desktop-selection);
+		      border-color: color-mix(in srgb, var(--desktop-accent) 32%, var(--desktop-border));
+		    }
+
+		    .settings-icon-button.danger:hover {
+		      color: color-mix(in srgb, #c24141 82%, var(--desktop-text));
+		      background: color-mix(in srgb, #c24141 10%, var(--desktop-surface-secondary));
+		      border-color: color-mix(in srgb, #c24141 30%, var(--desktop-border));
+		    }
 
 	    .settings-icon-button:disabled,
 	    .service-open-button:disabled,
@@ -1933,11 +1928,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	        background: var(--desktop-hover);
 	      }
 
-	      .nav-item:hover,
-	      .settings-icon-button:hover,
-	      .service-row:hover {
-	        background: var(--desktop-hover);
-	      }
+		      .nav-item:hover,
+		      .settings-icon-button:hover,
+		      .service-row:hover {
+		        background: var(--desktop-hover);
+		      }
+
+		      .settings-icon-button:hover {
+		        border-color: color-mix(in srgb, var(--desktop-text) 18%, var(--desktop-border));
+		      }
 
 	      .service-open-button:hover {
 	        background: var(--desktop-accent-hover);
@@ -1949,11 +1948,21 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	    .mode-option:active,
 	    .theme-option:active,
 	    .nav-item:active,
-	    .settings-icon-button:active,
-	    .service-row:active,
-	    .service-open-button:active {
-	      transform: scale(0.97);
-	    }
+		    .settings-icon-button:active,
+		    .service-row:active,
+		    .service-open-button:active {
+		      transform: scale(0.97);
+		    }
+
+		    .service-action-icon.spinning {
+		      animation: service-action-spin 900ms linear infinite;
+		    }
+
+		    @keyframes service-action-spin {
+		      to {
+		        transform: rotate(360deg);
+		      }
+		    }
 
     @media (max-width: 520px) {
       .dock {
@@ -2002,6 +2011,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const selected = selectedServiceServer();
     const busy = serviceBusyAction;
     const busyRefresh = busy === "service-refresh" || busy === "service-load";
+    const busyStart = busy === "service-start";
     const busyClose = busy === "service-stop";
     const busyOpen = busy === "service-open";
     const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
@@ -2021,7 +2031,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       .map((server) => {
         const selectedRow = server.slug === selectedSlug;
         const running = service?.running && server.slug === service.activeServerSlug;
-        const status = running ? t("serviceRunning") : machineStatusLabel(server.machineStatus);
+        const status = running
+          ? t("serviceRunning")
+          : selectedRow
+            ? service?.configured
+              ? t("serviceIdle")
+              : t("serviceNotLinked")
+            : machineStatusLabel(server.machineStatus);
         const busySelect = busy === `service-select:${server.slug}`;
         const machineMeta = server.machineName
           ? `${t("machineStatus")}: ${escapeHtml(server.machineName)}`
@@ -2053,11 +2069,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
             <p class="service-description">${escapeHtml(serviceNote)}</p>
           </div>
           <div class="service-actions">
+            <button class="settings-icon-button positive" type="button" data-service-action="start" title="${t("startService")}" aria-label="${t("startService")}" ${!selectedSlug || busy ? "disabled" : ""}>
+              ${actionIcon("start", busyStart)}
+            </button>
             <button class="settings-icon-button danger" type="button" data-service-action="stop" title="${t("closeServer")}" aria-label="${t("closeServer")}" ${busy ? "disabled" : ""}>
-              <span aria-hidden="true">${busyClose ? "…" : "⏻"}</span>
+              ${actionIcon("stop", busyClose)}
             </button>
             <button class="settings-icon-button" type="button" data-service-action="refresh" title="${t("refreshServers")}" aria-label="${t("refreshServers")}" ${busy ? "disabled" : ""}>
-              <span aria-hidden="true">${busyRefresh ? "↻" : "⟳"}</span>
+              ${actionIcon("refresh", busyRefresh)}
             </button>
           </div>
         </div>
@@ -2212,6 +2231,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         const serverSlug = action.dataset.serverSlug;
         if (serviceAction === "refresh") {
           loadServiceSnapshot("refresh_service_servers", {}, "service-refresh");
+        } else if (serviceAction === "start") {
+          const selected = selectedServiceServer();
+          const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug || "";
+          if (!selectedServerSlug) {
+            serviceError = t("selectedServerPlaceholder");
+            render();
+            return;
+          }
+          loadServiceSnapshot("start_service", { selectedServerSlug }, "service-start");
         } else if (serviceAction === "stop") {
           const selected = selectedServiceServer();
           const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug || "";
@@ -2544,6 +2572,12 @@ mod tests {
         assert!(!script.contains("runtimeRunning"));
         assert!(script.contains("const selectedRunning ="));
         assert!(script.contains("if (!selectedServerSlug)"));
+        assert!(script.contains("data-service-action=\"start\""));
+        assert!(script.contains(
+            "loadServiceSnapshot(\"start_service\", { selectedServerSlug }, \"service-start\")"
+        ));
+        assert!(script.contains("selectedRow"));
+        assert!(script.contains("service?.configured"));
         assert!(
             script.contains("service.configured ? t(\"serviceIdle\") : t(\"serviceNotLinked\")")
         );
