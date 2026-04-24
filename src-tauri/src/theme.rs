@@ -1707,6 +1707,11 @@ main :where(.flex.min-h-0.flex-1.flex-col) > .relative > .flex > .flex > .flex {
   background: transparent !important;
 }}
 
+.flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex,
+.flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex {{
+  background: transparent !important;
+}}
+
 [data-slock-desktop-task-toolbar="true"] {{
   background: var(--slock-desktop-canvas) !important;
   border-top-color: transparent !important;
@@ -2075,7 +2080,9 @@ mod tests {
         assert!(
             script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex")
         );
-        assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex"));
+        assert!(script.contains(
+            ".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex {\\n  background: transparent !important;"
+        ));
         assert!(script.contains(
             ".flex.min-h-0.flex-1.flex-col > .relative > .absolute > .flex.h-\\\\[62px\\\\]"
         ));
@@ -2157,6 +2164,7 @@ mod tests {
 
         assert!(script
             .contains("main :where(.flex.min-h-0.flex-1.flex-col) > .relative > .flex > .flex"));
+        assert!(script.contains(".flex.min-h-0.flex-1.flex-col > .flex > .flex > .flex > .flex"));
         assert!(script.contains(r#"input[placeholder*=\"搜索频道、私信、消息\"]"#));
         assert!(script.contains("background-color: transparent !important;"));
         assert!(script.contains("background-clip: padding-box !important;"));
