@@ -76,8 +76,8 @@ pub struct UpdateSettings {
 impl Default for UpdateSettings {
     fn default() -> Self {
         Self {
-            repository_slug: "codephage2020/slock-tauri".to_string(),
-            releases_url: "https://github.com/codephage2020/slock-tauri/releases".to_string(),
+            repository_slug: "codephage2020/slock-desktop".to_string(),
+            releases_url: "https://github.com/codephage2020/slock-desktop/releases".to_string(),
         }
     }
 }

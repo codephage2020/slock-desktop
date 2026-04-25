@@ -4,7 +4,7 @@ version = "0.0.1"
 description = "Slock Desktop Theme Studio"
 authors = ["Yan Tingwang"]
 license = ""
-repository = "https://github.com/codephage2020/slock-tauri"
+repository = "https://github.com/codephage2020/slock-desktop"
 edition = "2021"
 rust-version = "1.77.2"
 

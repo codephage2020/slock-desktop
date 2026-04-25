@@ -79,7 +79,7 @@ src-tauri/target/release/bundle/macos/Slock Desktop.app
 Published builds live on the GitHub Releases page:
 
 ```text
-https://github.com/codephage2020/slock-tauri/releases
+https://github.com/codephage2020/slock-desktop/releases
 ```
 
 For a release build, set the version in all three files:
