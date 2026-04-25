@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Slock Desktop</title>
+    <meta
+      name="description"
+      content="A calm macOS-first desktop shell for the Slock AI collaboration workspace."
+    />
+    <meta property="og:title" content="Slock Desktop" />
+    <meta
+      property="og:description"
+      content="Open Slock as a durable desktop workspace with local service controls, synced themes, and release checks."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="./assets/slock-icon.png" />
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/slock-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header" aria-label="Primary navigation">
+      <a class="brand-link" href="#top" aria-label="Slock Desktop home">
+        <img src="./assets/slock-icon.png" alt="" width="32" height="32" />
+        <span>Slock Desktop</span>
+      </a>
+      <nav class="nav-links" aria-label="Landing page sections">
+        <a href="#workflow">Workflow</a>
+        <a href="#control">Control</a>
+        <a href="https://github.com/codephage2020/slock-tauri/releases/latest">Download</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero-section" aria-labelledby="hero-title">
+        <div class="hero-product-stage" aria-hidden="true">
+          <div class="desktop-window">
+            <div class="window-bar">
+              <span></span>
+              <span></span>
+              <span></span>
+              <strong>Desktop Console</strong>
+            </div>
+            <div class="console-layout">
+              <aside class="console-sidebar">
+                <div class="sidebar-chip active"></div>
+                <div class="sidebar-chip"></div>
+                <div class="sidebar-chip short"></div>
+                <div class="sidebar-divider"></div>
+                <div class="server-line"></div>
+                <div class="server-line muted"></div>
+                <div class="server-line muted short"></div>
+              </aside>
+              <div class="console-main">
+                <div class="workspace-status">
+                  <span class="status-dot"></span>
+                  <span>Workspace active</span>
+                </div>
+                <div class="workspace-thread">
+                  <div class="message user"></div>
+                  <div class="message assistant wide"></div>
+                  <div class="message assistant"></div>
+                  <div class="message user compact"></div>
+                </div>
+                <div class="control-strip">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+              <aside class="console-panel">
+                <p>Appearance</p>
+                <div class="mode-row">
+                  <span></span>
+                  <span></span>
+                  <span class="selected"></span>
+                </div>
+                <p>Local Service</p>
+                <div class="service-card">
+                  <span></span>
+                  <strong></strong>
+                </div>
+                <p>Update Center</p>
+                <div class="release-card"></div>
+              </aside>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-copy">
+          <p class="eyebrow">Slock Desktop</p>
+          <h1 id="hero-title">A steady desktop home for daily AI collaboration.</h1>
+          <p class="hero-lede">
+            Open the original Slock workspace in a native shell, keep local services close, and carry one visual rhythm across startup, settings, and workspace sessions.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-action" href="https://github.com/codephage2020/slock-tauri/releases/latest">
+              Download latest release
+            </a>
+            <a class="text-action" href="https://app.slock.ai">Open Slock web app</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="signal-strip" aria-label="Product signals">
+        <div>
+          <span>Workspace</span>
+          <strong>Loads app.slock.ai directly</strong>
+        </div>
+        <div>
+          <span>Themes</span>
+          <strong>Light, dark, system, custom accent</strong>
+        </div>
+        <div>
+          <span>Local daemon</span>
+          <strong>Starts selected server on launch</strong>
+        </div>
+        <div>
+          <span>Updates</span>
+          <strong>Checks GitHub releases in app</strong>
+        </div>
+      </section>
+
+      <section class="section-band" id="workflow" aria-labelledby="workflow-title">
+        <div class="section-heading">
+          <p class="eyebrow">Workflow</p>
+          <h2 id="workflow-title">Designed for long sessions, fast returns, and fewer context shifts.</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <span class="feature-index">01</span>
+            <h3>Original workspace, desktop frame</h3>
+            <p>Slock Desktop opens the hosted workspace after launch, then keeps the shell controls available around the session.</p>
+          </article>
+          <article>
+            <span class="feature-index">02</span>
+            <h3>One theme model everywhere</h3>
+            <p>Startup, injected workspace settings, and the remote page share the same appearance mode and accent color.</p>
+          </article>
+          <article>
+            <span class="feature-index">03</span>
+            <h3>Local service on demand</h3>
+            <p>The desktop console reads available servers from the signed-in workspace and starts the chosen daemon in the background.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="control-section" id="control" aria-labelledby="control-title">
+        <div class="control-copy">
+          <p class="eyebrow">Control Surface</p>
+          <h2 id="control-title">Settings stay close to the work.</h2>
+          <p>
+            Appearance, language, server selection, and release checks live in the desktop layer, so the workspace remains focused on conversations and tasks.
+          </p>
+        </div>
+        <div class="settings-preview" aria-label="Desktop Settings preview">
+          <div class="preview-sidebar">
+            <span class="active">Appearance</span>
+            <span>Service</span>
+            <span>Updates</span>
+          </div>
+          <div class="preview-content">
+            <div class="preview-title-row">
+              <h3>Desktop Settings</h3>
+              <span>Saved locally</span>
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>Mode</strong>
+                <span>Light, dark, or system</span>
+              </div>
+              <div class="segmented">
+                <span></span>
+                <span></span>
+                <span class="selected"></span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>Accent</strong>
+                <span>Selected states and focus rings</span>
+              </div>
+              <div class="swatches">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>Release channel</strong>
+                <span>GitHub latest release</span>
+              </div>
+              <a href="https://github.com/codephage2020/slock-tauri/releases/latest">View release</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="release-band" aria-labelledby="release-title">
+        <div>
+          <p class="eyebrow">GitHub Pages</p>
+          <h2 id="release-title">Project page for releases, onboarding, and desktop distribution.</h2>
+        </div>
+        <a class="primary-action" href="https://github.com/codephage2020/slock-tauri">View source on GitHub</a>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Slock Desktop</span>
+      <span>Built for the Slock AI collaboration workspace.</span>
+    </footer>
+  </body>
+</html>
