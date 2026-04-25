@@ -332,11 +332,7 @@ fn rename_custom_theme(
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         let trimmed = sanitize_theme_name(&name);
-        if let Some(item) = settings
-            .custom_themes
-            .iter_mut()
-            .find(|item| item.id == id)
-        {
+        if let Some(item) = settings.custom_themes.iter_mut().find(|item| item.id == id) {
             item.name = trimmed;
         }
         save_settings(&app, &settings)?;
@@ -358,11 +354,7 @@ fn update_custom_theme_accent(
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         let cleaned = sanitize_hex(&accent).unwrap_or_else(|| "#10a37f".to_string());
-        if let Some(item) = settings
-            .custom_themes
-            .iter_mut()
-            .find(|item| item.id == id)
-        {
+        if let Some(item) = settings.custom_themes.iter_mut().find(|item| item.id == id) {
             item.accent = cleaned;
         }
         save_settings(&app, &settings)?;
@@ -1027,10 +1019,7 @@ fn build_bootstrap(
         language: sanitize_language(&settings.language).to_string(),
         resolved_language: resolve_desktop_language(&settings.language).to_string(),
         workspace_open: main_window_is_workspace(app),
-        themes: meta_catalog(
-            &appearance_mode,
-            &custom_theme_set(&settings.custom_themes),
-        ),
+        themes: meta_catalog(&appearance_mode, &custom_theme_set(&settings.custom_themes)),
         service,
         updates,
     })
@@ -1457,8 +1446,7 @@ fn collect_service_snapshot(
         });
     }
 
-    let refresh_needed =
-        should_refresh_service_servers(refresh_service, cached_servers.is_empty());
+    let refresh_needed = should_refresh_service_servers(refresh_service, cached_servers.is_empty());
     let (mut servers, sync_error) = if refresh_needed {
         match fetch_service_servers(app, state, settings) {
             Ok(servers) => {
@@ -1870,7 +1858,7 @@ fn stop_service_process(
                         .as_deref()
                         .filter(|slug| !slug.trim().is_empty())
                 })
-                .unwrap_or_else(|| settings.selected_server_slug.as_str())
+                .unwrap_or(settings.selected_server_slug.as_str())
         })
         .map(str::trim)
         .filter(|slug| !slug.is_empty());
@@ -2804,7 +2792,7 @@ fn fetch_service_servers(
     })?;
 
     let mut snapshots = Vec::with_capacity(servers.len());
-    for (server, machines) in servers.into_iter().zip(machines_by_server.into_iter()) {
+    for (server, machines) in servers.into_iter().zip(machines_by_server) {
         let binding = find_service_binding(settings, &server.id, &server.slug);
         let bound_machine = binding.as_ref().and_then(|binding| {
             machines
@@ -3527,10 +3515,8 @@ pub fn run() {
                 api.prevent_close();
                 handle_window_close_requested(app, &state);
             }
-            RunEvent::ExitRequested { api, .. } => {
-                if !handle_app_exit_requested(app, &state) {
-                    api.prevent_exit();
-                }
+            RunEvent::ExitRequested { api, .. } if !handle_app_exit_requested(app, &state) => {
+                api.prevent_exit();
             }
             RunEvent::Exit => handle_app_exit(app, &state),
             _ => {}

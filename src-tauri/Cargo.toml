@@ -1,7 +1,7 @@
 [package]
 name = "app"
 version = "0.0.2"
-description = "Slock Desktop Theme Studio"
+description = "Slock Desktop"
 authors = ["Yan Tingwang"]
 license = ""
 repository = "https://github.com/codephage2020/slock-desktop"

@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager, Runtime};
 
 const SETTINGS_FILE: &str = "settings.json";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceMachineBinding {
     #[serde(default)]
@@ -31,18 +31,6 @@ pub struct ServiceSettings {
     pub close_app_behavior: String,
     #[serde(default)]
     pub machines: Vec<ServiceMachineBinding>,
-}
-
-impl Default for ServiceMachineBinding {
-    fn default() -> Self {
-        Self {
-            server_id: String::new(),
-            server_slug: String::new(),
-            machine_id: String::new(),
-            machine_name: String::new(),
-            api_key: String::new(),
-        }
-    }
 }
 
 impl Default for ServiceSettings {

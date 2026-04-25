@@ -2015,11 +2015,7 @@ mod tests {
 
     #[test]
     fn injected_script_contains_unread_count_tone_fixups() {
-        let script = injected_script(resolve_theme(
-            "default",
-            "light",
-            &fixture_set(),
-        ));
+        let script = injected_script(resolve_theme("default", "light", &fixture_set()));
 
         assert!(script.contains("'[class*=\"ml-auto\"]'"));
         assert!(script.contains(
@@ -2036,11 +2032,7 @@ mod tests {
 
     #[test]
     fn injected_script_paints_inner_workspace_chrome_like_main_background() {
-        let script = injected_script(resolve_theme(
-            "default",
-            "light",
-            &fixture_set(),
-        ));
+        let script = injected_script(resolve_theme("default", "light", &fixture_set()));
 
         assert!(
             script.contains(".flex.min-h-0.flex-1.flex-col > .relative > .flex > .flex > .flex")
@@ -2092,11 +2084,7 @@ mod tests {
 
     #[test]
     fn injected_script_normalizes_task_page_selected_controls() {
-        let script = injected_script(resolve_theme(
-            "default",
-            "light",
-            &fixture_set(),
-        ));
+        let script = injected_script(resolve_theme("default", "light", &fixture_set()));
 
         assert!(script.contains(
             ".flex.overflow-x-auto.border-b-2.border-black.bg-white.scrollbar-none > button.bg-brutal-yellow"
@@ -2122,11 +2110,7 @@ mod tests {
 
     #[test]
     fn injected_script_removes_channel_chrome_and_search_input_backgrounds() {
-        let script = injected_script(resolve_theme(
-            "default",
-            "light",
-            &fixture_set(),
-        ));
+        let script = injected_script(resolve_theme("default", "light", &fixture_set()));
 
         assert!(script
             .contains("main :where(.flex.min-h-0.flex-1.flex-col) > .relative > .flex > .flex"));
