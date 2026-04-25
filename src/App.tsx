@@ -254,11 +254,12 @@ function App() {
   const [newThemeDraft, setNewThemeDraft] = useState<NewThemeDraft | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
+  const initialServiceRefreshRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
 
-    void loadBootstrap()
+    void loadBootstrap(false)
       .then((next) => {
         if (!cancelled) {
           startTransition(() => setSnapshot(next))
@@ -274,6 +275,21 @@ function App() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!snapshot?.service.authenticated || initialServiceRefreshRef.current) {
+      return
+    }
+
+    initialServiceRefreshRef.current = true
+    void refreshServiceServers()
+      .then((next) => {
+        startTransition(() => setSnapshot(next))
+      })
+      .catch((error) => {
+        setErrorMessage(getErrorMessage(error))
+      })
+  }, [snapshot?.service.authenticated])
 
   useEffect(() => {
     if (renamingThemeId && renameInputRef.current) {
@@ -632,7 +648,10 @@ function App() {
     snapshot.service.servers.find((server) => server.selected) ??
     snapshot.service.servers[0] ??
     null
-  const selectedServiceSlug = selectedServiceServer?.slug
+  const savedServiceSlug = snapshot.service.selectedServerSlug.trim()
+  const selectedServiceSlug = selectedServiceServer?.slug ?? savedServiceSlug
+  const canOpenWorkspace =
+    snapshot.service.authenticated && Boolean(selectedServiceSlug)
   const normalizedServerQuery = serverQuery.trim().toLowerCase()
   const filteredServiceServers = normalizedServerQuery
     ? snapshot.service.servers.filter((server) => {
@@ -1091,11 +1110,10 @@ function App() {
         <div className="launch-dock">
           <button
             className="launch-button launch-button-bottom"
-            onClick={() => handleWorkspaceOpen(selectedServiceSlug)}
+            onClick={() => handleWorkspaceOpen(selectedServiceSlug || undefined)}
             disabled={
               serviceActionBusy ||
-              !snapshot.service.authenticated ||
-              !selectedServiceServer
+              !canOpenWorkspace
             }
           >
             {busyAction === 'workspace' ? copy.launching : stackButtonLabel}

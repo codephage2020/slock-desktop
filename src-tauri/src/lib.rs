@@ -1457,7 +1457,8 @@ fn collect_service_snapshot(
         });
     }
 
-    let refresh_needed = refresh_service || cached_servers.is_empty();
+    let refresh_needed =
+        should_refresh_service_servers(refresh_service, cached_servers.is_empty());
     let (mut servers, sync_error) = if refresh_needed {
         match fetch_service_servers(app, state, settings) {
             Ok(servers) => {
@@ -1519,6 +1520,10 @@ fn collect_service_snapshot(
         sync_error,
         servers,
     })
+}
+
+fn should_refresh_service_servers(refresh_service: bool, _cached_servers_empty: bool) -> bool {
+    refresh_service
 }
 
 fn maybe_start_service(
@@ -2667,6 +2672,8 @@ fn api_client() -> Result<Client, String> {
     }
     let client = Client::builder()
         .user_agent("Slock Desktop")
+        .connect_timeout(Duration::from_secs(3))
+        .timeout(Duration::from_secs(10))
         .build()
         .map_err(|err| format!("Unable to create desktop API client: {err}"))?;
     let _ = API_CLIENT.set(client.clone());
@@ -3539,11 +3546,11 @@ mod tests {
         prepare_runtime_for_service_target, process_entries_from_ps_output,
         process_tree_pids_from_entries, sanitize_service_settings, select_existing_machine,
         selected_service_daemon_process_from_server_snapshots,
-        service_daemon_process_from_resolved_target, should_start_service_for_workspace,
-        terminate_daemon_process, untagged_daemon_pids_from_ps_output,
-        workspace_session_seed_script, ApiMachine, AppCloseRuntime, CloseAppPromptCopy,
-        CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine, ServiceRuntime,
-        ServiceServerSnapshot, WorkspaceSessionSeed,
+        service_daemon_process_from_resolved_target, should_refresh_service_servers,
+        should_start_service_for_workspace, terminate_daemon_process,
+        untagged_daemon_pids_from_ps_output, workspace_session_seed_script, ApiMachine,
+        AppCloseRuntime, CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState,
+        ResolvedServiceMachine, ServiceRuntime, ServiceServerSnapshot, WorkspaceSessionSeed,
     };
     use crate::config::{AppSettings, ServiceMachineBinding, ServiceSettings};
     use std::{process::Command, sync::Mutex};
@@ -3811,6 +3818,13 @@ mod tests {
         };
 
         assert!(should_start_service_for_workspace(&settings, true));
+    }
+
+    #[test]
+    fn initial_bootstrap_can_skip_service_network_refresh() {
+        assert!(!should_refresh_service_servers(false, true));
+        assert!(!should_refresh_service_servers(false, false));
+        assert!(should_refresh_service_servers(true, true));
     }
 
     #[test]

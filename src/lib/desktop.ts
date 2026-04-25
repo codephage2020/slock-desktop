@@ -69,8 +69,8 @@ export interface BootstrapPayload {
   updates: UpdateSnapshot
 }
 
-export async function loadBootstrap() {
-  return invoke<BootstrapPayload>('bootstrap')
+export async function loadBootstrap(refresh = true) {
+  return invoke<BootstrapPayload>('bootstrap', { refresh })
 }
 
 export async function updateTheme(themeId: string) {
