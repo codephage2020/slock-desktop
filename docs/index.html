@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -17,19 +17,54 @@
     <meta property="og:image" content="./assets/slock-icon.png" />
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./assets/slock-icon.png" />
+    <script>
+      (() => {
+        const root = document.documentElement
+        const getStored = (key) => {
+          try {
+            return window.localStorage.getItem(key)
+          } catch {
+            return null
+          }
+        }
+        const params = new URLSearchParams(window.location.search)
+        const paramTheme = params.get('theme')
+        const paramLang = params.get('lang')
+        const systemTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        const storedTheme = getStored('slock-landing-theme')
+        const storedLang = getStored('slock-landing-lang')
+        const language = paramLang || storedLang || (navigator.language?.toLowerCase().startsWith('zh') ? 'zh' : 'en')
+        const theme = paramTheme || storedTheme
+        root.dataset.theme = theme === 'dark' || theme === 'light' ? theme : systemTheme
+        root.dataset.lang = language === 'zh' ? 'zh' : 'en'
+        root.lang = language === 'zh' ? 'zh-CN' : 'en'
+      })()
+    </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header class="site-header" aria-label="Primary navigation">
-      <a class="brand-link" href="#top" aria-label="Slock Desktop home">
+    <header class="site-header" aria-label="Primary navigation" data-i18n-aria-label="nav.label">
+      <a class="brand-link" href="#top" aria-label="Slock Desktop home" data-i18n-aria-label="brand.home">
         <img src="./assets/slock-icon.png" alt="" width="32" height="32" />
         <span>Slock Desktop</span>
       </a>
-      <nav class="nav-links" aria-label="Landing page sections">
-        <a href="#workflow">Workflow</a>
-        <a href="#control">Control</a>
-        <a href="https://github.com/codephage2020/slock-tauri/releases/latest">Download</a>
-      </nav>
+      <div class="header-actions">
+        <nav class="nav-links" aria-label="Landing page sections" data-i18n-aria-label="nav.sections">
+          <a href="#workflow" data-i18n="nav.workflow">Workflow</a>
+          <a href="#control" data-i18n="nav.control">Control</a>
+          <a href="https://github.com/codephage2020/slock-tauri/releases/latest" data-i18n="nav.download">Download</a>
+        </nav>
+        <div class="preference-toggles" aria-label="Page preferences" data-i18n-aria-label="controls.preferences">
+          <div class="toggle-group" role="group" aria-label="Language" data-i18n-aria-label="controls.language">
+            <button type="button" data-lang-value="en">EN</button>
+            <button type="button" data-lang-value="zh">中文</button>
+          </div>
+          <div class="toggle-group" role="group" aria-label="Theme" data-i18n-aria-label="controls.theme">
+            <button type="button" data-theme-value="light" data-i18n="theme.light">Light</button>
+            <button type="button" data-theme-value="dark" data-i18n="theme.dark">Dark</button>
+          </div>
+        </div>
+      </div>
     </header>
 
     <main id="top">
@@ -40,7 +75,7 @@
               <span></span>
               <span></span>
               <span></span>
-              <strong>Desktop Console</strong>
+              <strong data-i18n="preview.console">Desktop Console</strong>
             </div>
             <div class="console-layout">
               <aside class="console-sidebar">
@@ -55,7 +90,7 @@
               <div class="console-main">
                 <div class="workspace-status">
                   <span class="status-dot"></span>
-                  <span>Workspace active</span>
+                  <span data-i18n="preview.workspaceActive">Workspace active</span>
                 </div>
                 <div class="workspace-thread">
                   <div class="message user"></div>
@@ -70,18 +105,18 @@
                 </div>
               </div>
               <aside class="console-panel">
-                <p>Appearance</p>
+                <p data-i18n="preview.appearance">Appearance</p>
                 <div class="mode-row">
                   <span></span>
                   <span></span>
                   <span class="selected"></span>
                 </div>
-                <p>Local Service</p>
+                <p data-i18n="preview.localService">Local Service</p>
                 <div class="service-card">
                   <span></span>
                   <strong></strong>
                 </div>
-                <p>Update Center</p>
+                <p data-i18n="preview.updateCenter">Update Center</p>
                 <div class="release-card"></div>
               </aside>
             </div>
@@ -90,85 +125,85 @@
 
         <div class="hero-copy">
           <p class="eyebrow">Slock Desktop</p>
-          <h1 id="hero-title">A steady desktop home for daily AI collaboration.</h1>
-          <p class="hero-lede">
+          <h1 id="hero-title" data-i18n="hero.title">A steady desktop home for daily AI collaboration.</h1>
+          <p class="hero-lede" data-i18n="hero.lede">
             Open the original Slock workspace in a native shell, keep local services close, and carry one visual rhythm across startup, settings, and workspace sessions.
           </p>
           <div class="hero-actions">
-            <a class="primary-action" href="https://github.com/codephage2020/slock-tauri/releases/latest">
+            <a class="primary-action" href="https://github.com/codephage2020/slock-tauri/releases/latest" data-i18n="hero.download">
               Download latest release
             </a>
-            <a class="text-action" href="https://app.slock.ai">Open Slock web app</a>
+            <a class="text-action" href="https://app.slock.ai" data-i18n="hero.openWeb">Open Slock web app</a>
           </div>
         </div>
       </section>
 
-      <section class="signal-strip" aria-label="Product signals">
+      <section class="signal-strip" aria-label="Product signals" data-i18n-aria-label="signals.label">
         <div>
-          <span>Workspace</span>
-          <strong>Loads app.slock.ai directly</strong>
+          <span data-i18n="signals.workspaceLabel">Workspace</span>
+          <strong data-i18n="signals.workspaceText">Loads app.slock.ai directly</strong>
         </div>
         <div>
-          <span>Themes</span>
-          <strong>Light, dark, system, custom accent</strong>
+          <span data-i18n="signals.themesLabel">Themes</span>
+          <strong data-i18n="signals.themesText">Light, dark, system, custom accent</strong>
         </div>
         <div>
-          <span>Local daemon</span>
-          <strong>Starts selected server on launch</strong>
+          <span data-i18n="signals.daemonLabel">Local daemon</span>
+          <strong data-i18n="signals.daemonText">Starts selected server on launch</strong>
         </div>
         <div>
-          <span>Updates</span>
-          <strong>Checks GitHub releases in app</strong>
+          <span data-i18n="signals.updatesLabel">Updates</span>
+          <strong data-i18n="signals.updatesText">Checks GitHub releases in app</strong>
         </div>
       </section>
 
       <section class="section-band" id="workflow" aria-labelledby="workflow-title">
         <div class="section-heading">
-          <p class="eyebrow">Workflow</p>
-          <h2 id="workflow-title">Designed for long sessions, fast returns, and fewer context shifts.</h2>
+          <p class="eyebrow" data-i18n="workflow.eyebrow">Workflow</p>
+          <h2 id="workflow-title" data-i18n="workflow.title">Designed for long sessions, fast returns, and fewer context shifts.</h2>
         </div>
         <div class="feature-grid">
           <article>
             <span class="feature-index">01</span>
-            <h3>Original workspace, desktop frame</h3>
-            <p>Slock Desktop opens the hosted workspace after launch, then keeps the shell controls available around the session.</p>
+            <h3 data-i18n="workflow.feature1Title">Original workspace, desktop frame</h3>
+            <p data-i18n="workflow.feature1Text">Slock Desktop opens the hosted workspace after launch, then keeps the shell controls available around the session.</p>
           </article>
           <article>
             <span class="feature-index">02</span>
-            <h3>One theme model everywhere</h3>
-            <p>Startup, injected workspace settings, and the remote page share the same appearance mode and accent color.</p>
+            <h3 data-i18n="workflow.feature2Title">One theme model everywhere</h3>
+            <p data-i18n="workflow.feature2Text">Startup, injected workspace settings, and the remote page share the same appearance mode and accent color.</p>
           </article>
           <article>
             <span class="feature-index">03</span>
-            <h3>Local service on demand</h3>
-            <p>The desktop console reads available servers from the signed-in workspace and starts the chosen daemon in the background.</p>
+            <h3 data-i18n="workflow.feature3Title">Local service on demand</h3>
+            <p data-i18n="workflow.feature3Text">The desktop console reads available servers from the signed-in workspace and starts the chosen daemon in the background.</p>
           </article>
         </div>
       </section>
 
       <section class="control-section" id="control" aria-labelledby="control-title">
         <div class="control-copy">
-          <p class="eyebrow">Control Surface</p>
-          <h2 id="control-title">Settings stay close to the work.</h2>
-          <p>
+          <p class="eyebrow" data-i18n="control.eyebrow">Control Surface</p>
+          <h2 id="control-title" data-i18n="control.title">Settings stay close to the work.</h2>
+          <p data-i18n="control.text">
             Appearance, language, server selection, and release checks live in the desktop layer, so the workspace remains focused on conversations and tasks.
           </p>
         </div>
-        <div class="settings-preview" aria-label="Desktop Settings preview">
+        <div class="settings-preview" aria-label="Desktop Settings preview" data-i18n-aria-label="settings.previewLabel">
           <div class="preview-sidebar">
-            <span class="active">Appearance</span>
-            <span>Service</span>
-            <span>Updates</span>
+            <span class="active" data-i18n="settings.appearance">Appearance</span>
+            <span data-i18n="settings.service">Service</span>
+            <span data-i18n="settings.updates">Updates</span>
           </div>
           <div class="preview-content">
             <div class="preview-title-row">
-              <h3>Desktop Settings</h3>
-              <span>Saved locally</span>
+              <h3 data-i18n="settings.title">Desktop Settings</h3>
+              <span data-i18n="settings.saved">Saved locally</span>
             </div>
             <div class="setting-row">
               <div>
-                <strong>Mode</strong>
-                <span>Light, dark, or system</span>
+                <strong data-i18n="settings.modeTitle">Mode</strong>
+                <span data-i18n="settings.modeText">Light, dark, or system</span>
               </div>
               <div class="segmented">
                 <span></span>
@@ -178,8 +213,8 @@
             </div>
             <div class="setting-row">
               <div>
-                <strong>Accent</strong>
-                <span>Selected states and focus rings</span>
+                <strong data-i18n="settings.accentTitle">Accent</strong>
+                <span data-i18n="settings.accentText">Selected states and focus rings</span>
               </div>
               <div class="swatches">
                 <span></span>
@@ -189,10 +224,10 @@
             </div>
             <div class="setting-row">
               <div>
-                <strong>Release channel</strong>
-                <span>GitHub latest release</span>
+                <strong data-i18n="settings.releaseTitle">Release channel</strong>
+                <span data-i18n="settings.releaseText">GitHub latest release</span>
               </div>
-              <a href="https://github.com/codephage2020/slock-tauri/releases/latest">View release</a>
+              <a href="https://github.com/codephage2020/slock-tauri/releases/latest" data-i18n="settings.viewRelease">View release</a>
             </div>
           </div>
         </div>
@@ -201,15 +236,203 @@
       <section class="release-band" aria-labelledby="release-title">
         <div>
           <p class="eyebrow">GitHub Pages</p>
-          <h2 id="release-title">Project page for releases, onboarding, and desktop distribution.</h2>
+          <h2 id="release-title" data-i18n="release.title">Project page for releases, onboarding, and desktop distribution.</h2>
         </div>
-        <a class="primary-action" href="https://github.com/codephage2020/slock-tauri">View source on GitHub</a>
+        <a class="primary-action" href="https://github.com/codephage2020/slock-tauri" data-i18n="release.source">View source on GitHub</a>
       </section>
     </main>
 
     <footer class="site-footer">
       <span>Slock Desktop</span>
-      <span>Built for the Slock AI collaboration workspace.</span>
+      <span data-i18n="footer.text">Built for the Slock AI collaboration workspace.</span>
     </footer>
+    <script>
+      const translations = {
+        en: {
+          metaTitle: 'Slock Desktop',
+          metaDescription: 'A calm macOS-first desktop shell for the Slock AI collaboration workspace.',
+          'nav.label': 'Primary navigation',
+          'nav.sections': 'Landing page sections',
+          'nav.workflow': 'Workflow',
+          'nav.control': 'Control',
+          'nav.download': 'Download',
+          'brand.home': 'Slock Desktop home',
+          'controls.preferences': 'Page preferences',
+          'controls.language': 'Language',
+          'controls.theme': 'Theme',
+          'theme.light': 'Light',
+          'theme.dark': 'Dark',
+          'preview.console': 'Desktop Console',
+          'preview.workspaceActive': 'Workspace active',
+          'preview.appearance': 'Appearance',
+          'preview.localService': 'Local Service',
+          'preview.updateCenter': 'Update Center',
+          'hero.title': 'A steady desktop home for daily AI collaboration.',
+          'hero.lede':
+            'Open the original Slock workspace in a native shell, keep local services close, and carry one visual rhythm across startup, settings, and workspace sessions.',
+          'hero.download': 'Download latest release',
+          'hero.openWeb': 'Open Slock web app',
+          'signals.label': 'Product signals',
+          'signals.workspaceLabel': 'Workspace',
+          'signals.workspaceText': 'Loads app.slock.ai directly',
+          'signals.themesLabel': 'Themes',
+          'signals.themesText': 'Light, dark, system, custom accent',
+          'signals.daemonLabel': 'Local daemon',
+          'signals.daemonText': 'Starts selected server on launch',
+          'signals.updatesLabel': 'Updates',
+          'signals.updatesText': 'Checks GitHub releases in app',
+          'workflow.eyebrow': 'Workflow',
+          'workflow.title': 'Designed for long sessions, fast returns, and fewer context shifts.',
+          'workflow.feature1Title': 'Original workspace, desktop frame',
+          'workflow.feature1Text':
+            'Slock Desktop opens the hosted workspace after launch, then keeps the shell controls available around the session.',
+          'workflow.feature2Title': 'One theme model everywhere',
+          'workflow.feature2Text':
+            'Startup, injected workspace settings, and the remote page share the same appearance mode and accent color.',
+          'workflow.feature3Title': 'Local service on demand',
+          'workflow.feature3Text':
+            'The desktop console reads available servers from the signed-in workspace and starts the chosen daemon in the background.',
+          'control.eyebrow': 'Control Surface',
+          'control.title': 'Settings stay close to the work.',
+          'control.text':
+            'Appearance, language, server selection, and release checks live in the desktop layer, so the workspace remains focused on conversations and tasks.',
+          'settings.previewLabel': 'Desktop Settings preview',
+          'settings.appearance': 'Appearance',
+          'settings.service': 'Service',
+          'settings.updates': 'Updates',
+          'settings.title': 'Desktop Settings',
+          'settings.saved': 'Saved locally',
+          'settings.modeTitle': 'Mode',
+          'settings.modeText': 'Light, dark, or system',
+          'settings.accentTitle': 'Accent',
+          'settings.accentText': 'Selected states and focus rings',
+          'settings.releaseTitle': 'Release channel',
+          'settings.releaseText': 'GitHub latest release',
+          'settings.viewRelease': 'View release',
+          'release.title': 'Project page for releases, onboarding, and desktop distribution.',
+          'release.source': 'View source on GitHub',
+          'footer.text': 'Built for the Slock AI collaboration workspace.',
+        },
+        zh: {
+          metaTitle: 'Slock Desktop',
+          metaDescription: '一个安静、稳定、macOS 优先的 Slock AI 协作桌面外壳。',
+          'nav.label': '主导航',
+          'nav.sections': '落地页分区',
+          'nav.workflow': '工作流',
+          'nav.control': '控制',
+          'nav.download': '下载',
+          'brand.home': 'Slock Desktop 首页',
+          'controls.preferences': '页面偏好',
+          'controls.language': '语言',
+          'controls.theme': '主题',
+          'theme.light': '亮色',
+          'theme.dark': '暗色',
+          'preview.console': '桌面控制台',
+          'preview.workspaceActive': '工作区已打开',
+          'preview.appearance': '外观',
+          'preview.localService': '本地服务',
+          'preview.updateCenter': '更新中心',
+          'hero.title': '给日常 AI 协作\n一个稳定桌面入口。',
+          'hero.lede':
+            '在原生桌面外壳中打开原始 Slock 工作区，让本地服务保持就近可控，并把启动、设置和工作区会话统一到同一种视觉节奏。',
+          'hero.download': '下载最新版',
+          'hero.openWeb': '打开 Slock 网页版',
+          'signals.label': '产品信号',
+          'signals.workspaceLabel': '工作区',
+          'signals.workspaceText': '直接加载 app.slock.ai',
+          'signals.themesLabel': '主题',
+          'signals.themesText': '亮色、暗色、系统、自定义强调色',
+          'signals.daemonLabel': '本地 daemon',
+          'signals.daemonText': '启动时拉起所选 server',
+          'signals.updatesLabel': '更新',
+          'signals.updatesText': '在应用内检查 GitHub release',
+          'workflow.eyebrow': '工作流',
+          'workflow.title': '为长时间会话、快速回到现场和更少上下文切换设计。',
+          'workflow.feature1Title': '原始工作区，桌面外框',
+          'workflow.feature1Text': 'Slock Desktop 启动后打开托管工作区，并让外壳控制能力围绕会话持续可用。',
+          'workflow.feature2Title': '一套主题模型贯穿全局',
+          'workflow.feature2Text': '启动页、注入的工作区设置和远端页面共享同一套外观模式与强调色。',
+          'workflow.feature3Title': '按需启动本地服务',
+          'workflow.feature3Text': '桌面控制台从已登录工作区读取可用 server，并在后台启动所选 daemon。',
+          'control.eyebrow': '控制表面',
+          'control.title': '设置紧贴工作现场。',
+          'control.text': '外观、语言、server 选择和版本检查都留在桌面层，工作区继续专注于对话和任务。',
+          'settings.previewLabel': '桌面设置预览',
+          'settings.appearance': '外观',
+          'settings.service': '服务',
+          'settings.updates': '更新',
+          'settings.title': '桌面设置',
+          'settings.saved': '已保存本地',
+          'settings.modeTitle': '模式',
+          'settings.modeText': '亮色、暗色或跟随系统',
+          'settings.accentTitle': '强调色',
+          'settings.accentText': '用于选中态和焦点环',
+          'settings.releaseTitle': '发布通道',
+          'settings.releaseText': 'GitHub 最新 release',
+          'settings.viewRelease': '查看 release',
+          'release.title': '用于版本发布、入门介绍和桌面端分发的项目页面。',
+          'release.source': '查看 GitHub 源码',
+          'footer.text': '为 Slock AI 协作工作区构建。',
+        },
+      }
+
+      const root = document.documentElement
+      const descriptionMeta = document.querySelector('meta[name="description"]')
+      const ogDescription = document.querySelector('meta[property="og:description"]')
+
+      function savePreference(key, value) {
+        try {
+          window.localStorage.setItem(key, value)
+        } catch {
+          return
+        }
+      }
+
+      function setLanguage(language) {
+        const nextLanguage = language === 'zh' ? 'zh' : 'en'
+        const copy = translations[nextLanguage]
+        root.dataset.lang = nextLanguage
+        root.lang = nextLanguage === 'zh' ? 'zh-CN' : 'en'
+        document.title = copy.metaTitle
+        descriptionMeta?.setAttribute('content', copy.metaDescription)
+        ogDescription?.setAttribute('content', copy.metaDescription)
+        document.querySelectorAll('[data-i18n]').forEach((element) => {
+          const key = element.dataset.i18n
+          if (key && copy[key]) {
+            element.textContent = copy[key]
+          }
+        })
+        document.querySelectorAll('[data-i18n-aria-label]').forEach((element) => {
+          const key = element.dataset.i18nAriaLabel
+          if (key && copy[key]) {
+            element.setAttribute('aria-label', copy[key])
+          }
+        })
+        document.querySelectorAll('[data-lang-value]').forEach((button) => {
+          button.setAttribute('aria-pressed', String(button.dataset.langValue === nextLanguage))
+        })
+        savePreference('slock-landing-lang', nextLanguage)
+      }
+
+      function setTheme(theme) {
+        const nextTheme = theme === 'dark' ? 'dark' : 'light'
+        root.dataset.theme = nextTheme
+        document.querySelectorAll('[data-theme-value]').forEach((button) => {
+          button.setAttribute('aria-pressed', String(button.dataset.themeValue === nextTheme))
+        })
+        savePreference('slock-landing-theme', nextTheme)
+      }
+
+      document.querySelectorAll('[data-lang-value]').forEach((button) => {
+        button.addEventListener('click', () => setLanguage(button.dataset.langValue))
+      })
+
+      document.querySelectorAll('[data-theme-value]').forEach((button) => {
+        button.addEventListener('click', () => setTheme(button.dataset.themeValue))
+      })
+
+      setLanguage(root.dataset.lang)
+      setTheme(root.dataset.theme)
+    </script>
   </body>
 </html>
