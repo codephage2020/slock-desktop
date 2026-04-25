@@ -1,20 +1,24 @@
-import { type CSSProperties, startTransition, useEffect, useState } from 'react'
+import { type CSSProperties, startTransition, useEffect, useRef, useState } from 'react'
 import './App.css'
 import './Settings.css'
 import {
   type BootstrapPayload,
+  type CustomThemeSnapshot,
   type ThemeDefinition,
+  createCustomTheme,
+  deleteCustomTheme,
   loadBootstrap,
   openExternalUrl,
   openWorkspace,
   refreshServiceServers,
-  saveCustomTheme,
+  renameCustomTheme,
+  saveUpdateSettings,
   selectServiceServer,
   startService,
-  saveUpdateSettings,
   stopService,
-  updateTheme,
+  updateCustomThemeAccent,
   updateLanguage,
+  updateTheme,
   updateThemeMode,
 } from './lib/desktop'
 
@@ -46,96 +50,64 @@ const INITIAL_RELEASE_STATE: ReleaseState = {
   latest: null,
 }
 
+const ORIGINAL_SWATCH = '#ffd701'
+const DEFAULT_NEW_THEME_ACCENT = '#10a37f'
+
 const THEME_MODES = [
-  { id: 'light', icon: '☼', labelKey: 'modeLight' },
-  { id: 'dark', icon: '◐', labelKey: 'modeDark' },
-  { id: 'system', icon: '◌', labelKey: 'modeSystem' },
+  { id: 'light', icon: 'sun', labelKey: 'modeLight' },
+  { id: 'dark', icon: 'moon', labelKey: 'modeDark' },
+  { id: 'system', icon: 'display', labelKey: 'modeSystem' },
 ] as const
 
 const LANGUAGE_OPTIONS = [
-  { id: 'en-US', labelKey: 'languageEnglish', shortLabelKey: 'languageEnglishShort' },
-  { id: 'zh-CN', labelKey: 'languageChinese', shortLabelKey: 'languageChineseShort' },
-  { id: 'system', labelKey: 'languageSystem', shortLabelKey: 'languageSystemShort' },
+  { id: 'en-US', icon: 'latin', labelKey: 'languageEnglish' },
+  { id: 'zh-CN', icon: 'han', labelKey: 'languageChinese' },
+  { id: 'system', icon: 'globe', labelKey: 'languageSystem' },
 ] as const
 
 const COPY = {
   'en-US': {
-    header: 'Desktop Console',
-    loadingTitle: 'Desktop Console is booting.',
-    loadingDescription: 'Preparing the local shell and reading your desktop preferences.',
-    lede:
-      'Open the original Slock workspace, choose a theme color, and keep the desktop shell aligned with light, dark, or system mode.',
     workspaceActive: 'Workspace active',
     workspaceParked: 'Workspace parked',
-    settings: 'Settings',
-    settingsSections: 'Desktop settings sections',
-    appearance: 'Appearance',
-    service: 'Service',
+    appearance: 'Theme',
+    service: 'Server',
     updates: 'Updates',
-    desktopSettings: 'Desktop Settings',
-    appearanceDescription:
-      'Theme settings apply to the desktop shell, nested settings, and launched workspace.',
     mode: 'Mode',
-    modeDescription: 'Choose light, dark, or follow the operating system.',
     themeColor: 'Theme color',
-    themeDescription: 'Pick a color system for the shell, settings, and workspace.',
-    customTheme: 'Custom theme',
-    customThemeDescription: 'Define a personal accent and save it as the Custom theme.',
-    customThemeName: 'Name',
-    customThemeNamePlaceholder: 'Custom',
+    customTheme: 'My accent',
     customThemeAccent: 'Accent',
-    customThemeAccentAria: 'Custom theme accent color',
+    customThemeAccentAria: 'Personal accent color',
+    customThemeNamePlaceholder: 'Untitled theme',
     language: 'Language',
-    languageDescription: 'Choose Chinese, English, or follow the operating system.',
-    applyScope: 'Apply scope',
-    applyDescription:
-      'Current theme covers startup page, settings, workspace overlay, and remote page injection.',
-    savedLocally: 'Saved locally',
-    saveCustomTheme: 'Save Custom Theme',
     saving: 'Saving…',
-    modeSuffix: 'mode',
     modeLight: 'Light',
     modeDark: 'Dark',
     modeSystem: 'System',
     languageEnglish: 'English',
     languageChinese: 'Chinese',
     languageSystem: 'System',
-    languageEnglishShort: 'EN',
-    languageChineseShort: '中',
-    languageSystemShort: 'System',
     focusSlock: 'Focus Slock',
-    openSlock: 'Open Slock',
+    openSlock: 'Enter Slock',
     launching: 'Launching…',
     running: 'Running',
     configuredIdle: 'Configured / not running',
     notConfigured: 'Not configured',
     desktopStateError: 'Desktop state error',
-    previewLabel: 'preview',
-    previewUserText: 'Messages, tasks, and threads keep the same visual rhythm.',
-    previewAssistantText: 'The workspace stays clear for long daily sessions.',
-    previewing: 'Interface preview',
-    previewSendButton: 'Preview send button',
-    localServiceEyebrow: 'Local Service',
-    serviceStartup: 'Service startup',
     serviceRunning: 'running',
     serviceIdle: 'not running',
     serviceOffline: 'not running',
     serviceNotLinked: 'no local binding',
     serviceSignInRequired: 'sign in required',
     serviceCopy: 'Desktop reads your server list from the signed-in Slock session and starts the selected server in the background when it is not running.',
+    serverSearch: 'Find server',
+    noMatchingServers: 'No matching servers.',
     selectedServer: 'Server',
     selectedServerPlaceholder: 'Choose a server',
     noServers: 'No servers available on this account yet.',
     refreshServers: 'Refresh Servers',
     refreshingServers: 'Refreshing…',
-    serviceSelectionSaved: 'Selected server saved locally.',
     serviceSignInHint: 'Open Slock once, sign in, and the launcher will sync your server list automatically.',
     machineStatus: 'Machine status',
-    autoStartService: 'Auto-start the service when launching the workspace',
-    serviceSaved: 'Service command saved locally.',
-    cloudWorkspaceOnly: 'Choose a server to start it in the background when needed. Open Slock then enters the selected workspace.',
-    saveServiceSettings: 'Save Service Settings',
-    savingServiceSettings: 'Saving…',
     startService: 'Start Service',
     startingService: 'Starting…',
     stopService: 'Stop Service',
@@ -145,12 +117,10 @@ const COPY = {
     serviceNotRunning: 'Selected server service is not running.',
     updateService: 'Update Daemon',
     updatingService: 'Updating…',
-    updateCenterEyebrow: 'Update Center',
-    releaseCheck: 'Release check',
+    releaseCheck: 'Release',
     updateAvailable: 'update available',
     current: 'current',
     notChecked: 'not checked',
-    releaseCopy: 'Check the configured GitHub release channel.',
     repository: 'Repository',
     releasesPage: 'Releases page',
     installed: 'Installed',
@@ -161,85 +131,67 @@ const COPY = {
     noReleaseCheck: 'No release check yet.',
     saveUpdateSettings: 'Save Update Settings',
     savingUpdateSettings: 'Saving…',
-    checkGitHubRelease: 'Check GitHub Release',
+    checkGitHubRelease: 'Check Release',
     checkingRelease: 'Checking…',
     openReleases: 'Open Releases',
     unknownDate: 'unknown date',
+    themeOriginalName: 'Original',
+    themeOriginalSummary: 'Slock’s native appearance.',
+    themeNewLabel: 'New theme',
+    themeRename: 'Rename',
+    themeDelete: 'Delete',
+    themeBuiltIn: 'Built-in',
+    themeEmptyHint: 'No custom themes yet — tap + to create one.',
+    themeRenameSave: 'Save',
+    themeRenameCancel: 'Cancel',
+    themeNewTitle: 'Create theme',
+    themeCreate: 'Create',
+    creatingTheme: 'Creating…',
+    deletingTheme: 'Deleting…',
+    appBootingTitle: 'slock.ai',
   },
   'zh-CN': {
-    header: '桌面控制台',
-    loadingTitle: '桌面控制台正在启动。',
-    loadingDescription: '正在准备本地外壳并读取你的桌面偏好。',
-    lede: '打开原始 Slock 工作区，选择主题色，并让桌面壳在亮色、暗黑或跟随系统模式下保持一致。',
     workspaceActive: '工作区已打开',
     workspaceParked: '工作区待启动',
-    settings: '设置',
-    settingsSections: '桌面设置分区',
-    appearance: '外观',
+    appearance: '主题',
     service: '服务',
     updates: '更新',
-    desktopSettings: '桌面设置',
-    appearanceDescription: '主题设置会应用到桌面壳、内嵌设置页和启动后的工作区。',
     mode: '模式',
-    modeDescription: '选择亮色、暗黑，或跟随操作系统。',
     themeColor: '主题色彩',
-    themeDescription: '为桌面壳、设置页和工作区选择统一色彩。',
-    customTheme: '自定义主题',
-    customThemeDescription: '定义个人强调色，并保存为自定义主题。',
-    customThemeName: '名称',
-    customThemeNamePlaceholder: '自定义',
+    customTheme: '我的强调色',
     customThemeAccent: '强调色',
-    customThemeAccentAria: '自定义主题强调色',
+    customThemeAccentAria: '我的强调色',
+    customThemeNamePlaceholder: '未命名主题',
     language: '语言',
-    languageDescription: '选择中文、英文，或跟随操作系统。',
-    applyScope: '应用范围',
-    applyDescription: '当前主题覆盖起始页、设置页、工作区浮层和远端页面注入。',
-    savedLocally: '已保存本地',
-    saveCustomTheme: '保存自定义主题',
     saving: '保存中…',
-    modeSuffix: '模式',
     modeLight: '亮色',
     modeDark: '暗黑',
     modeSystem: '系统',
     languageEnglish: '英文',
     languageChinese: '中文',
     languageSystem: '系统',
-    languageEnglishShort: 'EN',
-    languageChineseShort: '中',
-    languageSystemShort: '跟随系统',
     focusSlock: '聚焦 Slock',
-    openSlock: '打开 Slock',
+    openSlock: '进入 Slock',
     launching: '启动中…',
     running: '运行中',
     configuredIdle: '已配置 / 未运行',
     notConfigured: '未配置',
     desktopStateError: '桌面状态错误',
-    previewLabel: '预览',
-    previewUserText: '消息、任务和线程保持一致的阅读节奏。',
-    previewAssistantText: '工作区保持清晰，适合长时间使用。',
-    previewing: '界面预览',
-    previewSendButton: '预览发送按钮',
-    localServiceEyebrow: '本地服务',
-    serviceStartup: '服务启动',
     serviceRunning: '运行中',
     serviceIdle: '未运行',
     serviceOffline: '未运行',
     serviceNotLinked: '未创建本地绑定',
     serviceSignInRequired: '需要登录',
     serviceCopy: '桌面端会从已登录的 Slock 会话读取 server 列表；所选 server 未运行时，会在后台自动拉起对应 daemon。',
+    serverSearch: '搜索 server',
+    noMatchingServers: '没有匹配的 server。',
     selectedServer: 'Server',
     selectedServerPlaceholder: '选择一个 server',
     noServers: '当前账号下还没有可用 server。',
     refreshServers: '刷新 Server 列表',
     refreshingServers: '刷新中…',
-    serviceSelectionSaved: '所选 server 已保存到本地。',
     serviceSignInHint: '先打开一次 Slock 并完成登录，launcher 就会自动同步 server 列表。',
     machineStatus: '本地 machine 状态',
-    autoStartService: '启动工作区时自动启动服务',
-    serviceSaved: '服务命令已保存到本地。',
-    cloudWorkspaceOnly: '选择 server 后会按需在后台启动；点击打开 Slock 会进入所选工作区。',
-    saveServiceSettings: '保存服务设置',
-    savingServiceSettings: '保存中…',
     startService: '启动服务',
     startingService: '启动中…',
     stopService: '停止服务',
@@ -249,12 +201,10 @@ const COPY = {
     serviceNotRunning: '所选 server 服务未运行。',
     updateService: '更新 Daemon',
     updatingService: '更新中…',
-    updateCenterEyebrow: '更新中心',
-    releaseCheck: '版本检查',
+    releaseCheck: '版本',
     updateAvailable: '有可用更新',
     current: '已是最新',
     notChecked: '未检查',
-    releaseCopy: '检查已配置的 GitHub Release 通道。',
     repository: '仓库',
     releasesPage: '发布页',
     installed: '已安装',
@@ -265,51 +215,45 @@ const COPY = {
     noReleaseCheck: '尚未检查版本。',
     saveUpdateSettings: '保存更新设置',
     savingUpdateSettings: '保存中…',
-    checkGitHubRelease: '检查 GitHub Release',
+    checkGitHubRelease: '检查版本',
     checkingRelease: '检查中…',
     openReleases: '打开发布页',
     unknownDate: '未知日期',
+    themeOriginalName: '原主题',
+    themeOriginalSummary: '保持 Slock 原生外观。',
+    themeNewLabel: '新建主题',
+    themeRename: '重命名',
+    themeDelete: '删除',
+    themeBuiltIn: '内置',
+    themeEmptyHint: '还没有自定义主题，点击 + 新建。',
+    themeRenameSave: '保存',
+    themeRenameCancel: '取消',
+    themeNewTitle: '新建主题',
+    themeCreate: '创建',
+    creatingTheme: '创建中…',
+    deletingTheme: '删除中…',
+    appBootingTitle: 'slock.ai',
   },
 } as const
 
-const ZH_THEME_COPY: Record<string, { name: string; summary: string }> = {
-  original: {
-    name: '原主题',
-    summary: '保持 Slock 原生外观，不注入桌面主题样式。',
-  },
-  default: {
-    name: '默认',
-    summary: '适合日常桌面工作的克制绿色强调色。',
-  },
-  light: {
-    name: '雾蓝',
-    summary: '适合安静操作视图的柔和蓝色强调色。',
-  },
-  dark: {
-    name: '靛蓝',
-    summary: '适合结构化专注的低饱和靛蓝强调色。',
-  },
-  graphite: {
-    name: '石墨',
-    summary: '适合长时间会话的低饱和灰蓝强调色。',
-  },
-  crimson: {
-    name: '玫瑰',
-    summary: '适合编辑型工作区的温暖玫瑰强调色。',
-  },
-  custom: {
-    name: '自定义',
-    summary: '用户定义的个人强调色主题。',
-  },
-}
-
 type UiCopy = (typeof COPY)[keyof typeof COPY]
+
+interface NewThemeDraft {
+  name: string
+  accent: string
+}
 
 function App() {
   const [snapshot, setSnapshot] = useState<BootstrapPayload | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [releaseState, setReleaseState] = useState<ReleaseState>(INITIAL_RELEASE_STATE)
+  const [serverQuery, setServerQuery] = useState('')
+  const [renamingThemeId, setRenamingThemeId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  const [newThemeDraft, setNewThemeDraft] = useState<NewThemeDraft | null>(null)
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
+  const newNameInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -331,9 +275,25 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (renamingThemeId && renameInputRef.current) {
+      renameInputRef.current.focus()
+      renameInputRef.current.select()
+    }
+  }, [renamingThemeId])
+
+  useEffect(() => {
+    if (newThemeDraft && newNameInputRef.current) {
+      newNameInputRef.current.focus()
+    }
+  }, [newThemeDraft])
+
   async function handleThemeChange(themeId: string) {
+    if (renamingThemeId === themeId) {
+      return
+    }
     try {
-      setBusyAction(themeId)
+      setBusyAction(`theme:${themeId}`)
       setErrorMessage(null)
       const next = await updateTheme(themeId)
       startTransition(() => setSnapshot(next))
@@ -374,16 +334,88 @@ function App() {
     }
   }
 
-  async function handleCustomThemeSave() {
-    if (!snapshot) {
+  function startNewTheme() {
+    setNewThemeDraft({ name: '', accent: DEFAULT_NEW_THEME_ACCENT })
+  }
+
+  function cancelNewTheme() {
+    setNewThemeDraft(null)
+  }
+
+  async function handleCreateTheme() {
+    if (!newThemeDraft) {
       return
     }
-
     try {
-      setBusyAction('custom-theme')
+      setBusyAction('create-theme')
       setErrorMessage(null)
-      const next = await saveCustomTheme(snapshot.customTheme)
+      const next = await createCustomTheme({
+        name: newThemeDraft.name.trim(),
+        accent: newThemeDraft.accent,
+      })
       startTransition(() => setSnapshot(next))
+      setNewThemeDraft(null)
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  function startRename(theme: CustomThemeSnapshot) {
+    setRenamingThemeId(theme.id)
+    setRenameDraft(theme.name)
+  }
+
+  function cancelRename() {
+    setRenamingThemeId(null)
+    setRenameDraft('')
+  }
+
+  async function commitRename() {
+    if (!renamingThemeId) {
+      return
+    }
+    const name = renameDraft.trim()
+    if (!name) {
+      cancelRename()
+      return
+    }
+    try {
+      setBusyAction(`rename:${renamingThemeId}`)
+      setErrorMessage(null)
+      const next = await renameCustomTheme({ id: renamingThemeId, name })
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+      cancelRename()
+    }
+  }
+
+  async function handleAccentChange(themeId: string, accent: string) {
+    try {
+      setBusyAction(`accent:${themeId}`)
+      setErrorMessage(null)
+      const next = await updateCustomThemeAccent({ id: themeId, accent })
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleDeleteTheme(themeId: string) {
+    try {
+      setBusyAction(`delete:${themeId}`)
+      setErrorMessage(null)
+      const next = await deleteCustomTheme({ id: themeId })
+      startTransition(() => setSnapshot(next))
+      if (renamingThemeId === themeId) {
+        cancelRename()
+      }
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
     } finally {
@@ -576,30 +608,13 @@ function App() {
     )
   }
 
-  function patchCustomTheme(
-    patch: Partial<BootstrapPayload['customTheme']>,
-  ) {
-    setSnapshot((current) =>
-      current
-        ? {
-            ...current,
-            customTheme: {
-              ...current.customTheme,
-              ...patch,
-            },
-          }
-        : current,
-    )
-  }
-
   if (!snapshot) {
     const bootCopy = getCopy('system')
 
     return (
       <main className="loading-shell">
-        <p className="eyebrow">SLOCK DESKTOP</p>
-        <h1>{bootCopy.loadingTitle}</h1>
-        <p>{bootCopy.loadingDescription}</p>
+        <SlockBrandMark className="loading-mark" />
+        <p className="eyebrow">{bootCopy.appBootingTitle}</p>
       </main>
     )
   }
@@ -618,6 +633,15 @@ function App() {
     snapshot.service.servers[0] ??
     null
   const selectedServiceSlug = selectedServiceServer?.slug
+  const normalizedServerQuery = serverQuery.trim().toLowerCase()
+  const filteredServiceServers = normalizedServerQuery
+    ? snapshot.service.servers.filter((server) => {
+        const machineName = server.machineName ?? ''
+        return `${server.name} ${server.slug} ${machineName}`
+          .toLowerCase()
+          .includes(normalizedServerQuery)
+      })
+    : snapshot.service.servers
   const serviceStatusLabel = getServiceStatusLabel(
     snapshot.service,
     selectedServiceServer,
@@ -629,6 +653,7 @@ function App() {
     busyAction === 'workspace' ||
     busyAction === 'refresh-service' ||
     Boolean(busyAction?.startsWith('select-service:'))
+  const activeIsOriginal = snapshot.colorScheme === 'original' || !snapshot.colorScheme
 
   return (
     <main className="studio-shell" data-mode={activeTheme.mode} style={shellStyle}>
@@ -640,423 +665,594 @@ function App() {
           </section>
         ) : null}
 
-        <section className="launch-layout">
-          <section className="launch-main-column">
-            <section className="control-card settings-card" aria-labelledby="appearance-settings-title">
-              <div className="control-card-head">
-                <h2 id="appearance-settings-title">{copy.desktopSettings}</h2>
-                <span className="settings-save-state">{copy.savedLocally}</span>
-              </div>
+        <header className="launch-bar">
+          <div className="launch-bar-brand">
+            <SlockBrandMark className="launch-bar-mark" />
+            <span className="launch-bar-wordmark">slock.ai</span>
+          </div>
 
-              <div className="control-body settings-body">
-                <div className="settings-quick-controls">
-                  <div className="compact-setting-group">
-                    <div className="setting-copy compact-copy">
-                      <p className="setting-label">{copy.mode}</p>
-                    </div>
-                    <div className="icon-segment" role="radiogroup" aria-label={copy.mode}>
-                      {THEME_MODES.map((mode) => {
-                        const selected = mode.id === snapshot.appearanceMode
-                        return (
-                          <button
-                            key={mode.id}
-                            className={`icon-option${selected ? ' selected' : ''}`}
-                            type="button"
-                            role="radio"
-                            aria-checked={selected}
-                            title={copy[mode.labelKey]}
-                            onClick={() => handleThemeModeChange(mode.id)}
-                            disabled={busyAction === `mode:${mode.id}`}
-                          >
-                            <span aria-hidden="true">{mode.icon}</span>
-                            <span className="sr-only">{copy[mode.labelKey]}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="compact-setting-group">
-                    <div className="setting-copy compact-copy">
-                      <p className="setting-label">{copy.language}</p>
-                    </div>
-                    <div className="icon-segment" role="radiogroup" aria-label={copy.language}>
-                      {LANGUAGE_OPTIONS.map((language) => {
-                        const selected = language.id === snapshot.language
-                        return (
-                          <button
-                            key={language.id}
-                            className={`icon-option text-icon${selected ? ' selected' : ''}`}
-                            type="button"
-                            role="radio"
-                            aria-checked={selected}
-                            title={copy[language.labelKey]}
-                            onClick={() => handleLanguageChange(language.id)}
-                            disabled={busyAction === `language:${language.id}`}
-                          >
-                            <span aria-hidden="true">{copy[language.shortLabelKey]}</span>
-                            <span className="sr-only">{copy[language.labelKey]}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="compact-setting-group">
-                  <div className="setting-copy compact-copy">
-                    <p className="setting-label">{copy.themeColor}</p>
-                  </div>
-
-                  <div className="theme-picker" role="radiogroup" aria-label={copy.themeColor}>
-                    {snapshot.themes.map((theme) => {
-                      const selected = theme.id === snapshot.colorScheme
-                      const themeDisplay = getThemeDisplay(theme, snapshot.language, snapshot.resolvedLanguage)
-                      return (
-                        <button
-                          key={theme.id}
-                          className={`theme-option${selected ? ' selected' : ''}`}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          onClick={() => handleThemeChange(theme.id)}
-                          disabled={busyAction === theme.id}
-                          style={buildThemeOptionStyle(theme)}
-                        >
-                          <span className="theme-option-preview" aria-hidden="true">
-                            <span />
-                            <span />
-                            <span />
-                          </span>
-                          <span className="theme-option-copy">
-                            <span className="theme-option-name">{themeDisplay.name}</span>
-                            <span className="theme-option-summary">{themeDisplay.summary}</span>
-                          </span>
-                          <span className="theme-option-check" aria-hidden="true">
-                            {selected ? '✓' : ''}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {snapshot.colorScheme === 'custom' ? (
-                  <div className="compact-setting-group">
-                    <div className="setting-copy compact-copy">
-                      <p className="setting-label">{copy.customTheme}</p>
-                    </div>
-
-                    <div className="custom-theme-controls">
-                      <label className="field compact-field">
-                        <span>{copy.customThemeName}</span>
-                        <input
-                          value={snapshot.customTheme.name}
-                          onChange={(event) =>
-                            patchCustomTheme({ name: event.target.value })
-                          }
-                          placeholder={copy.customThemeNamePlaceholder}
-                        />
-                      </label>
-
-                      <label className="field compact-field color-field">
-                        <span>{copy.customThemeAccent}</span>
-                        <input
-                          type="color"
-                          value={snapshot.customTheme.accent}
-                          onChange={(event) =>
-                            patchCustomTheme({ accent: event.target.value })
-                          }
-                          aria-label={copy.customThemeAccentAria}
-                        />
-                      </label>
-
-                      <button
-                        className="theme-button"
-                        type="button"
-                        onClick={handleCustomThemeSave}
-                        disabled={busyAction === 'custom-theme'}
-                      >
-                        {busyAction === 'custom-theme' ? copy.saving : copy.saveCustomTheme}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </section>
-          </section>
-
-          <section className="launch-side-column">
-            <section className="control-card service-launch-card" aria-labelledby="service-launch-title">
-              <div className="control-card-head">
-                <h2 id="service-launch-title">{copy.serviceStartup}</h2>
-                <div className="service-launch-head-actions">
-                  <span className={`status-chip ${snapshot.service.running ? 'live' : ''}`}>
-                    {serviceStatusLabel}
-                  </span>
+          <div className="launch-bar-controls">
+            <span className={`status-pill${snapshot.workspaceOpen ? ' live' : ''}`}>
+              {snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}
+            </span>
+            <span className={`status-pill${snapshot.service.running ? ' live' : ''}`}>
+              {serviceStatusLabel}
+            </span>
+            <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.mode}>
+              {THEME_MODES.map((mode) => {
+                const selected = mode.id === snapshot.appearanceMode
+                return (
                   <button
-                    className="icon-action-button positive"
-                    onClick={handleServiceStart}
-                    disabled={
-                      serviceActionBusy ||
-                      !snapshot.service.authenticated ||
-                      !selectedServiceServer
-                    }
-                    aria-label={copy.startService}
-                    title={copy.startService}
+                    key={mode.id}
+                    className={`icon-option${selected ? ' selected' : ''}`}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    title={copy[mode.labelKey]}
+                    onClick={() => handleThemeModeChange(mode.id)}
+                    disabled={busyAction === `mode:${mode.id}`}
                   >
-                    <ServiceActionIcon type="start" busy={busyAction === 'start-service'} />
-                    <span className="sr-only">
-                      {busyAction === 'start-service' ? copy.startingService : copy.startService}
-                    </span>
+                    <OptionIcon type={mode.icon} />
+                    <span className="sr-only">{copy[mode.labelKey]}</span>
                   </button>
+                )
+              })}
+            </div>
+            <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.language}>
+              {LANGUAGE_OPTIONS.map((language) => {
+                const selected = language.id === snapshot.language
+                return (
                   <button
-                    className="icon-action-button danger"
-                    onClick={handleServiceStop}
-                    disabled={
-                      serviceActionBusy ||
-                      !snapshot.service.authenticated ||
-                      !selectedServiceServer
-                    }
-                    aria-label={copy.closeServer}
-                    title={copy.closeServer}
+                    key={language.id}
+                    className={`icon-option${selected ? ' selected' : ''}`}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    title={copy[language.labelKey]}
+                    onClick={() => handleLanguageChange(language.id)}
+                    disabled={busyAction === `language:${language.id}`}
                   >
-                    <ServiceActionIcon type="stop" busy={busyAction === 'stop-service'} />
-                    <span className="sr-only">
-                      {busyAction === 'stop-service' ? copy.closingServer : copy.closeServer}
-                    </span>
+                    <OptionIcon type={language.icon} />
+                    <span className="sr-only">{copy[language.labelKey]}</span>
                   </button>
-                  <button
-                    className="icon-action-button"
-                    onClick={handleServiceRefresh}
-                    disabled={busyAction === 'refresh-service'}
-                    aria-label={copy.refreshServers}
-                    title={copy.refreshServers}
-                  >
-                    <ServiceActionIcon type="refresh" busy={busyAction === 'refresh-service'} />
-                    <span className="sr-only">
-                      {busyAction === 'refresh-service' ? copy.refreshingServers : copy.refreshServers}
-                    </span>
-                  </button>
-                </div>
-              </div>
+                )
+              })}
+            </div>
+          </div>
+        </header>
 
-              {snapshot.service.syncError ? (
-                <p className="inline-note error">{snapshot.service.syncError}</p>
-              ) : snapshot.service.lastError ? (
-                <p className="inline-note error">{snapshot.service.lastError}</p>
-              ) : !snapshot.service.authenticated ? (
-                <p className="inline-note">{copy.serviceSignInHint}</p>
-              ) : snapshot.service.servers.length === 0 ? (
-                <p className="inline-note">{copy.noServers}</p>
-              ) : (
-                <p className="inline-note">{copy.cloudWorkspaceOnly}</p>
-              )}
-
-              <div className="service-server-list" role="list" aria-label={copy.selectedServer}>
-                {snapshot.service.servers.map((server) => {
-                  const selected = server.slug === selectedServiceSlug
-                  const selecting = busyAction === `select-service:${server.slug}`
-                  const running =
-                    snapshot.service.running &&
-                    server.slug === snapshot.service.activeServerSlug
-                  const serverStatusLabel = getServiceServerStatusLabel(
-                    server,
-                    snapshot.service,
-                    copy,
-                    selectedServiceSlug,
-                  )
-                  const serverMeta = server.machineName
-                    ? `${copy.machineStatus}: ${server.machineName}`
-                    : `${copy.machineStatus}: ${serverStatusLabel}`
-
-                  return (
-                    <button
-                      key={server.id}
-                      className={`service-server-row${selected ? ' selected' : ''}${running ? ' running' : ''}`}
-                      type="button"
-                      aria-pressed={selected}
-                      disabled={
-                        busyAction?.startsWith('select-service:') ||
-                        busyAction === 'start-service' ||
-                        busyAction === 'workspace' ||
-                        busyAction === 'stop-service' ||
-                        busyAction === 'refresh-service'
-                      }
-                      onClick={() => handleServiceServerSelect(server.slug)}
-                    >
-                      <span className="service-server-copy">
-                        <span className="service-server-name-line">
-                          <span className="service-server-name">{server.name}</span>
-                          <span className="service-server-slug">{server.slug}</span>
-                        </span>
-                        <span className="service-server-meta">{serverMeta}</span>
-                      </span>
-                      <span className={`status-chip${running ? ' live' : ''}`}>
-                        {selecting ? copy.saving : serverStatusLabel}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-
-              <div className="service-launch-footer">
-                <div className="service-launch-selection">
-                  <span className="eyebrow">{copy.selectedServer}</span>
-                  <strong>{selectedServiceServer?.name ?? copy.selectedServerPlaceholder}</strong>
-                  <span>
-                    {selectedServiceServer
-                      ? getServiceServerStatusLabel(
-                          selectedServiceServer,
-                          snapshot.service,
-                          copy,
-                          selectedServiceSlug,
-                        )
-                      : copy.selectedServerPlaceholder}
-                  </span>
-                </div>
-
+        <section className="launch-deck">
+          <section className="control-card service-card" aria-label={copy.service}>
+            <div className="control-card-head">
+              <p className="eyebrow">{copy.service}</p>
+              <div className="service-launch-head-actions">
+                <span className="server-count-pill">
+                  {normalizedServerQuery
+                    ? `${filteredServiceServers.length}/${snapshot.service.servers.length}`
+                    : `${snapshot.service.servers.length}`}
+                </span>
                 <button
-                  className="launch-button"
-                  onClick={() => handleWorkspaceOpen(selectedServiceSlug)}
+                  className="icon-action-button positive"
+                  onClick={handleServiceStart}
                   disabled={
                     serviceActionBusy ||
                     !snapshot.service.authenticated ||
                     !selectedServiceServer
                   }
+                  aria-label={copy.startService}
+                  title={copy.startService}
                 >
-                  {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
+                  <ServiceActionIcon type="start" busy={busyAction === 'start-service'} />
+                </button>
+                <button
+                  className="icon-action-button danger"
+                  onClick={handleServiceStop}
+                  disabled={
+                    serviceActionBusy ||
+                    !snapshot.service.authenticated ||
+                    !selectedServiceServer
+                  }
+                  aria-label={copy.closeServer}
+                  title={copy.closeServer}
+                >
+                  <ServiceActionIcon type="stop" busy={busyAction === 'stop-service'} />
+                </button>
+                <button
+                  className="icon-action-button"
+                  onClick={handleServiceRefresh}
+                  disabled={busyAction === 'refresh-service'}
+                  aria-label={copy.refreshServers}
+                  title={copy.refreshServers}
+                >
+                  <ServiceActionIcon type="refresh" busy={busyAction === 'refresh-service'} />
                 </button>
               </div>
-            </section>
+            </div>
 
-            <details className="control-card compact-control update-card">
-              <summary className="control-card-head">
-                <h2>{copy.releaseCheck}</h2>
-                <span
-                  className={`status-chip ${
-                    releaseState.latest?.updateAvailable ? 'warm' : ''
-                  }`}
-                >
-                  {releaseState.latest
-                    ? releaseState.latest.updateAvailable
-                      ? copy.updateAvailable
-                      : copy.current
-                    : copy.notChecked}
-                </span>
-              </summary>
+            {snapshot.service.syncError ? (
+              <p className="inline-note error">{snapshot.service.syncError}</p>
+            ) : snapshot.service.lastError ? (
+              <p className="inline-note error">{snapshot.service.lastError}</p>
+            ) : !snapshot.service.authenticated ? (
+              <p className="inline-note">{copy.serviceSignInHint}</p>
+            ) : snapshot.service.servers.length === 0 ? (
+              <p className="inline-note">{copy.noServers}</p>
+            ) : null}
 
-              <div className="control-body">
-                <label className="field">
-                  <span>{copy.repository}</span>
-                  <input
-                    value={snapshot.updates.repositorySlug}
-                    onChange={(event) =>
-                      patchUpdates({ repositorySlug: event.target.value })
+            {snapshot.service.servers.length > 0 ? (
+              <label className="server-search">
+                <ServerSearchIcon />
+                <span className="sr-only">{copy.serverSearch}</span>
+                <input
+                  value={serverQuery}
+                  onChange={(event) => setServerQuery(event.target.value)}
+                  placeholder={copy.serverSearch}
+                  aria-label={copy.serverSearch}
+                />
+              </label>
+            ) : null}
+
+            <div className="service-server-list" role="list" aria-label={copy.selectedServer}>
+              {filteredServiceServers.map((server) => {
+                const selected = server.slug === selectedServiceSlug
+                const selecting = busyAction === `select-service:${server.slug}`
+                const running =
+                  snapshot.service.running &&
+                  server.slug === snapshot.service.activeServerSlug
+                const serverStatusLabel = getServiceServerStatusLabel(
+                  server,
+                  snapshot.service,
+                  copy,
+                  selectedServiceSlug,
+                )
+
+                return (
+                  <button
+                    key={server.id}
+                    className={`service-server-row${selected ? ' selected' : ''}${running ? ' running' : ''}`}
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={
+                      busyAction?.startsWith('select-service:') ||
+                      busyAction === 'start-service' ||
+                      busyAction === 'workspace' ||
+                      busyAction === 'stop-service' ||
+                      busyAction === 'refresh-service'
                     }
-                    placeholder="owner/repo"
-                  />
-                </label>
+                    onClick={() => handleServiceServerSelect(server.slug)}
+                  >
+                    <span className="service-server-copy">
+                      <span className="service-server-name-line">
+                        <span className="service-server-name">{server.name}</span>
+                        <span className="service-server-slug">{server.slug}</span>
+                      </span>
+                    </span>
+                    <span className={`status-chip${running ? ' live' : ''}`}>
+                      {selecting ? copy.saving : serverStatusLabel}
+                    </span>
+                  </button>
+                )
+              })}
+              {snapshot.service.servers.length > 0 && filteredServiceServers.length === 0 ? (
+                <p className="inline-note">{copy.noMatchingServers}</p>
+              ) : null}
+            </div>
+          </section>
 
-                <label className="field">
-                  <span>{copy.releasesPage}</span>
+          <section className="control-card theme-card" aria-label={copy.appearance}>
+            <div className="control-card-head">
+              <p className="eyebrow">{copy.appearance}</p>
+              <button
+                className="icon-action-button positive theme-add-button"
+                type="button"
+                onClick={startNewTheme}
+                disabled={Boolean(newThemeDraft) || busyAction === 'create-theme'}
+                aria-label={copy.themeNewLabel}
+                title={copy.themeNewLabel}
+              >
+                <PlusIcon />
+              </button>
+            </div>
+
+            <ul className="theme-rail" role="radiogroup" aria-label={copy.themeColor}>
+              <li>
+                <ThemeRow
+                  themeId="original"
+                  swatch={ORIGINAL_SWATCH}
+                  name={copy.themeOriginalName}
+                  summary={copy.themeOriginalSummary}
+                  selected={activeIsOriginal}
+                  busy={busyAction === 'theme:original'}
+                  locked
+                  lockedLabel={copy.themeBuiltIn}
+                  onSelect={() => handleThemeChange('original')}
+                />
+              </li>
+              {snapshot.customThemes.map((theme) => {
+                const selected = theme.id === snapshot.colorScheme
+                const isRenaming = theme.id === renamingThemeId
+                const summary = `${theme.accent.toUpperCase()}`
+                return (
+                  <li key={theme.id}>
+                    <ThemeRow
+                      themeId={theme.id}
+                      swatch={theme.accent}
+                      name={theme.name}
+                      summary={summary}
+                      selected={selected}
+                      busy={busyAction === `theme:${theme.id}`}
+                      renaming={isRenaming}
+                      renameDraft={renameDraft}
+                      onRenameDraftChange={setRenameDraft}
+                      renameInputRef={renameInputRef}
+                      onCommitRename={() => void commitRename()}
+                      onCancelRename={cancelRename}
+                      onSelect={() => handleThemeChange(theme.id)}
+                      onStartRename={() => startRename(theme)}
+                      onAccentChange={(value) => void handleAccentChange(theme.id, value)}
+                      onDelete={() => void handleDeleteTheme(theme.id)}
+                      deleting={busyAction === `delete:${theme.id}`}
+                      renameLabel={copy.themeRename}
+                      deleteLabel={copy.themeDelete}
+                      accentLabel={copy.customThemeAccentAria}
+                    />
+                  </li>
+                )
+              })}
+              {snapshot.customThemes.length === 0 && !newThemeDraft ? (
+                <li className="theme-empty-row">
+                  <p className="inline-note">{copy.themeEmptyHint}</p>
+                </li>
+              ) : null}
+              {newThemeDraft ? (
+                <li className="theme-draft-row">
+                  <label
+                    className="accent-wheel"
+                    style={{ '--custom-accent': newThemeDraft.accent } as CSSProperties}
+                  >
+                    <span className="sr-only">{copy.customThemeAccentAria}</span>
+                    <input
+                      type="color"
+                      value={newThemeDraft.accent}
+                      onChange={(event) =>
+                        setNewThemeDraft((current) =>
+                          current ? { ...current, accent: event.target.value } : current,
+                        )
+                      }
+                      aria-label={copy.customThemeAccentAria}
+                    />
+                  </label>
                   <input
-                    value={snapshot.updates.releasesUrl}
-                    onChange={(event) => patchUpdates({ releasesUrl: event.target.value })}
-                    placeholder="https://github.com/owner/repo/releases"
+                    ref={newNameInputRef}
+                    className="theme-name-input"
+                    value={newThemeDraft.name}
+                    onChange={(event) =>
+                      setNewThemeDraft((current) =>
+                        current ? { ...current, name: event.target.value } : current,
+                      )
+                    }
+                    placeholder={copy.customThemeNamePlaceholder}
+                    aria-label={copy.themeNewTitle}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        void handleCreateTheme()
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        cancelNewTheme()
+                      }
+                    }}
                   />
-                </label>
+                  <div className="theme-row-actions">
+                    <button
+                      className="theme-button accent-save-button"
+                      type="button"
+                      onClick={handleCreateTheme}
+                      disabled={busyAction === 'create-theme'}
+                    >
+                      {busyAction === 'create-theme' ? copy.creatingTheme : copy.themeCreate}
+                    </button>
+                    <button
+                      className="theme-button muted-button"
+                      type="button"
+                      onClick={cancelNewTheme}
+                    >
+                      {copy.themeRenameCancel}
+                    </button>
+                  </div>
+                </li>
+              ) : null}
+            </ul>
+          </section>
 
-                <div className="token-stack">
-                  <div className="token-row">
-                    <span>{copy.installed}</span>
-                    <span>{snapshot.updates.currentVersion}</span>
-                  </div>
-                  <div className="token-row">
-                    <span>{copy.latestCheckApi}</span>
-                    <span className="truncate">{snapshot.updates.latestReleaseApiUrl}</span>
-                  </div>
+          <details className="control-card update-card">
+            <summary className="control-card-head">
+              <p className="eyebrow">{copy.releaseCheck}</p>
+              <span
+                className={`status-chip ${
+                  releaseState.latest?.updateAvailable ? 'warm' : ''
+                }`}
+              >
+                {releaseState.latest
+                  ? releaseState.latest.updateAvailable
+                    ? copy.updateAvailable
+                    : copy.current
+                  : copy.notChecked}
+              </span>
+            </summary>
+
+            <div className="control-body">
+              <label className="field">
+                <span>{copy.repository}</span>
+                <input
+                  value={snapshot.updates.repositorySlug}
+                  onChange={(event) =>
+                    patchUpdates({ repositorySlug: event.target.value })
+                  }
+                  placeholder="owner/repo"
+                />
+              </label>
+
+              <label className="field">
+                <span>{copy.releasesPage}</span>
+                <input
+                  value={snapshot.updates.releasesUrl}
+                  onChange={(event) => patchUpdates({ releasesUrl: event.target.value })}
+                  placeholder="https://github.com/owner/repo/releases"
+                />
+              </label>
+
+              <div className="token-stack">
+                <div className="token-row">
+                  <span>{copy.installed}</span>
+                  <span>{snapshot.updates.currentVersion}</span>
                 </div>
-
-                {releaseState.error ? (
-                  <p className="inline-note error">{releaseState.error}</p>
-                ) : releaseState.latest ? (
-                  <div className="release-panel">
-                    <div className="release-head">
-                      <div>
-                        <p className="theme-name">
-                          {releaseState.latest.name || releaseState.latest.tagName}
-                        </p>
-                        <p className="theme-summary">
-                          {copy.published}{' '}
-                          {formatDate(
-                            releaseState.latest.publishedAt,
-                            snapshot.language,
-                            snapshot.resolvedLanguage,
-                            copy.unknownDate,
-                          )}
-                        </p>
-                      </div>
-                      {releaseState.latest.prerelease ? (
-                        <span className="mode-chip">{copy.prerelease}</span>
-                      ) : null}
-                    </div>
-
-                    <p className="release-body">
-                      {releaseState.latest.body || copy.noReleaseNotes}
-                    </p>
-
-                    {releaseState.latest.assets.length > 0 ? (
-                      <div className="asset-list">
-                        {releaseState.latest.assets.slice(0, 3).map((asset) => (
-                          <button
-                            key={asset.browserDownloadUrl}
-                            className="asset-link"
-                            onClick={() => handleOpenExternal(asset.browserDownloadUrl)}
-                          >
-                            {asset.name}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="inline-note">
-                    {copy.noReleaseCheck}
-                  </p>
-                )}
-
-                <div className="button-row">
-                  <button
-                    className="theme-button"
-                    onClick={handleUpdateSettingsSave}
-                    disabled={busyAction === 'save-updates'}
-                  >
-                    {busyAction === 'save-updates'
-                      ? copy.savingUpdateSettings
-                      : copy.saveUpdateSettings}
-                  </button>
-                  <button
-                    className="theme-button"
-                    onClick={handleReleaseCheck}
-                    disabled={releaseState.loading}
-                  >
-                    {releaseState.loading ? copy.checkingRelease : copy.checkGitHubRelease}
-                  </button>
-                  <button
-                    className="theme-button muted-button"
-                    onClick={() => handleOpenExternal(snapshot.updates.releasesUrl)}
-                    disabled={busyAction === `open:${snapshot.updates.releasesUrl}`}
-                  >
-                    {copy.openReleases}
-                  </button>
+                <div className="token-row">
+                  <span>{copy.latestCheckApi}</span>
+                  <span className="truncate">{snapshot.updates.latestReleaseApiUrl}</span>
                 </div>
               </div>
-            </details>
-          </section>
+
+              {releaseState.error ? (
+                <p className="inline-note error">{releaseState.error}</p>
+              ) : releaseState.latest ? (
+                <div className="release-panel">
+                  <div className="release-head">
+                    <div>
+                      <p className="theme-name">
+                        {releaseState.latest.name || releaseState.latest.tagName}
+                      </p>
+                      <p className="theme-summary">
+                        {copy.published}{' '}
+                        {formatDate(
+                          releaseState.latest.publishedAt,
+                          snapshot.language,
+                          snapshot.resolvedLanguage,
+                          copy.unknownDate,
+                        )}
+                      </p>
+                    </div>
+                    {releaseState.latest.prerelease ? (
+                      <span className="mode-chip">{copy.prerelease}</span>
+                    ) : null}
+                  </div>
+
+                  <p className="release-body">
+                    {releaseState.latest.body || copy.noReleaseNotes}
+                  </p>
+
+                  {releaseState.latest.assets.length > 0 ? (
+                    <div className="asset-list">
+                      {releaseState.latest.assets.slice(0, 3).map((asset) => (
+                        <button
+                          key={asset.browserDownloadUrl}
+                          className="asset-link"
+                          onClick={() => handleOpenExternal(asset.browserDownloadUrl)}
+                        >
+                          {asset.name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="inline-note">{copy.noReleaseCheck}</p>
+              )}
+
+              <div className="button-row">
+                <button
+                  className="theme-button"
+                  onClick={handleUpdateSettingsSave}
+                  disabled={busyAction === 'save-updates'}
+                >
+                  {busyAction === 'save-updates'
+                    ? copy.savingUpdateSettings
+                    : copy.saveUpdateSettings}
+                </button>
+                <button
+                  className="theme-button"
+                  onClick={handleReleaseCheck}
+                  disabled={releaseState.loading}
+                >
+                  {releaseState.loading ? copy.checkingRelease : copy.checkGitHubRelease}
+                </button>
+                <button
+                  className="theme-button muted-button"
+                  onClick={() => handleOpenExternal(snapshot.updates.releasesUrl)}
+                  disabled={busyAction === `open:${snapshot.updates.releasesUrl}`}
+                >
+                  {copy.openReleases}
+                </button>
+              </div>
+            </div>
+          </details>
         </section>
+
+        <div className="launch-dock">
+          <button
+            className="launch-button launch-button-bottom"
+            onClick={() => handleWorkspaceOpen(selectedServiceSlug)}
+            disabled={
+              serviceActionBusy ||
+              !snapshot.service.authenticated ||
+              !selectedServiceServer
+            }
+          >
+            {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
+          </button>
+        </div>
       </section>
     </main>
+  )
+}
+
+interface ThemeRowProps {
+  themeId: string
+  swatch: string
+  name: string
+  summary: string
+  selected: boolean
+  busy: boolean
+  locked?: boolean
+  lockedLabel?: string
+  renaming?: boolean
+  renameDraft?: string
+  onRenameDraftChange?: (value: string) => void
+  renameInputRef?: React.RefObject<HTMLInputElement | null>
+  onCommitRename?: () => void
+  onCancelRename?: () => void
+  onSelect: () => void
+  onStartRename?: () => void
+  onAccentChange?: (value: string) => void
+  onDelete?: () => void
+  deleting?: boolean
+  renameLabel?: string
+  deleteLabel?: string
+  accentLabel?: string
+}
+
+function ThemeRow(props: ThemeRowProps) {
+  const {
+    swatch,
+    name,
+    summary,
+    selected,
+    busy,
+    locked,
+    lockedLabel,
+    renaming,
+    renameDraft,
+    onRenameDraftChange,
+    renameInputRef,
+    onCommitRename,
+    onCancelRename,
+    onSelect,
+    onStartRename,
+    onAccentChange,
+    onDelete,
+    deleting,
+    renameLabel,
+    deleteLabel,
+    accentLabel,
+  } = props
+
+  return (
+    <div
+      className={`theme-row${selected ? ' selected' : ''}${locked ? ' locked' : ''}`}
+      role="radio"
+      aria-checked={selected}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && !renaming) {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
+      onClick={(event) => {
+        if (renaming) {
+          return
+        }
+        const target = event.target as HTMLElement
+        if (target.closest('button, input, label')) {
+          return
+        }
+        onSelect()
+      }}
+    >
+      {locked ? (
+        <span
+          className="theme-row-swatch locked"
+          style={{ background: swatch }}
+          aria-hidden="true"
+        />
+      ) : (
+        <label
+          className="theme-row-swatch interactive"
+          style={{ background: swatch }}
+          title={accentLabel}
+        >
+          <span className="sr-only">{accentLabel}</span>
+          <input
+            type="color"
+            value={swatch}
+            onChange={(event) => onAccentChange?.(event.target.value)}
+            aria-label={accentLabel}
+          />
+        </label>
+      )}
+
+      <div className="theme-row-copy">
+        {renaming ? (
+          <input
+            ref={renameInputRef}
+            className="theme-name-input"
+            value={renameDraft ?? ''}
+            onChange={(event) => onRenameDraftChange?.(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                onCommitRename?.()
+              } else if (event.key === 'Escape') {
+                event.preventDefault()
+                onCancelRename?.()
+              }
+            }}
+            onBlur={() => onCommitRename?.()}
+            aria-label={renameLabel}
+          />
+        ) : (
+          <>
+            <span className="theme-row-name">{name}</span>
+            <span className="theme-row-summary">{locked ? lockedLabel : summary}</span>
+          </>
+        )}
+      </div>
+
+      {!locked ? (
+        <div className="theme-row-actions">
+          <button
+            className="icon-action-button compact"
+            type="button"
+            onClick={onStartRename}
+            disabled={busy || renaming}
+            aria-label={renameLabel}
+            title={renameLabel}
+          >
+            <PencilIcon />
+          </button>
+          <button
+            className="icon-action-button danger compact"
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            aria-label={deleteLabel}
+            title={deleteLabel}
+          >
+            {deleting ? <SpinnerIcon /> : <TrashIcon />}
+          </button>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -1079,38 +1275,207 @@ function buildShellStyle(theme: ThemeDefinition) {
   } as CSSProperties
 }
 
-function buildThemeOptionStyle(theme: ThemeDefinition) {
-  return {
-    '--option-canvas': theme.canvas,
-    '--option-surface': theme.surface,
-    '--option-surface-strong': theme.surfaceStrong,
-    '--option-line': theme.line,
-    '--option-text': theme.text,
-    '--option-muted': theme.muted,
-    '--option-accent': theme.accent,
-  } as CSSProperties
-}
-
-function getThemeDisplay(
-  theme: ThemeDefinition,
-  language: BootstrapPayload['language'],
-  resolvedLanguage: BootstrapPayload['resolvedLanguage'] = 'en-US',
-) {
-  if (getResolvedLanguage(language, resolvedLanguage) !== 'zh-CN') {
-    return {
-      name: theme.name,
-      summary: theme.summary,
-    }
-  }
-
-  const zhCopy = ZH_THEME_COPY[theme.id]
-  return {
-    name: theme.id === 'custom' ? theme.name || zhCopy?.name || '自定义' : zhCopy?.name ?? theme.name,
-    summary: zhCopy?.summary ?? theme.summary,
-  }
-}
-
 type ServiceActionIconType = 'start' | 'stop' | 'refresh'
+type OptionIconType =
+  | (typeof THEME_MODES)[number]['icon']
+  | (typeof LANGUAGE_OPTIONS)[number]['icon']
+
+function OptionIcon({ type }: { type: OptionIconType }) {
+  if (type === 'latin' || type === 'han') {
+    return (
+      <svg
+        className="option-icon"
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+      >
+        <text
+          x="12"
+          y="16"
+          textAnchor="middle"
+          fill="currentColor"
+          fontSize="13"
+          fontFamily="Avenir Next, SF Pro Display, PingFang SC, sans-serif"
+          fontWeight="800"
+        >
+          {type === 'latin' ? 'A' : '文'}
+        </text>
+      </svg>
+    )
+  }
+
+  if (type === 'sun') {
+    return (
+      <svg
+        className="option-icon"
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2" />
+        <path d="M12 20v2" />
+        <path d="m4.9 4.9 1.4 1.4" />
+        <path d="m17.7 17.7 1.4 1.4" />
+        <path d="M2 12h2" />
+        <path d="M20 12h2" />
+        <path d="m4.9 19.1 1.4-1.4" />
+        <path d="m17.7 6.3 1.4-1.4" />
+      </svg>
+    )
+  }
+
+  if (type === 'moon') {
+    return (
+      <svg
+        className="option-icon"
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M20.4 14.5A7.7 7.7 0 0 1 9.5 3.6 8.7 8.7 0 1 0 20.4 14.5Z" />
+      </svg>
+    )
+  }
+
+  if (type === 'display') {
+    return (
+      <svg
+        className="option-icon"
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect width="16" height="11" x="4" y="5" rx="2" />
+        <path d="M12 16v3" />
+        <path d="M8 19h8" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg
+      className="option-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a14 14 0 0 1 0 18" />
+      <path d="M12 3a14 14 0 0 0 0 18" />
+    </svg>
+  )
+}
+
+function ServerSearchIcon() {
+  return (
+    <svg
+      className="server-search-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.2-3.2" />
+    </svg>
+  )
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M6 6l1 15h10l1-15" />
+    </svg>
+  )
+}
+
+function SpinnerIcon() {
+  return (
+    <svg
+      className="service-action-icon spinning"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 12a9 9 0 0 1-9 9" />
+      <path d="M3 12a9 9 0 0 1 9-9" />
+    </svg>
+  )
+}
 
 function ServiceActionIcon({
   type,
@@ -1120,21 +1485,7 @@ function ServiceActionIcon({
   busy?: boolean
 }) {
   if (busy) {
-    return (
-      <svg
-        className="service-action-icon spinning"
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M21 12a9 9 0 0 1-9 9" />
-        <path d="M3 12a9 9 0 0 1 9-9" />
-      </svg>
-    )
+    return <SpinnerIcon />
   }
 
   if (type === 'start') {
@@ -1185,6 +1536,24 @@ function ServiceActionIcon({
     >
       <path d="M21 2v6h-6" />
       <path d="M21 8A9 9 0 1 0 12 21a9 9 0 0 0 8.2-5.3" />
+    </svg>
+  )
+}
+
+function SlockBrandMark({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="26"
+      height="25"
+      viewBox="0 0 48 46"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        fill="currentColor"
+        d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z"
+      />
     </svg>
   )
 }

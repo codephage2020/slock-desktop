@@ -21,17 +21,17 @@ use tauri::{
     window::Color,
     AppHandle, LogicalSize, Manager, RunEvent, State, Theme, Url, WindowEvent,
 };
-use theme::{meta_catalog, resolve_theme, CustomThemeInput};
+use theme::{meta_catalog, resolve_theme, sanitize_hex, CustomThemeItem, CustomThemeSet};
 
 const MAIN_LABEL: &str = "main";
 const WORKSPACE_URL: &str = "https://app.slock.ai";
 const DEFAULT_SERVER_URL: &str = "https://api.slock.ai";
 const DAEMON_PACKAGE: &str = "@slock-ai/daemon@latest";
 const DAEMON_MACHINE_NAME: &str = "Slock Desktop";
-const LAUNCHER_WINDOW_WIDTH: f64 = 980.0;
-const LAUNCHER_WINDOW_HEIGHT: f64 = 720.0;
-const LAUNCHER_WINDOW_MIN_WIDTH: f64 = 920.0;
-const LAUNCHER_WINDOW_MIN_HEIGHT: f64 = 680.0;
+const LAUNCHER_WINDOW_WIDTH: f64 = 860.0;
+const LAUNCHER_WINDOW_HEIGHT: f64 = 460.0;
+const LAUNCHER_WINDOW_MIN_WIDTH: f64 = 760.0;
+const LAUNCHER_WINDOW_MIN_HEIGHT: f64 = 420.0;
 const WORKSPACE_WINDOW_WIDTH: f64 = 1480.0;
 const WORKSPACE_WINDOW_HEIGHT: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_WIDTH: f64 = 980.0;
@@ -53,7 +53,7 @@ struct BootstrapPayload {
     workspace_url: String,
     color_scheme: String,
     appearance_mode: String,
-    custom_theme: CustomThemeSettings,
+    custom_themes: Vec<CustomThemeSettings>,
     language: String,
     resolved_language: String,
     workspace_open: bool,
@@ -228,7 +228,7 @@ fn set_theme(
     state: State<'_, DesktopState>,
     theme_id: String,
 ) -> Result<BootstrapPayload, String> {
-    let (color_scheme, appearance_mode, custom_theme, language) = {
+    let (color_scheme, appearance_mode, custom_themes, language) = {
         let mut settings = state
             .settings
             .lock()
@@ -236,19 +236,19 @@ fn set_theme(
         let theme = resolve_theme(
             &theme_id,
             &settings.appearance_mode,
-            &custom_theme_input(&settings.custom_theme),
+            &custom_theme_set(&settings.custom_themes),
         );
         settings.color_scheme = theme.id.clone();
         save_settings(&app, &settings)?;
         (
             settings.color_scheme.clone(),
             settings.appearance_mode.clone(),
-            settings.custom_theme.clone(),
+            settings.custom_themes.clone(),
             settings.language.clone(),
         )
     };
 
-    let custom = custom_theme_input(&custom_theme);
+    let custom = custom_theme_set(&custom_themes);
     let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
     apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
@@ -261,7 +261,7 @@ fn set_theme_mode(
     state: State<'_, DesktopState>,
     theme_mode: String,
 ) -> Result<BootstrapPayload, String> {
-    let (color_scheme, appearance_mode, custom_theme, language) = {
+    let (color_scheme, appearance_mode, custom_themes, language) = {
         let mut settings = state
             .settings
             .lock()
@@ -271,12 +271,12 @@ fn set_theme_mode(
         (
             settings.color_scheme.clone(),
             settings.appearance_mode.clone(),
-            settings.custom_theme.clone(),
+            settings.custom_themes.clone(),
             settings.language.clone(),
         )
     };
 
-    let custom = custom_theme_input(&custom_theme);
+    let custom = custom_theme_set(&custom_themes);
     let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
     apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
@@ -284,28 +284,129 @@ fn set_theme_mode(
 }
 
 #[tauri::command]
-fn save_custom_theme(
+fn create_custom_theme(
     app: AppHandle,
     state: State<'_, DesktopState>,
-    custom_theme: CustomThemeSettings,
+    name: String,
+    accent: String,
 ) -> Result<BootstrapPayload, String> {
-    let (appearance_mode, language, saved_custom_theme) = {
+    let (appearance_mode, language, custom_themes, new_id) = {
         let mut settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
-        settings.custom_theme = sanitize_custom_theme(custom_theme);
-        settings.color_scheme = "custom".to_string();
+        let id = format!("custom-{}", uuid::Uuid::new_v4());
+        let theme = CustomThemeSettings {
+            id: id.clone(),
+            name: sanitize_theme_name(&name),
+            accent: sanitize_hex(&accent).unwrap_or_else(|| "#10a37f".to_string()),
+        };
+        settings.custom_themes.push(theme);
+        settings.color_scheme = id.clone();
         save_settings(&app, &settings)?;
         (
             settings.appearance_mode.clone(),
             settings.language.clone(),
-            settings.custom_theme.clone(),
+            settings.custom_themes.clone(),
+            id,
         )
     };
 
-    let custom = custom_theme_input(&saved_custom_theme);
-    let theme = resolve_theme("custom", &appearance_mode, &custom);
+    let custom = custom_theme_set(&custom_themes);
+    let theme = resolve_theme(&new_id, &appearance_mode, &custom);
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
+
+    build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn rename_custom_theme(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    id: String,
+    name: String,
+) -> Result<BootstrapPayload, String> {
+    {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        let trimmed = sanitize_theme_name(&name);
+        if let Some(item) = settings
+            .custom_themes
+            .iter_mut()
+            .find(|item| item.id == id)
+        {
+            item.name = trimmed;
+        }
+        save_settings(&app, &settings)?;
+    }
+
+    build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn update_custom_theme_accent(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    id: String,
+    accent: String,
+) -> Result<BootstrapPayload, String> {
+    let (appearance_mode, language, custom_themes, color_scheme) = {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        let cleaned = sanitize_hex(&accent).unwrap_or_else(|| "#10a37f".to_string());
+        if let Some(item) = settings
+            .custom_themes
+            .iter_mut()
+            .find(|item| item.id == id)
+        {
+            item.accent = cleaned;
+        }
+        save_settings(&app, &settings)?;
+        (
+            settings.appearance_mode.clone(),
+            settings.language.clone(),
+            settings.custom_themes.clone(),
+            settings.color_scheme.clone(),
+        )
+    };
+
+    let custom = custom_theme_set(&custom_themes);
+    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
+
+    build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn delete_custom_theme(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    id: String,
+) -> Result<BootstrapPayload, String> {
+    let (appearance_mode, language, custom_themes, color_scheme) = {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        settings.custom_themes.retain(|item| item.id != id);
+        if settings.color_scheme == id {
+            settings.color_scheme = "original".to_string();
+        }
+        save_settings(&app, &settings)?;
+        (
+            settings.appearance_mode.clone(),
+            settings.language.clone(),
+            settings.custom_themes.clone(),
+            settings.color_scheme.clone(),
+        )
+    };
+
+    let custom = custom_theme_set(&custom_themes);
+    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
     apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
     build_bootstrap(&app, &state, false)
@@ -317,7 +418,7 @@ fn set_language(
     state: State<'_, DesktopState>,
     language: String,
 ) -> Result<BootstrapPayload, String> {
-    let (color_scheme, appearance_mode, custom_theme, language) = {
+    let (color_scheme, appearance_mode, custom_themes, language) = {
         let mut settings = state
             .settings
             .lock()
@@ -327,12 +428,12 @@ fn set_language(
         (
             settings.color_scheme.clone(),
             settings.appearance_mode.clone(),
-            settings.custom_theme.clone(),
+            settings.custom_themes.clone(),
             settings.language.clone(),
         )
     };
 
-    let custom = custom_theme_input(&custom_theme);
+    let custom = custom_theme_set(&custom_themes);
     let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
     apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
 
@@ -389,7 +490,7 @@ fn open_workspace(
         settings.service.clone()
     };
 
-    let (color_scheme, appearance_mode, custom_theme, language, selected_server_slug) = {
+    let (color_scheme, appearance_mode, custom_themes, language, selected_server_slug) = {
         let settings = state
             .settings
             .lock()
@@ -397,7 +498,7 @@ fn open_workspace(
         (
             settings.color_scheme.clone(),
             settings.appearance_mode.clone(),
-            settings.custom_theme.clone(),
+            settings.custom_themes.clone(),
             settings.language.clone(),
             settings.service.selected_server_slug.clone(),
         )
@@ -409,7 +510,7 @@ fn open_workspace(
         &color_scheme,
         &appearance_mode,
         &language,
-        &custom_theme_input(&custom_theme),
+        &custom_theme_set(&custom_themes),
         &selected_server_slug,
     )?;
     start_workspace_service_in_background(app.clone(), service_settings);
@@ -922,13 +1023,13 @@ fn build_bootstrap(
         workspace_url: workspace_url_for_slug(&settings.service.selected_server_slug),
         color_scheme: settings.color_scheme.clone(),
         appearance_mode: appearance_mode.clone(),
-        custom_theme: settings.custom_theme.clone(),
+        custom_themes: settings.custom_themes.clone(),
         language: sanitize_language(&settings.language).to_string(),
         resolved_language: resolve_desktop_language(&settings.language).to_string(),
         workspace_open: main_window_is_workspace(app),
         themes: meta_catalog(
             &appearance_mode,
-            &custom_theme_input(&settings.custom_theme),
+            &custom_theme_set(&settings.custom_themes),
         ),
         service,
         updates,
@@ -941,7 +1042,7 @@ fn enter_workspace_in_main_window(
     theme_id: &str,
     theme_mode: &str,
     language: &str,
-    custom_theme: &CustomThemeInput,
+    custom_theme: &CustomThemeSet,
     selected_server_slug: &str,
 ) -> Result<(), String> {
     let theme = resolve_theme(theme_id, theme_mode, custom_theme);
@@ -1022,7 +1123,7 @@ fn apply_theme_to_workspace(
     theme: theme::ThemeDefinition,
     theme_mode: &str,
     language: &str,
-    custom_theme: &CustomThemeInput,
+    custom_theme: &CustomThemeSet,
 ) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(MAIN_LABEL) {
         apply_window_theme(&window, theme_mode);
@@ -1200,7 +1301,7 @@ fn apply_workspace_scripts_to_window(
     active_theme_mode: &str,
     active_language: &str,
     resolved_language: &str,
-    custom_theme: &CustomThemeInput,
+    custom_theme: &CustomThemeSet,
 ) -> Result<(), String> {
     window
         .eval(theme::injected_script(theme))
@@ -1248,7 +1349,7 @@ fn apply_workspace_scripts_to_webview(
     active_theme_mode: &str,
     active_language: &str,
     resolved_language: &str,
-    custom_theme: &CustomThemeInput,
+    custom_theme: &CustomThemeSet,
 ) -> Result<(), String> {
     webview
         .eval(theme::injected_script(theme))
@@ -3111,32 +3212,44 @@ fn sanitize_update_settings(updates: UpdateSettings) -> UpdateSettings {
     }
 }
 
-fn sanitize_custom_theme(custom_theme: CustomThemeSettings) -> CustomThemeSettings {
-    let name = custom_theme.name.trim();
-    CustomThemeSettings {
-        name: if name.is_empty() {
-            "Custom".to_string()
-        } else {
-            name.to_string()
-        },
-        accent: theme::sanitize_hex(&custom_theme.accent).unwrap_or_else(|| "#10a37f".to_string()),
+fn sanitize_theme_name(name: &str) -> String {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        "Custom".to_string()
+    } else {
+        trimmed.to_string()
     }
+}
+
+fn sanitize_custom_theme(mut custom_theme: CustomThemeSettings) -> CustomThemeSettings {
+    if custom_theme.id.trim().is_empty() {
+        custom_theme.id = format!("custom-{}", uuid::Uuid::new_v4());
+    }
+    CustomThemeSettings {
+        id: custom_theme.id,
+        name: sanitize_theme_name(&custom_theme.name),
+        accent: sanitize_hex(&custom_theme.accent).unwrap_or_else(|| "#10a37f".to_string()),
+    }
+}
+
+fn sanitize_custom_themes(items: Vec<CustomThemeSettings>) -> Vec<CustomThemeSettings> {
+    items.into_iter().map(sanitize_custom_theme).collect()
 }
 
 fn normalize_app_settings(settings: AppSettings) -> AppSettings {
     let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
-    let custom_theme = sanitize_custom_theme(settings.custom_theme);
+    let custom_themes = sanitize_custom_themes(settings.custom_themes);
     let color_scheme = resolve_theme(
         &settings.color_scheme,
         &appearance_mode,
-        &custom_theme_input(&custom_theme),
+        &custom_theme_set(&custom_themes),
     )
     .id;
 
     AppSettings {
         color_scheme,
         appearance_mode,
-        custom_theme,
+        custom_themes,
         language: sanitize_language(&settings.language).to_string(),
         session: config::SessionSettings {
             access_token: settings.session.access_token.trim().to_string(),
@@ -3224,10 +3337,16 @@ fn env_locale() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn custom_theme_input(custom_theme: &CustomThemeSettings) -> CustomThemeInput {
-    CustomThemeInput {
-        name: custom_theme.name.clone(),
-        accent: custom_theme.accent.clone(),
+fn custom_theme_set(custom_themes: &[CustomThemeSettings]) -> CustomThemeSet {
+    CustomThemeSet {
+        items: custom_themes
+            .iter()
+            .map(|item| CustomThemeItem {
+                id: item.id.clone(),
+                name: item.name.clone(),
+                accent: item.accent.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -3297,7 +3416,7 @@ pub fn run() {
                 log::warn!("failed to seed workspace session: {err}");
             }
 
-            let (color_scheme, appearance_mode, custom_theme, language) = webview
+            let (color_scheme, appearance_mode, custom_themes, language) = webview
                 .state::<DesktopState>()
                 .settings
                 .lock()
@@ -3305,19 +3424,19 @@ pub fn run() {
                     (
                         settings.color_scheme.clone(),
                         settings.appearance_mode.clone(),
-                        settings.custom_theme.clone(),
+                        settings.custom_themes.clone(),
                         settings.language.clone(),
                     )
                 })
                 .unwrap_or_else(|_| {
                     (
-                        "default".to_string(),
+                        "original".to_string(),
                         "system".to_string(),
-                        CustomThemeSettings::default(),
+                        Vec::<CustomThemeSettings>::new(),
                         "system".to_string(),
                     )
                 });
-            let custom = custom_theme_input(&custom_theme);
+            let custom = custom_theme_set(&custom_themes);
             let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
 
             if let Err(err) = apply_workspace_scripts_to_webview(
@@ -3370,7 +3489,10 @@ pub fn run() {
             bootstrap,
             set_theme,
             set_theme_mode,
-            save_custom_theme,
+            create_custom_theme,
+            rename_custom_theme,
+            update_custom_theme_accent,
+            delete_custom_theme,
             set_language,
             save_session_tokens,
             open_workspace,

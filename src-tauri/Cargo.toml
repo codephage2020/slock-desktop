@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "0.0.1"
 description = "Slock Desktop Theme Studio"
 authors = ["Yan Tingwang"]
 license = ""
@@ -24,3 +24,4 @@ log = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 tauri = { version = "2.10.3", features = [] }
 tauri-plugin-log = "2"
+uuid = { version = "1", features = ["v4"] }

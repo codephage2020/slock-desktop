@@ -36,57 +36,16 @@ pub struct ThemeMeta {
 }
 
 #[derive(Debug, Clone)]
-pub struct CustomThemeInput {
+pub struct CustomThemeItem {
+    pub id: String,
     pub name: String,
     pub accent: String,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ThemePreset {
-    id: &'static str,
-    name: &'static str,
-    summary: &'static str,
-    accent: &'static str,
-    dark_accent: &'static str,
+#[derive(Debug, Clone, Default)]
+pub struct CustomThemeSet {
+    pub items: Vec<CustomThemeItem>,
 }
-
-const PRESETS: [ThemePreset; 5] = [
-    ThemePreset {
-        id: "default",
-        name: "Default",
-        summary: "Restrained green accent for daily desktop work.",
-        accent: "#10a37f",
-        dark_accent: "#19c99b",
-    },
-    ThemePreset {
-        id: "light",
-        name: "Mist",
-        summary: "Soft blue accent for quiet operational views.",
-        accent: "#3b82f6",
-        dark_accent: "#74a8ff",
-    },
-    ThemePreset {
-        id: "dark",
-        name: "Indigo",
-        summary: "Muted indigo accent for structured focus.",
-        accent: "#6366f1",
-        dark_accent: "#9ea2ff",
-    },
-    ThemePreset {
-        id: "graphite",
-        name: "Graphite",
-        summary: "Low-saturation slate accent for long sessions.",
-        accent: "#64748b",
-        dark_accent: "#a8b3c5",
-    },
-    ThemePreset {
-        id: "crimson",
-        name: "Rose",
-        summary: "Warm rose accent for editorial workspace depth.",
-        accent: "#c05a6f",
-        dark_accent: "#e0a2ae",
-    },
-];
 
 fn materialize_original() -> ThemeDefinition {
     ThemeDefinition {
@@ -121,55 +80,39 @@ pub fn normalize_mode(mode: &str) -> &'static str {
     }
 }
 
-pub fn meta_catalog(mode: &str, custom: &CustomThemeInput) -> Vec<ThemeMeta> {
+pub fn meta_catalog(mode: &str, custom: &CustomThemeSet) -> Vec<ThemeMeta> {
     std::iter::once(materialize_original().into())
         .chain(
-            PRESETS
+            custom
+                .items
                 .iter()
-                .map(|preset| materialize_preset(*preset, mode).into()),
+                .map(|item| materialize_custom_item(item, mode).into()),
         )
-        .chain(std::iter::once(materialize_custom(custom, mode).into()))
         .collect()
 }
 
-pub fn resolve_theme(id: &str, mode: &str, custom: &CustomThemeInput) -> ThemeDefinition {
-    if id == "original" {
-        materialize_original()
-    } else {
-        PRESETS
-            .iter()
-            .find(|theme| theme.id == id)
-            .map(|preset| materialize_preset(*preset, mode))
-            .unwrap_or_else(|| {
-                if id == "custom" {
-                    materialize_custom(custom, mode)
-                } else {
-                    materialize_preset(PRESETS[0], mode)
-                }
-            })
+pub fn resolve_theme(id: &str, mode: &str, custom: &CustomThemeSet) -> ThemeDefinition {
+    if id == "original" || id.is_empty() {
+        return materialize_original();
     }
+
+    custom
+        .items
+        .iter()
+        .find(|item| item.id == id)
+        .map(|item| materialize_custom_item(item, mode))
+        .unwrap_or_else(materialize_original)
 }
 
-fn materialize_preset(preset: ThemePreset, mode: &str) -> ThemeDefinition {
-    materialize_theme(
-        preset.id,
-        preset.name,
-        preset.summary,
-        preset.accent,
-        preset.dark_accent,
-        mode,
-    )
-}
-
-fn materialize_custom(custom: &CustomThemeInput, mode: &str) -> ThemeDefinition {
-    let name = if custom.name.trim().is_empty() {
+fn materialize_custom_item(item: &CustomThemeItem, mode: &str) -> ThemeDefinition {
+    let name = if item.name.trim().is_empty() {
         "Custom"
     } else {
-        custom.name.trim()
+        item.name.trim()
     };
-    let accent = sanitize_hex(&custom.accent).unwrap_or_else(|| "#10a37f".to_string());
+    let accent = sanitize_hex(&item.accent).unwrap_or_else(|| "#10a37f".to_string());
     materialize_theme(
-        "custom",
+        &item.id,
         name,
         "User-defined accent theme.",
         &accent,
@@ -2058,17 +2001,24 @@ impl From<ThemeDefinition> for ThemeMeta {
 
 #[cfg(test)]
 mod tests {
-    use super::{injected_script, resolve_theme, CustomThemeInput};
+    use super::{injected_script, resolve_theme, CustomThemeItem, CustomThemeSet};
+
+    fn fixture_set() -> CustomThemeSet {
+        CustomThemeSet {
+            items: vec![CustomThemeItem {
+                id: "default".to_string(),
+                name: "Custom".to_string(),
+                accent: "#10a37f".to_string(),
+            }],
+        }
+    }
 
     #[test]
     fn injected_script_contains_unread_count_tone_fixups() {
         let script = injected_script(resolve_theme(
             "default",
             "light",
-            &CustomThemeInput {
-                name: "Custom".to_string(),
-                accent: "#10a37f".to_string(),
-            },
+            &fixture_set(),
         ));
 
         assert!(script.contains("'[class*=\"ml-auto\"]'"));
@@ -2089,10 +2039,7 @@ mod tests {
         let script = injected_script(resolve_theme(
             "default",
             "light",
-            &CustomThemeInput {
-                name: "Custom".to_string(),
-                accent: "#10a37f".to_string(),
-            },
+            &fixture_set(),
         ));
 
         assert!(
@@ -2148,10 +2095,7 @@ mod tests {
         let script = injected_script(resolve_theme(
             "default",
             "light",
-            &CustomThemeInput {
-                name: "Custom".to_string(),
-                accent: "#10a37f".to_string(),
-            },
+            &fixture_set(),
         ));
 
         assert!(script.contains(
@@ -2181,10 +2125,7 @@ mod tests {
         let script = injected_script(resolve_theme(
             "default",
             "light",
-            &CustomThemeInput {
-                name: "Custom".to_string(),
-                accent: "#10a37f".to_string(),
-            },
+            &fixture_set(),
         ));
 
         assert!(script

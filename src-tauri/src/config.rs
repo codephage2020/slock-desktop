@@ -89,8 +89,12 @@ pub struct AppSettings {
     pub color_scheme: String,
     #[serde(default = "default_appearance_mode", alias = "themeMode")]
     pub appearance_mode: String,
-    #[serde(default)]
-    pub custom_theme: CustomThemeSettings,
+    #[serde(
+        default,
+        alias = "customTheme",
+        deserialize_with = "deserialize_custom_themes"
+    )]
+    pub custom_themes: Vec<CustomThemeSettings>,
     #[serde(default = "default_language")]
     pub language: String,
     #[serde(default)]
@@ -106,7 +110,7 @@ impl Default for AppSettings {
         Self {
             color_scheme: default_color_scheme(),
             appearance_mode: default_appearance_mode(),
-            custom_theme: CustomThemeSettings::default(),
+            custom_themes: Vec::new(),
             language: default_language(),
             session: SessionSettings::default(),
             service: ServiceSettings::default(),
@@ -118,6 +122,8 @@ impl Default for AppSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomThemeSettings {
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub accent: String,
 }
@@ -125,14 +131,35 @@ pub struct CustomThemeSettings {
 impl Default for CustomThemeSettings {
     fn default() -> Self {
         Self {
+            id: String::new(),
             name: "Custom".to_string(),
             accent: "#10a37f".to_string(),
         }
     }
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CustomThemesField {
+    List(Vec<CustomThemeSettings>),
+    Single(CustomThemeSettings),
+    None,
+}
+
+fn deserialize_custom_themes<'de, D>(deserializer: D) -> Result<Vec<CustomThemeSettings>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = CustomThemesField::deserialize(deserializer).unwrap_or(CustomThemesField::None);
+    Ok(match value {
+        CustomThemesField::List(items) => items,
+        CustomThemesField::Single(item) => vec![item],
+        CustomThemesField::None => Vec::new(),
+    })
+}
+
 fn default_color_scheme() -> String {
-    "default".to_string()
+    "original".to_string()
 }
 
 fn default_appearance_mode() -> String {

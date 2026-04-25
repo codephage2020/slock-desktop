@@ -17,6 +17,7 @@ export interface ThemeDefinition {
 }
 
 export interface CustomThemeSnapshot {
+  id: string
   name: string
   accent: string
 }
@@ -59,7 +60,7 @@ export interface BootstrapPayload {
   workspaceUrl: string
   colorScheme: string
   appearanceMode: 'light' | 'dark' | 'system'
-  customTheme: CustomThemeSnapshot
+  customThemes: CustomThemeSnapshot[]
   language: 'en-US' | 'zh-CN' | 'system'
   resolvedLanguage: 'en-US' | 'zh-CN'
   workspaceOpen: boolean
@@ -80,8 +81,20 @@ export async function updateThemeMode(themeMode: BootstrapPayload['appearanceMod
   return invoke<BootstrapPayload>('set_theme_mode', { themeMode })
 }
 
-export async function saveCustomTheme(customTheme: CustomThemeSnapshot) {
-  return invoke<BootstrapPayload>('save_custom_theme', { customTheme })
+export async function createCustomTheme(input: { name: string; accent: string }) {
+  return invoke<BootstrapPayload>('create_custom_theme', input)
+}
+
+export async function renameCustomTheme(input: { id: string; name: string }) {
+  return invoke<BootstrapPayload>('rename_custom_theme', input)
+}
+
+export async function updateCustomThemeAccent(input: { id: string; accent: string }) {
+  return invoke<BootstrapPayload>('update_custom_theme_accent', input)
+}
+
+export async function deleteCustomTheme(input: { id: string }) {
+  return invoke<BootstrapPayload>('delete_custom_theme', input)
 }
 
 export async function updateLanguage(language: BootstrapPayload['language']) {
