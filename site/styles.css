@@ -1014,7 +1014,8 @@ h3 {
 
   .nav-links a[href="#workflow"],
   .nav-links a[href="#control"],
-  .nav-links a[href="https://github.com/codephage2020/slock-tauri/releases/latest"] {
+  .nav-links a[href="https://discord.gg/JY747zGc"],
+  .nav-links a[href="https://github.com/codephage2020/slock-desktop/releases/latest"] {
     display: none;
   }
 
