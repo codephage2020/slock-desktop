@@ -7,12 +7,11 @@ import {
   type ThemeDefinition,
   createCustomTheme,
   deleteCustomTheme,
+  installDesktopUpdate,
   loadBootstrap,
-  openExternalUrl,
   openWorkspace,
   refreshServiceServers,
   renameCustomTheme,
-  saveUpdateSettings,
   selectServiceServer,
   startService,
   stopService,
@@ -22,30 +21,25 @@ import {
   updateThemeMode,
 } from './lib/desktop'
 
-interface ReleaseAsset {
-  name: string
-  browserDownloadUrl: string
-}
-
 interface ReleaseInfo {
   tagName: string
   name: string
-  htmlUrl: string
   publishedAt: string
   body: string
   prerelease: boolean
-  assets: ReleaseAsset[]
   updateAvailable: boolean
 }
 
 interface ReleaseState {
   loading: boolean
+  installing: boolean
   error: string | null
   latest: ReleaseInfo | null
 }
 
 const INITIAL_RELEASE_STATE: ReleaseState = {
   loading: false,
+  installing: false,
   error: null,
   latest: null,
 }
@@ -89,6 +83,8 @@ const COPY = {
     focusSlock: 'Focus Slock',
     openSlock: 'Enter Slock',
     launching: 'Launching…',
+    launchingTitle: 'Opening Slock',
+    launchingDetail: 'Preparing workspace',
     running: 'Running',
     configuredIdle: 'Configured / not running',
     notConfigured: 'Not configured',
@@ -117,23 +113,18 @@ const COPY = {
     serviceNotRunning: 'Selected server service is not running.',
     updateService: 'Update Daemon',
     updatingService: 'Updating…',
-    releaseCheck: 'Release',
+    releaseCheck: 'Version',
     updateAvailable: 'update available',
-    current: 'current',
+    current: 'up to date',
     notChecked: 'not checked',
-    repository: 'Repository',
-    releasesPage: 'Releases page',
-    installed: 'Installed',
-    latestCheckApi: 'Latest check API',
+    currentVersion: 'Current version',
     prerelease: 'prerelease',
     published: 'Published',
     noReleaseNotes: 'No release notes were provided for this release.',
-    noReleaseCheck: 'No release check yet.',
-    saveUpdateSettings: 'Save Update Settings',
-    savingUpdateSettings: 'Saving…',
-    checkGitHubRelease: 'Check Release',
+    checkGitHubRelease: 'Check for Updates',
     checkingRelease: 'Checking…',
-    openReleases: 'Open Releases',
+    installDesktopUpdate: 'Update',
+    installingDesktopUpdate: 'Updating…',
     unknownDate: 'unknown date',
     themeOriginalName: 'Original',
     themeOriginalSummary: 'Slock’s native appearance.',
@@ -173,6 +164,8 @@ const COPY = {
     focusSlock: '聚焦 Slock',
     openSlock: '进入 Slock',
     launching: '启动中…',
+    launchingTitle: '正在进入 Slock',
+    launchingDetail: '正在准备工作区',
     running: '运行中',
     configuredIdle: '已配置 / 未运行',
     notConfigured: '未配置',
@@ -205,19 +198,14 @@ const COPY = {
     updateAvailable: '有可用更新',
     current: '已是最新',
     notChecked: '未检查',
-    repository: '仓库',
-    releasesPage: '发布页',
-    installed: '已安装',
-    latestCheckApi: '最新版本 API',
+    currentVersion: '当前版本',
     prerelease: '预发布',
     published: '发布于',
     noReleaseNotes: '此版本没有提供发布说明。',
-    noReleaseCheck: '尚未检查版本。',
-    saveUpdateSettings: '保存更新设置',
-    savingUpdateSettings: '保存中…',
-    checkGitHubRelease: '检查版本',
+    checkGitHubRelease: '检查更新',
     checkingRelease: '检查中…',
-    openReleases: '打开发布页',
+    installDesktopUpdate: '更新',
+    installingDesktopUpdate: '更新中…',
     unknownDate: '未知日期',
     themeOriginalName: '原主题',
     themeOriginalSummary: '保持 Slock 原生外观。',
@@ -249,12 +237,14 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [releaseState, setReleaseState] = useState<ReleaseState>(INITIAL_RELEASE_STATE)
   const [serverQuery, setServerQuery] = useState('')
+  const [workspaceLaunchTarget, setWorkspaceLaunchTarget] = useState<string | null>(null)
   const [renamingThemeId, setRenamingThemeId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [newThemeDraft, setNewThemeDraft] = useState<NewThemeDraft | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
+  const savedServiceSlugRef = useRef('')
 
   useEffect(() => {
     let cancelled = false
@@ -277,18 +267,35 @@ function App() {
   }, [])
 
   useEffect(() => {
+    savedServiceSlugRef.current = snapshot?.service.selectedServerSlug ?? ''
+  }, [snapshot?.service.selectedServerSlug])
+
+  useEffect(() => {
     if (!snapshot?.service.authenticated || initialServiceRefreshRef.current) {
       return
     }
 
     initialServiceRefreshRef.current = true
-    void refreshServiceServers()
-      .then((next) => {
-        startTransition(() => setSnapshot(next))
-      })
-      .catch((error) => {
-        setErrorMessage(getErrorMessage(error))
-      })
+    let cancelled = false
+    const delay = savedServiceSlugRef.current.trim() ? 750 : 0
+    const timer = window.setTimeout(() => {
+      void refreshServiceServers()
+        .then((next) => {
+          if (!cancelled) {
+            startTransition(() => setSnapshot(next))
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setErrorMessage(getErrorMessage(error))
+          }
+        })
+    }, delay)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
   }, [snapshot?.service.authenticated])
 
   useEffect(() => {
@@ -440,12 +447,21 @@ function App() {
   }
 
   async function handleWorkspaceOpen(selectedServerSlug?: string) {
+    const service = snapshot?.service
+    const targetServer =
+      service?.servers.find((server) => server.slug === selectedServerSlug) ??
+      service?.servers.find((server) => server.slug === service.selectedServerSlug) ??
+      service?.servers.find((server) => server.selected) ??
+      null
+
     try {
       setBusyAction('workspace')
+      setWorkspaceLaunchTarget(targetServer?.name ?? selectedServerSlug ?? null)
       setErrorMessage(null)
       const next = await openWorkspace(selectedServerSlug)
       startTransition(() => setSnapshot(next))
     } catch (error) {
+      setWorkspaceLaunchTarget(null)
       setErrorMessage(getErrorMessage(error))
     } finally {
       setBusyAction(null)
@@ -540,24 +556,6 @@ function App() {
     }
   }
 
-  async function handleUpdateSettingsSave() {
-    if (!snapshot) {
-      return
-    }
-
-    try {
-      setBusyAction('save-updates')
-      setErrorMessage(null)
-      const next = await saveUpdateSettings(snapshot.updates)
-      startTransition(() => setSnapshot(next))
-      setReleaseState(INITIAL_RELEASE_STATE)
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
   async function handleReleaseCheck() {
     if (!snapshot) {
       return
@@ -584,44 +582,35 @@ function App() {
       const latest = mapReleasePayload(payload, snapshot.updates.currentVersion)
       setReleaseState({
         loading: false,
+        installing: false,
         error: null,
         latest,
       })
     } catch (error) {
       setReleaseState({
         loading: false,
+        installing: false,
         error: getErrorMessage(error),
         latest: null,
       })
     }
   }
 
-  async function handleOpenExternal(url: string) {
+  async function handleDesktopUpdateInstall() {
     try {
-      setBusyAction(`open:${url}`)
-      setErrorMessage(null)
-      await openExternalUrl(url)
+      setReleaseState((current) => ({
+        ...current,
+        installing: true,
+        error: null,
+      }))
+      await installDesktopUpdate()
     } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
+      setReleaseState((current) => ({
+        ...current,
+        installing: false,
+        error: getErrorMessage(error),
+      }))
     }
-  }
-
-  function patchUpdates(
-    patch: Partial<BootstrapPayload['updates']>,
-  ) {
-    setSnapshot((current) =>
-      current
-        ? {
-            ...current,
-            updates: {
-              ...current.updates,
-              ...patch,
-            },
-          }
-        : current,
-    )
   }
 
   if (!snapshot) {
@@ -630,6 +619,7 @@ function App() {
     return (
       <main className="loading-shell">
         <SlockBrandMark className="loading-mark" />
+        <SpinnerIcon />
         <p className="eyebrow">{bootCopy.appBootingTitle}</p>
       </main>
     )
@@ -671,12 +661,42 @@ function App() {
     busyAction === 'stop-service' ||
     busyAction === 'workspace' ||
     busyAction === 'refresh-service' ||
+    Boolean(workspaceLaunchTarget) ||
     Boolean(busyAction?.startsWith('select-service:'))
+  const workspaceLaunching = busyAction === 'workspace' || Boolean(workspaceLaunchTarget)
   const activeIsOriginal = snapshot.colorScheme === 'original' || !snapshot.colorScheme
+  const releaseIsCurrent =
+    Boolean(releaseState.latest) && !releaseState.latest?.updateAvailable
+  const releaseUpdateAvailable = Boolean(releaseState.latest?.updateAvailable)
+  const releaseStatusLabel = releaseState.latest
+    ? releaseState.latest.updateAvailable
+      ? copy.updateAvailable
+      : copy.current
+    : copy.notChecked
 
   return (
-    <main className="studio-shell" data-mode={activeTheme.mode} style={shellStyle}>
+    <main
+      className="studio-shell"
+      data-mode={activeTheme.mode}
+      style={shellStyle}
+      aria-busy={workspaceLaunching}
+    >
       <section className="launch-board" aria-label={copy.openSlock}>
+        {workspaceLaunching ? (
+          <section className="workspace-loading-overlay" aria-live="polite">
+            <div className="workspace-loading-panel">
+              <div className="workspace-loading-mark">
+                <SlockBrandMark />
+                <span className="workspace-loading-ring" aria-hidden="true" />
+              </div>
+              <div className="workspace-loading-copy">
+                <p className="eyebrow">{copy.launchingTitle}</p>
+                <p>{workspaceLaunchTarget ?? copy.launchingDetail}</p>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         {errorMessage ? (
           <section className="error-banner" role="alert">
             <strong>{copy.desktopStateError}</strong>
@@ -984,57 +1004,23 @@ function App() {
             </ul>
           </section>
 
-          <details className="control-card update-card">
-            <summary className="control-card-head">
-              <p className="eyebrow">{copy.releaseCheck}</p>
-              <span
-                className={`status-chip ${
-                  releaseState.latest?.updateAvailable ? 'warm' : ''
-                }`}
-              >
-                {releaseState.latest
-                  ? releaseState.latest.updateAvailable
-                    ? copy.updateAvailable
-                    : copy.current
-                  : copy.notChecked}
+          <section className="control-card update-card">
+            <div className="control-card-head version-card-head">
+              <div>
+                <p className="eyebrow">{copy.releaseCheck}</p>
+                <p className="version-current">
+                  {copy.currentVersion} {snapshot.updates.currentVersion}
+                </p>
+              </div>
+              <span className={`status-chip ${releaseUpdateAvailable ? 'warm' : ''}`}>
+                {releaseStatusLabel}
               </span>
-            </summary>
+            </div>
 
             <div className="control-body">
-              <label className="field">
-                <span>{copy.repository}</span>
-                <input
-                  value={snapshot.updates.repositorySlug}
-                  onChange={(event) =>
-                    patchUpdates({ repositorySlug: event.target.value })
-                  }
-                  placeholder="owner/repo"
-                />
-              </label>
-
-              <label className="field">
-                <span>{copy.releasesPage}</span>
-                <input
-                  value={snapshot.updates.releasesUrl}
-                  onChange={(event) => patchUpdates({ releasesUrl: event.target.value })}
-                  placeholder="https://github.com/owner/repo/releases"
-                />
-              </label>
-
-              <div className="token-stack">
-                <div className="token-row">
-                  <span>{copy.installed}</span>
-                  <span>{snapshot.updates.currentVersion}</span>
-                </div>
-                <div className="token-row">
-                  <span>{copy.latestCheckApi}</span>
-                  <span className="truncate">{snapshot.updates.latestReleaseApiUrl}</span>
-                </div>
-              </div>
-
               {releaseState.error ? (
                 <p className="inline-note error">{releaseState.error}</p>
-              ) : releaseState.latest ? (
+              ) : releaseState.latest?.updateAvailable ? (
                 <div className="release-panel">
                   <div className="release-head">
                     <div>
@@ -1059,52 +1045,39 @@ function App() {
                   <p className="release-body">
                     {releaseState.latest.body || copy.noReleaseNotes}
                   </p>
-
-                  {releaseState.latest.assets.length > 0 ? (
-                    <div className="asset-list">
-                      {releaseState.latest.assets.slice(0, 3).map((asset) => (
-                        <button
-                          key={asset.browserDownloadUrl}
-                          className="asset-link"
-                          onClick={() => handleOpenExternal(asset.browserDownloadUrl)}
-                        >
-                          {asset.name}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
                 </div>
-              ) : (
-                <p className="inline-note">{copy.noReleaseCheck}</p>
-              )}
+              ) : null}
 
               <div className="button-row">
                 <button
-                  className="theme-button"
-                  onClick={handleUpdateSettingsSave}
-                  disabled={busyAction === 'save-updates'}
-                >
-                  {busyAction === 'save-updates'
-                    ? copy.savingUpdateSettings
-                    : copy.saveUpdateSettings}
-                </button>
-                <button
-                  className="theme-button"
+                  className={`theme-button${releaseIsCurrent ? ' static-disabled' : ''}`}
                   onClick={handleReleaseCheck}
-                  disabled={releaseState.loading}
+                  disabled={
+                    releaseState.loading ||
+                    releaseState.installing ||
+                    releaseIsCurrent
+                  }
                 >
-                  {releaseState.loading ? copy.checkingRelease : copy.checkGitHubRelease}
+                  {releaseState.loading
+                    ? copy.checkingRelease
+                    : releaseIsCurrent
+                      ? copy.current
+                      : copy.checkGitHubRelease}
                 </button>
-                <button
-                  className="theme-button muted-button"
-                  onClick={() => handleOpenExternal(snapshot.updates.releasesUrl)}
-                  disabled={busyAction === `open:${snapshot.updates.releasesUrl}`}
-                >
-                  {copy.openReleases}
-                </button>
+                {releaseUpdateAvailable ? (
+                  <button
+                    className="theme-button accent-save-button"
+                    onClick={handleDesktopUpdateInstall}
+                    disabled={releaseState.installing || releaseState.loading}
+                  >
+                    {releaseState.installing
+                      ? copy.installingDesktopUpdate
+                      : copy.installDesktopUpdate}
+                  </button>
+                ) : null}
               </div>
             </div>
-          </details>
+          </section>
         </section>
 
         <div className="launch-dock">
@@ -1708,27 +1681,18 @@ function mapReleasePayload(payload: unknown, currentVersion: string): ReleaseInf
   const release = payload as {
     tag_name?: string
     name?: string
-    html_url?: string
     published_at?: string
     body?: string
     prerelease?: boolean
-    assets?: Array<{ name?: string; browser_download_url?: string }>
   }
 
   const tagName = release.tag_name ?? 'unknown'
   return {
     tagName,
     name: release.name ?? '',
-    htmlUrl: release.html_url ?? '',
     publishedAt: release.published_at ?? '',
     body: release.body ?? '',
     prerelease: Boolean(release.prerelease),
-    assets: (release.assets ?? [])
-      .filter((asset) => asset.browser_download_url)
-      .map((asset) => ({
-        name: asset.name ?? 'download',
-        browserDownloadUrl: asset.browser_download_url ?? '',
-      })),
     updateAvailable: compareVersions(tagName, currentVersion) > 0,
   }
 }

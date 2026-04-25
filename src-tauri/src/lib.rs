@@ -4,23 +4,26 @@ mod workspace;
 
 use config::{
     load_settings, save_settings, AppSettings, CustomThemeSettings, ServiceMachineBinding,
-    ServiceSettings, UpdateSettings,
+    ServiceSettings,
 };
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     env,
     process::{Child, Command, Stdio},
-    sync::Mutex,
+    sync::{Mutex, OnceLock},
     thread::{self, sleep},
-    time::Duration,
+    time::{Duration, Instant},
 };
+#[cfg(debug_assertions)]
+use std::{fs::OpenOptions, io::Write};
 use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::PageLoadEvent,
     window::Color,
     AppHandle, LogicalSize, Manager, RunEvent, State, Theme, Url, WindowEvent,
 };
+use tauri_plugin_updater::UpdaterExt;
 use theme::{meta_catalog, resolve_theme, sanitize_hex, CustomThemeItem, CustomThemeSet};
 
 const MAIN_LABEL: &str = "main";
@@ -39,11 +42,18 @@ const WORKSPACE_WINDOW_MIN_HEIGHT: f64 = 760.0;
 const DAEMON_SERVER_SLUG_ARG: &str = "--slock-desktop-server-slug";
 const DAEMON_MACHINE_ID_ARG: &str = "--slock-desktop-machine-id";
 const DAEMON_DESKTOP_MANAGED_ARG: &str = "--slock-desktop-managed";
+const DESKTOP_RELEASE_REPOSITORY: &str = "codephage2020/slock-desktop";
+const DESKTOP_UPDATER_ENDPOINT: &str =
+    "https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json";
+const WORKSPACE_SERVICE_START_DELAY_MS: u64 = 750;
+#[cfg(debug_assertions)]
+const WORKSPACE_LAUNCH_LOG_PATH: &str = "/tmp/slock-desktop-launch.log";
 
 pub struct DesktopState {
     settings: Mutex<AppSettings>,
     service: Mutex<ServiceRuntime>,
     app_close: Mutex<AppCloseRuntime>,
+    launch_metrics: Mutex<WorkspaceLaunchMetrics>,
 }
 
 #[derive(Debug, Serialize)]
@@ -69,6 +79,20 @@ struct ServiceRuntime {
     active_machine_id: Option<String>,
     cached_servers: Vec<ServiceServerSnapshot>,
     cached_sync_error: Option<String>,
+}
+
+#[derive(Default)]
+struct WorkspaceLaunchMetrics {
+    next_id: u64,
+    active: Option<WorkspaceLaunchTrace>,
+}
+
+struct WorkspaceLaunchTrace {
+    id: u64,
+    target_url: String,
+    command_started: Instant,
+    navigate_called: Option<Instant>,
+    page_started: Option<Instant>,
 }
 
 #[derive(Debug, Clone)]
@@ -149,8 +173,6 @@ struct ServiceServerSnapshot {
 #[serde(rename_all = "camelCase")]
 struct UpdateSnapshot {
     current_version: String,
-    repository_slug: String,
-    releases_url: String,
     latest_release_api_url: String,
 }
 
@@ -473,6 +495,7 @@ fn open_workspace(
     state: State<'_, DesktopState>,
     selected_server_slug: Option<String>,
 ) -> Result<BootstrapPayload, String> {
+    let command_started = Instant::now();
     persist_service_target_slug(&app, &state, selected_server_slug, false)?;
     let service_settings = {
         let settings = state
@@ -495,6 +518,8 @@ fn open_workspace(
             settings.service.selected_server_slug.clone(),
         )
     };
+    let target_url = workspace_url_for_slug(&selected_server_slug);
+    begin_workspace_launch_trace(&state, command_started, &target_url);
 
     enter_workspace_in_main_window(
         &app,
@@ -640,25 +665,27 @@ fn update_service(
 }
 
 #[tauri::command]
-fn save_update_settings(
-    app: AppHandle,
-    state: State<'_, DesktopState>,
-    updates: UpdateSettings,
-) -> Result<BootstrapPayload, String> {
-    let mut settings = state
-        .settings
-        .lock()
-        .map_err(|_| "Unable to lock desktop settings".to_string())?;
-    settings.updates = sanitize_update_settings(updates);
-    save_settings(&app, &settings)?;
-    drop(settings);
+async fn install_desktop_update(app: AppHandle) -> Result<(), String> {
+    let pubkey = desktop_updater_public_key()?;
+    let endpoint = Url::parse(DESKTOP_UPDATER_ENDPOINT).map_err(|err| err.to_string())?;
+    let updater = app
+        .updater_builder()
+        .pubkey(pubkey)
+        .timeout(Duration::from_secs(30))
+        .endpoints(vec![endpoint])
+        .map_err(|err| err.to_string())?
+        .build()
+        .map_err(|err| err.to_string())?;
 
-    build_bootstrap(&app, &state, false)
-}
+    let Some(update) = updater.check().await.map_err(|err| err.to_string())? else {
+        return Err("Slock Desktop is already up to date.".to_string());
+    };
 
-#[tauri::command]
-fn open_external_url(url: String) -> Result<(), String> {
-    open_url_in_browser(&url)
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|err| err.to_string())?;
+    app.restart()
 }
 
 fn handle_window_close_requested(app: &AppHandle, state: &DesktopState) {
@@ -810,27 +837,82 @@ fn app_close_prompt_copy(state: &DesktopState) -> CloseAppPromptCopy {
 fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
     let payload = serde_json::to_string(copy).unwrap_or_else(|_| "{}".to_string());
     format!(
-        r#"(function () {{
+        r##"(function () {{
   const copy = {payload};
   const hostId = "slock-desktop-close-host";
   document.getElementById(hostId)?.remove();
   const host = document.createElement("div");
   host.id = hostId;
-  host.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.32);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1f2937;";
+  const surfaceLooksDark = (element) => {{
+    if (!element) return false;
+    const color = window.getComputedStyle(element).backgroundColor;
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!match) return false;
+    const [, red, green, blue] = match.map(Number);
+    return red * 0.299 + green * 0.587 + blue * 0.114 < 128;
+  }};
+  const shell = document.querySelector(".studio-shell");
+  const dark =
+    shell?.getAttribute("data-mode") === "dark" ||
+    surfaceLooksDark(shell) ||
+    surfaceLooksDark(document.body) ||
+    document.querySelector('[data-mode="dark"]') ||
+    document.documentElement.classList.contains("dark") ||
+    window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+  const tone = dark
+    ? {{
+        scrim: "rgba(3,7,18,.72)",
+        panel: "#1f241f",
+        panelBorder: "rgba(148,163,184,.22)",
+        title: "#f8fafc",
+        body: "#94a3b8",
+        muted: "#8190a8",
+        label: "#94a3b8",
+        error: "#fca5a5",
+        secondaryBg: "#252b25",
+        secondaryText: "#f8fafc",
+        secondaryBorder: "rgba(148,163,184,.42)",
+        dangerBg: "#302525",
+        dangerText: "#fecaca",
+        dangerBorder: "rgba(248,113,113,.56)",
+        primaryBg: "#10a37f",
+        primaryText: "#fff",
+        primaryBorder: "#10a37f",
+      }}
+    : {{
+        scrim: "rgba(15,23,42,.32)",
+        panel: "#fff",
+        panelBorder: "rgba(15,23,42,.14)",
+        title: "#111827",
+        body: "#4b5563",
+        muted: "#6b7280",
+        label: "#374151",
+        error: "#b42318",
+        secondaryBg: "#fff",
+        secondaryText: "#374151",
+        secondaryBorder: "#d1d5db",
+        dangerBg: "#fff",
+        dangerText: "#b42318",
+        dangerBorder: "#d92d20",
+        primaryBg: "#10a37f",
+        primaryText: "#fff",
+        primaryBorder: "#10a37f",
+      }};
+  host.style.cssText = `position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:${{tone.scrim}};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:${{tone.title}};`;
   host.innerHTML = `
-    <div role="dialog" aria-modal="true" aria-labelledby="slock-close-title" style="width:min(420px,calc(100vw - 32px));border:1px solid rgba(15,23,42,.14);border-radius:18px;background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.24);padding:22px;">
-      <h2 id="slock-close-title" data-close-copy="title" style="margin:0;font-size:18px;line-height:1.3;font-weight:700;color:#111827;"></h2>
-      <p data-close-copy="description" style="margin:10px 0 0;font-size:14px;line-height:1.55;color:#4b5563;"></p>
-      <p data-close-copy="serverLabel" style="margin:12px 0 0;font-size:12px;line-height:1.4;color:#6b7280;"></p>
-      <label style="display:flex;align-items:center;gap:8px;margin:18px 0 0;font-size:13px;color:#374151;">
+    <div role="dialog" aria-modal="true" aria-labelledby="slock-close-title" style="width:min(420px,calc(100vw - 32px));border:1px solid ${{tone.panelBorder}};border-radius:18px;background:${{tone.panel}};box-shadow:0 24px 80px rgba(2,6,23,.38);padding:22px;">
+      <h2 id="slock-close-title" data-close-copy="title" style="margin:0;font-size:18px;line-height:1.3;font-weight:700;color:${{tone.title}};"></h2>
+      <p data-close-copy="description" style="margin:10px 0 0;font-size:14px;line-height:1.55;color:${{tone.body}};"></p>
+      <p data-close-copy="serverLabel" style="margin:12px 0 0;font-size:12px;line-height:1.4;color:${{tone.muted}};"></p>
+      <label style="display:flex;align-items:center;gap:8px;margin:18px 0 0;font-size:13px;color:${{tone.label}};">
         <input data-close-remember type="checkbox" style="width:16px;height:16px;accent-color:#10a37f;" />
         <span data-close-copy="remember"></span>
       </label>
-      <p data-close-error style="display:none;margin:14px 0 0;font-size:13px;line-height:1.4;color:#b42318;"></p>
+      <p data-close-error style="display:none;margin:14px 0 0;font-size:13px;line-height:1.4;color:${{tone.error}};"></p>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap;">
-        <button type="button" data-close-action="cancel" data-close-copy="cancel" style="border:1px solid #d1d5db;border-radius:10px;background:#fff;color:#374151;font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>
-        <button type="button" data-close-action="closeServer" data-close-copy="closeServer" style="border:1px solid #d92d20;border-radius:10px;background:#fff;color:#b42318;font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>
-        <button type="button" data-close-action="keepServer" data-close-copy="keepServer" style="border:1px solid #10a37f;border-radius:10px;background:#10a37f;color:#fff;font-size:13px;font-weight:700;padding:9px 12px;cursor:pointer;"></button>
+        <button type="button" data-close-action="cancel" data-close-copy="cancel" style="appearance:none;-webkit-appearance:none;border:1px solid ${{tone.secondaryBorder}};border-radius:10px;background:${{tone.secondaryBg}};color:${{tone.secondaryText}};font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>
+        <button type="button" data-close-action="closeServer" data-close-copy="closeServer" style="appearance:none;-webkit-appearance:none;border:1px solid ${{tone.dangerBorder}};border-radius:10px;background:${{tone.dangerBg}};color:${{tone.dangerText}};font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>
+        <button type="button" data-close-action="keepServer" data-close-copy="keepServer" style="appearance:none;-webkit-appearance:none;border:1px solid ${{tone.primaryBorder}};border-radius:10px;background:${{tone.primaryBg}};color:${{tone.primaryText}};font-size:13px;font-weight:700;padding:9px 12px;cursor:pointer;"></button>
       </div>
     </div>`;
   document.body.appendChild(host);
@@ -880,7 +962,7 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
   }});
   host.tabIndex = -1;
   host.focus();
-}})();"#
+}})();"##
     )
 }
 
@@ -987,6 +1069,15 @@ fn close_app_behavior_id(behavior: CloseAppServiceBehavior) -> &'static str {
     }
 }
 
+fn desktop_updater_public_key() -> Result<&'static str, String> {
+    option_env!("SLOCK_DESKTOP_UPDATER_PUBKEY")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "Slock Desktop updater public key is not configured. Set SLOCK_DESKTOP_UPDATER_PUBKEY when building the app.".to_string()
+        })
+}
+
 fn build_bootstrap(
     app: &AppHandle,
     state: &State<'_, DesktopState>,
@@ -1002,11 +1093,9 @@ fn build_bootstrap(
     let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
     let updates = UpdateSnapshot {
         current_version: app.package_info().version.to_string(),
-        repository_slug: settings.updates.repository_slug.clone(),
-        releases_url: settings.updates.releases_url.clone(),
         latest_release_api_url: format!(
             "https://api.github.com/repos/{}/releases/latest",
-            settings.updates.repository_slug
+            DESKTOP_RELEASE_REPOSITORY
         ),
     };
 
@@ -1052,6 +1141,7 @@ fn enter_workspace_in_main_window(
         apply_window_language(app, &window, language, true);
         apply_workspace_session_seed_to_window(&window, state)?;
         if window.url().ok().as_ref() != Some(&target_url) {
+            mark_workspace_launch_navigate_called(state, target_url.as_str());
             return window.navigate(target_url).map_err(|err| err.to_string());
         }
         return apply_workspace_scripts_to_window(
@@ -1068,6 +1158,7 @@ fn enter_workspace_in_main_window(
     apply_window_language(app, &window, language, true);
     apply_window_theme(&window, theme_mode);
     let _ = window.set_focus();
+    mark_workspace_launch_navigate_called(state, target_url.as_str());
     window.navigate(target_url).map_err(|err| err.to_string())
 }
 
@@ -1195,7 +1286,18 @@ struct NativeMenuCopy {
 }
 
 fn apply_native_menu(app: &AppHandle, language: &str) -> tauri::Result<()> {
-    let copy = native_menu_copy(language);
+    static APPLIED_MENU_LANGUAGE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    let menu_language = sanitize_language(language);
+    let cache = APPLIED_MENU_LANGUAGE.get_or_init(|| Mutex::new(None));
+    if cache
+        .lock()
+        .map(|current| current.as_deref() == Some(menu_language))
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    let copy = native_menu_copy(menu_language);
     let app_menu = SubmenuBuilder::new(app, copy.app)
         .about_with_text(copy.about, None)
         .separator()
@@ -1232,6 +1334,9 @@ fn apply_native_menu(app: &AppHandle, language: &str) -> tauri::Result<()> {
         .build()?;
 
     app.set_menu(menu)?;
+    if let Ok(mut current) = cache.lock() {
+        *current = Some(menu_language.to_string());
+    }
     Ok(())
 }
 
@@ -1381,6 +1486,136 @@ fn workspace_url_for_slug(server_slug: &str) -> String {
     }
 }
 
+fn begin_workspace_launch_trace(state: &DesktopState, command_started: Instant, target_url: &str) {
+    let Ok(mut metrics) = state.launch_metrics.lock() else {
+        return;
+    };
+    metrics.next_id = metrics.next_id.saturating_add(1);
+    let id = metrics.next_id;
+    let trace = WorkspaceLaunchTrace {
+        id,
+        target_url: target_url.to_string(),
+        command_started,
+        navigate_called: None,
+        page_started: None,
+    };
+    log_workspace_launch_step(
+        &trace,
+        "command_received",
+        command_started,
+        Some(target_url),
+    );
+    metrics.active = Some(trace);
+}
+
+fn mark_workspace_launch_navigate_called(state: &DesktopState, target_url: &str) {
+    let now = Instant::now();
+    let Ok(mut metrics) = state.launch_metrics.lock() else {
+        return;
+    };
+    let Some(trace) = metrics.active.as_mut() else {
+        return;
+    };
+
+    trace.navigate_called = Some(now);
+    log_workspace_launch_step(trace, "navigate_called", now, Some(target_url));
+}
+
+fn mark_workspace_launch_page_started(state: &DesktopState, url: &Url) {
+    let now = Instant::now();
+    let Ok(mut metrics) = state.launch_metrics.lock() else {
+        return;
+    };
+    let Some(trace) = metrics.active.as_mut() else {
+        return;
+    };
+    if trace.page_started.is_some() || !workspace_launch_url_is_relevant(&trace.target_url, url) {
+        return;
+    }
+
+    trace.page_started = Some(now);
+    log_workspace_launch_step(trace, "page_started", now, Some(url.as_str()));
+}
+
+fn mark_workspace_launch_page_finished(state: &DesktopState, url: &Url) {
+    let now = Instant::now();
+    let Ok(mut metrics) = state.launch_metrics.lock() else {
+        return;
+    };
+    let mut finished = false;
+    if let Some(trace) = metrics.active.as_mut() {
+        if workspace_launch_url_is_relevant(&trace.target_url, url) {
+            log_workspace_launch_step(trace, "page_finished", now, Some(url.as_str()));
+            finished = true;
+        }
+    }
+    if finished {
+        metrics.active = None;
+    }
+}
+
+fn workspace_launch_url_is_relevant(target_url: &str, url: &Url) -> bool {
+    if !is_workspace_url(url) {
+        return false;
+    }
+
+    let Ok(target) = target_url.parse::<Url>() else {
+        return true;
+    };
+    let target_path = target.path().trim_end_matches('/');
+    if target_path.is_empty() || target_path == "/" {
+        return true;
+    }
+
+    let url_path = url.path();
+    url_path == target_path
+        || url_path
+            .strip_prefix(target_path)
+            .map(|suffix| suffix.starts_with('/'))
+            .unwrap_or(false)
+}
+
+fn log_workspace_launch_step(
+    trace: &WorkspaceLaunchTrace,
+    step: &str,
+    at: Instant,
+    url: Option<&str>,
+) {
+    let total_ms = at.duration_since(trace.command_started).as_millis();
+    let since_navigate_ms = trace
+        .navigate_called
+        .map(|started| at.duration_since(started).as_millis());
+    let since_page_start_ms = trace
+        .page_started
+        .map(|started| at.duration_since(started).as_millis());
+    let url = url.unwrap_or(trace.target_url.as_str());
+    let message = format!(
+        "[slock-launch:{}] step={} total={}ms since_navigate={} since_page_start={} url={}",
+        trace.id,
+        step,
+        total_ms,
+        format_duration_ms(since_navigate_ms),
+        format_duration_ms(since_page_start_ms),
+        url
+    );
+    eprintln!("{message}");
+    log::info!("{message}");
+    #[cfg(debug_assertions)]
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(WORKSPACE_LAUNCH_LOG_PATH)
+    {
+        let _ = writeln!(file, "{message}");
+    }
+}
+
+fn format_duration_ms(value: Option<u128>) -> String {
+    value
+        .map(|value| format!("{value}ms"))
+        .unwrap_or_else(|| "-".to_string())
+}
+
 fn collect_service_snapshot(
     app: &AppHandle,
     state: &DesktopState,
@@ -1475,7 +1710,7 @@ fn collect_service_snapshot(
         server.selected = server.slug == settings.selected_server_slug;
     }
 
-    if !running {
+    if refresh_service && !running {
         if let Ok(Some(process)) = selected_service_daemon_process_from_servers(settings, &servers)
         {
             running = true;
@@ -1541,6 +1776,7 @@ fn start_workspace_service_in_background(app: AppHandle, settings: ServiceSettin
     }
 
     thread::spawn(move || {
+        sleep(Duration::from_millis(WORKSPACE_SERVICE_START_DELAY_MS));
         let state = app.state::<DesktopState>();
         if let Err(err) = maybe_start_service(&app, &state, &settings, true) {
             log::warn!("failed to start workspace service in background: {err}");
@@ -2652,7 +2888,7 @@ fn api_base_url(server_url: &str) -> String {
     format!("{}/api", sanitize_service_server_url(server_url))
 }
 
-static API_CLIENT: std::sync::OnceLock<Client> = std::sync::OnceLock::new();
+static API_CLIENT: OnceLock<Client> = OnceLock::new();
 
 fn api_client() -> Result<Client, String> {
     if let Some(client) = API_CLIENT.get() {
@@ -3193,20 +3429,6 @@ fn persist_service_target_slug(
     save_settings(app, &settings)
 }
 
-fn sanitize_update_settings(updates: UpdateSettings) -> UpdateSettings {
-    let repository_slug = updates.repository_slug.trim().to_string();
-    let releases_url = if updates.releases_url.trim().is_empty() && !repository_slug.is_empty() {
-        format!("https://github.com/{repository_slug}/releases")
-    } else {
-        updates.releases_url.trim().to_string()
-    };
-
-    UpdateSettings {
-        repository_slug,
-        releases_url,
-    }
-}
-
 fn sanitize_theme_name(name: &str) -> String {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -3251,7 +3473,6 @@ fn normalize_app_settings(settings: AppSettings) -> AppSettings {
             refresh_token: settings.session.refresh_token.trim().to_string(),
         },
         service: sanitize_service_settings(settings.service),
-        updates: sanitize_update_settings(settings.updates),
     }
 }
 
@@ -3273,15 +3494,18 @@ fn resolve_desktop_language(language: &str) -> &'static str {
 }
 
 fn resolve_system_language() -> &'static str {
-    if let Some(lang) = read_system_language() {
-        if lang.to_ascii_lowercase().starts_with("zh") {
-            return "zh-CN";
+    static SYSTEM_LANGUAGE: OnceLock<&'static str> = OnceLock::new();
+    *SYSTEM_LANGUAGE.get_or_init(|| {
+        if let Some(lang) = read_system_language() {
+            if lang.to_ascii_lowercase().starts_with("zh") {
+                return "zh-CN";
+            }
+            if !lang.is_empty() {
+                return "en-US";
+            }
         }
-        if !lang.is_empty() {
-            return "en-US";
-        }
-    }
-    "en-US"
+        "en-US"
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -3345,37 +3569,10 @@ fn custom_theme_set(custom_themes: &[CustomThemeSettings]) -> CustomThemeSet {
     }
 }
 
-fn open_url_in_browser(url: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut command = Command::new("open");
-        command.arg(url);
-        command
-    };
-
-    #[cfg(target_os = "linux")]
-    let mut command = {
-        let mut command = Command::new("xdg-open");
-        command.arg(url);
-        command
-    };
-
-    #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = Command::new("cmd");
-        command.args(["/C", "start", "", url]);
-        command
-    };
-
-    command
-        .spawn()
-        .map(|_| ())
-        .map_err(|err| format!("Failed to open URL: {err}"))
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(DesktopState {
             settings: Mutex::new(AppSettings::default()),
             service: Mutex::new(ServiceRuntime {
@@ -3387,6 +3584,7 @@ pub fn run() {
                 cached_sync_error: None,
             }),
             app_close: Mutex::new(AppCloseRuntime::default()),
+            launch_metrics: Mutex::new(WorkspaceLaunchMetrics::default()),
         })
         .on_page_load(|webview, payload| {
             if webview.label() != MAIN_LABEL || !is_workspace_url(payload.url()) {
@@ -3395,6 +3593,7 @@ pub fn run() {
 
             if matches!(payload.event(), PageLoadEvent::Started) {
                 let state = webview.state::<DesktopState>();
+                mark_workspace_launch_page_started(&state, payload.url());
                 if let Err(err) = apply_workspace_session_seed_to_webview(webview, &state) {
                     log::warn!("failed to seed workspace session: {err}");
                 }
@@ -3407,6 +3606,7 @@ pub fn run() {
             }
 
             let state = webview.state::<DesktopState>();
+            mark_workspace_launch_page_finished(&state, payload.url());
             if let Err(err) = apply_workspace_session_seed_to_webview(webview, &state) {
                 log::warn!("failed to seed workspace session: {err}");
             }
@@ -3456,8 +3656,11 @@ pub fn run() {
             }
 
             {
-                let settings = normalize_app_settings(load_settings(app.handle()));
-                save_settings(app.handle(), &settings).map_err(std::io::Error::other)?;
+                let loaded_settings = load_settings(app.handle());
+                let settings = normalize_app_settings(loaded_settings.clone());
+                if settings != loaded_settings {
+                    save_settings(app.handle(), &settings).map_err(std::io::Error::other)?;
+                }
                 let state = app.state::<DesktopState>();
                 let mut current = state
                     .settings
@@ -3498,8 +3701,7 @@ pub fn run() {
             stop_service,
             resolve_app_close_request,
             update_service,
-            save_update_settings,
-            open_external_url
+            install_desktop_update
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -3536,7 +3738,8 @@ mod tests {
         should_start_service_for_workspace, terminate_daemon_process,
         untagged_daemon_pids_from_ps_output, workspace_session_seed_script, ApiMachine,
         AppCloseRuntime, CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState,
-        ResolvedServiceMachine, ServiceRuntime, ServiceServerSnapshot, WorkspaceSessionSeed,
+        ResolvedServiceMachine, ServiceRuntime, ServiceServerSnapshot, WorkspaceLaunchMetrics,
+        WorkspaceSessionSeed,
     };
     use crate::config::{AppSettings, ServiceMachineBinding, ServiceSettings};
     use std::{process::Command, sync::Mutex};
@@ -3765,6 +3968,7 @@ mod tests {
                 cached_sync_error: None,
             }),
             app_close: Mutex::new(AppCloseRuntime::default()),
+            launch_metrics: Mutex::new(WorkspaceLaunchMetrics::default()),
         };
 
         let matched =
@@ -4066,6 +4270,12 @@ mod tests {
         assert!(script.contains("data-close-action=\"keepServer\""));
         assert!(script.contains("data-close-action=\"closeServer\""));
         assert!(script.contains("resolve_app_close_request"));
+        assert!(script.contains("surfaceLooksDark"));
+        assert!(script.contains("document.querySelector(\".studio-shell\")"));
+        assert!(script.contains("prefers-color-scheme: dark"));
+        assert!(script.contains("secondaryBg: \"#252b25\""));
+        assert!(script.contains("dangerText: \"#fecaca\""));
+        assert!(script.contains("appearance:none;-webkit-appearance:none"));
     }
 
     #[test]

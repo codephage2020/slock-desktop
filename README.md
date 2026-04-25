@@ -12,7 +12,7 @@ Current version: `0.0.2`
 - Runtime CSS and script injection for the Slock workspace.
 - Local server daemon discovery, start, stop, and workspace auto-start.
 - Close-app behavior settings for keeping or stopping local server daemons.
-- GitHub release check panel with release-page and asset links.
+- Version panel with current version, update check, release notes, and signed in-app update install.
 
 ## Requirements
 
@@ -90,12 +90,26 @@ src-tauri/Cargo.toml
 src-tauri/tauri.conf.json
 ```
 
-Then run:
+Generate a Tauri updater signing key once and keep the private key outside git:
 
 ```bash
+pnpm tauri signer generate -w ~/.tauri/slock-desktop.key
+```
+
+Build release artifacts with the signing key and embed the public key in the app:
+
+```bash
+export SLOCK_DESKTOP_UPDATER_PUBKEY="public key printed by signer generate"
+export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/slock-desktop.key"
 pnpm test
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm tauri build --bundles app
+```
+
+Publish the signed updater bundle and `latest.json` to GitHub Releases. The desktop updater checks:
+
+```text
+https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json
 ```
 
 ## Project Layout

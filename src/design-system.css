@@ -269,7 +269,6 @@ body {
 .mode-chip,
 .status-row,
 .pill,
-.token-row span:last-child,
 .meta-list dt,
 .field span,
 .status-chip {
@@ -289,7 +288,6 @@ body {
 .control-copy,
 .inline-note,
 .release-body,
-.token-row,
 .scope-pill,
 .settings-save-state {
   color: var(--slock-color-text-secondary);
@@ -324,7 +322,6 @@ body {
 
 .launch-button,
 .theme-button,
-.asset-link,
 .settings-nav-item,
 .theme-option,
 .preview-composer button {
@@ -360,8 +357,7 @@ body {
   background: var(--slock-color-accent-active);
 }
 
-.theme-button,
-.asset-link {
+.theme-button {
   background: var(--slock-color-surface-secondary);
   border-color: var(--slock-color-border);
   box-shadow: none;
@@ -455,8 +451,7 @@ body {
 .status-chip,
 .pill,
 .settings-save-state,
-.scope-pill,
-.asset-link {
+.scope-pill {
   border-radius: var(--slock-radius-pill);
 }
 
@@ -483,7 +478,6 @@ body {
 
 @media (hover: hover) {
   .theme-button:hover,
-  .asset-link:hover,
   .settings-nav-item:hover,
   .mode-option:hover,
   .theme-option:hover {
@@ -494,7 +488,6 @@ body {
 
 .launch-button:active,
 .theme-button:active,
-.asset-link:active,
 .settings-nav-item:active,
 .mode-option:active,
 .theme-option:active,

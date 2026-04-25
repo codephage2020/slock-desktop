@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager, Runtime};
 
 const SETTINGS_FILE: &str = "settings.json";
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceMachineBinding {
     #[serde(default)]
@@ -19,7 +19,7 @@ pub struct ServiceMachineBinding {
     pub api_key: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceSettings {
     #[serde(default = "default_service_server_url")]
@@ -45,7 +45,7 @@ impl Default for ServiceSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSettings {
     #[serde(default)]
@@ -54,23 +54,7 @@ pub struct SessionSettings {
     pub refresh_token: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateSettings {
-    pub repository_slug: String,
-    pub releases_url: String,
-}
-
-impl Default for UpdateSettings {
-    fn default() -> Self {
-        Self {
-            repository_slug: "codephage2020/slock-desktop".to_string(),
-            releases_url: "https://github.com/codephage2020/slock-desktop/releases".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     #[serde(default = "default_color_scheme", alias = "activeTheme")]
@@ -89,8 +73,6 @@ pub struct AppSettings {
     pub session: SessionSettings,
     #[serde(default)]
     pub service: ServiceSettings,
-    #[serde(default)]
-    pub updates: UpdateSettings,
 }
 
 impl Default for AppSettings {
@@ -102,12 +84,11 @@ impl Default for AppSettings {
             language: default_language(),
             session: SessionSettings::default(),
             service: ServiceSettings::default(),
-            updates: UpdateSettings::default(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomThemeSettings {
     #[serde(default)]

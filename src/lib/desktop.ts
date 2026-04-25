@@ -50,8 +50,6 @@ export interface ServiceServerSnapshot {
 
 export interface UpdateSnapshot {
   currentVersion: string
-  repositorySlug: string
-  releasesUrl: string
   latestReleaseApiUrl: string
 }
 
@@ -136,15 +134,6 @@ export async function updateService(selectedServerSlug?: string) {
   return invoke<BootstrapPayload>('update_service', { selectedServerSlug })
 }
 
-export async function saveUpdateSettings(updates: UpdateSnapshot) {
-  return invoke<BootstrapPayload>('save_update_settings', {
-    updates: {
-      repositorySlug: updates.repositorySlug,
-      releasesUrl: updates.releasesUrl,
-    },
-  })
-}
-
-export async function openExternalUrl(url: string) {
-  return invoke('open_external_url', { url })
+export async function installDesktopUpdate() {
+  return invoke('install_desktop_update')
 }
