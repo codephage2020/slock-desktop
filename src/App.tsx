@@ -237,6 +237,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [releaseState, setReleaseState] = useState<ReleaseState>(INITIAL_RELEASE_STATE)
   const [serverQuery, setServerQuery] = useState('')
+  const [workspaceLaunchActive, setWorkspaceLaunchActive] = useState(false)
   const [workspaceLaunchTarget, setWorkspaceLaunchTarget] = useState<string | null>(null)
   const [renamingThemeId, setRenamingThemeId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
@@ -456,11 +457,14 @@ function App() {
 
     try {
       setBusyAction('workspace')
+      setWorkspaceLaunchActive(true)
       setWorkspaceLaunchTarget(targetServer?.name ?? selectedServerSlug ?? null)
       setErrorMessage(null)
+      await waitForNextPaint()
       const next = await openWorkspace(selectedServerSlug)
       startTransition(() => setSnapshot(next))
     } catch (error) {
+      setWorkspaceLaunchActive(false)
       setWorkspaceLaunchTarget(null)
       setErrorMessage(getErrorMessage(error))
     } finally {
@@ -661,9 +665,14 @@ function App() {
     busyAction === 'stop-service' ||
     busyAction === 'workspace' ||
     busyAction === 'refresh-service' ||
+    workspaceLaunchActive ||
     Boolean(workspaceLaunchTarget) ||
     Boolean(busyAction?.startsWith('select-service:'))
-  const workspaceLaunching = busyAction === 'workspace' || Boolean(workspaceLaunchTarget)
+  const workspaceLaunching =
+    busyAction === 'workspace' ||
+    workspaceLaunchActive ||
+    Boolean(workspaceLaunchTarget) ||
+    snapshot.workspaceOpen
   const activeIsOriginal = snapshot.colorScheme === 'original' || !snapshot.colorScheme
   const releaseIsCurrent =
     Boolean(releaseState.latest) && !releaseState.latest?.updateAvailable
@@ -1643,6 +1652,12 @@ function getErrorMessage(error: unknown) {
   }
 
   return typeof error === 'string' ? error : 'Unknown desktop error'
+}
+
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  })
 }
 
 function normalizeVersion(value: string) {
