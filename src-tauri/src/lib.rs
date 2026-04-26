@@ -186,6 +186,8 @@ struct CloseAppPromptCopy {
     close_server: &'static str,
     cancel: &'static str,
     remember: &'static str,
+    processing_keep_server: &'static str,
+    processing_close_server: &'static str,
     error: &'static str,
 }
 
@@ -645,6 +647,28 @@ fn refresh_service_servers(
 }
 
 #[tauri::command]
+fn refresh_service_server_catalog(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<BootstrapPayload, String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+    let servers = fetch_service_server_catalog(&app, &state, &settings)?;
+    let mut runtime = state
+        .service
+        .lock()
+        .map_err(|_| "Unable to lock service runtime".to_string())?;
+    runtime.cached_servers = servers;
+    runtime.cached_sync_error = None;
+    drop(runtime);
+    build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
 fn update_service(
     app: AppHandle,
     state: State<'_, DesktopState>,
@@ -817,6 +841,8 @@ fn app_close_prompt_copy(state: &DesktopState) -> CloseAppPromptCopy {
             close_server: "关闭 Server 并退出",
             cancel: "取消",
             remember: "记住这次选择",
+            processing_keep_server: "正在保留 Server 并退出…",
+            processing_close_server: "正在关闭 Server 并退出…",
             error: "关闭处理失败，请重试。",
         }
     } else {
@@ -829,6 +855,8 @@ fn app_close_prompt_copy(state: &DesktopState) -> CloseAppPromptCopy {
             close_server: "Close server and quit",
             cancel: "Cancel",
             remember: "Remember this choice",
+            processing_keep_server: "Keeping server running and quitting…",
+            processing_close_server: "Closing server and quitting…",
             error: "Close handling failed. Try again.",
         }
     }
@@ -898,7 +926,7 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
         primaryText: "#fff",
         primaryBorder: "#10a37f",
       }};
-  host.style.cssText = `position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:${{tone.scrim}};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:${{tone.title}};`;
+  host.style.cssText = `position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:${{tone.scrim}};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:${{tone.title}};cursor:default;`;
   host.innerHTML = `
     <div role="dialog" aria-modal="true" aria-labelledby="slock-close-title" style="width:min(420px,calc(100vw - 32px));border:1px solid ${{tone.panelBorder}};border-radius:18px;background:${{tone.panel}};box-shadow:0 24px 80px rgba(2,6,23,.38);padding:22px;">
       <h2 id="slock-close-title" data-close-copy="title" style="margin:0;font-size:18px;line-height:1.3;font-weight:700;color:${{tone.title}};"></h2>
@@ -908,6 +936,7 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
         <input data-close-remember type="checkbox" style="width:16px;height:16px;accent-color:#10a37f;" />
         <span data-close-copy="remember"></span>
       </label>
+      <p data-close-busy role="status" style="display:none;margin:14px 0 0;font-size:13px;line-height:1.4;color:${{tone.body}};"></p>
       <p data-close-error style="display:none;margin:14px 0 0;font-size:13px;line-height:1.4;color:${{tone.error}};"></p>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap;">
         <button type="button" data-close-action="cancel" data-close-copy="cancel" style="appearance:none;-webkit-appearance:none;border:1px solid ${{tone.secondaryBorder}};border-radius:10px;background:${{tone.secondaryBg}};color:${{tone.secondaryText}};font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>
@@ -921,9 +950,14 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
     element.textContent = copy[key] || "";
   }});
   const invoke = window.__TAURI__?.core?.invoke;
+  const busyMessage = host.querySelector("[data-close-busy]");
   const error = host.querySelector("[data-close-error]");
   const remember = host.querySelector("[data-close-remember]");
-  const setBusy = (busy) => {{
+  const setBusy = (busy, action) => {{
+    if (busyMessage) {{
+      busyMessage.textContent = action === "closeServer" ? copy.processingCloseServer : copy.processingKeepServer;
+      busyMessage.style.display = busy ? "block" : "none";
+    }}
     host.querySelectorAll("button").forEach((button) => {{
       button.disabled = busy;
       button.style.opacity = busy ? ".65" : "1";
@@ -946,11 +980,11 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
       return;
     }}
     try {{
-      setBusy(true);
+      setBusy(true, action);
       error.style.display = "none";
       await invoke("resolve_app_close_request", {{ action, remember: !!remember?.checked }});
     }} catch (err) {{
-      setBusy(false);
+      setBusy(false, action);
       error.textContent = err && typeof err === "object" && "message" in err ? err.message : String(err || copy.error);
       error.style.display = "block";
     }}
@@ -1004,7 +1038,7 @@ fn close_request_confirmed(state: &DesktopState) -> bool {
     false
 }
 
-fn service_may_be_running(app: &AppHandle, state: &DesktopState) -> bool {
+fn service_may_be_running(_app: &AppHandle, state: &DesktopState) -> bool {
     let service_settings = state
         .settings
         .lock()
@@ -1014,6 +1048,10 @@ fn service_may_be_running(app: &AppHandle, state: &DesktopState) -> bool {
         return false;
     };
 
+    let target_slug = service_settings.selected_server_slug.trim().to_string();
+    let mut runtime_active_slug = None;
+    let mut runtime_active_machine_id = None;
+    let mut cached_server = None;
     if let Ok(mut runtime) = state.service.lock() {
         if let Some(child) = runtime.child.as_mut() {
             if child.try_wait().ok().flatten().is_none() {
@@ -1021,24 +1059,53 @@ fn service_may_be_running(app: &AppHandle, state: &DesktopState) -> bool {
             }
             runtime.child = None;
         }
+        runtime_active_slug = runtime.active_server_slug.clone();
+        runtime_active_machine_id = runtime.active_machine_id.clone();
+        cached_server = runtime
+            .cached_servers
+            .iter()
+            .find(|server| server.slug == target_slug)
+            .cloned();
     }
-
-    let target_slug = service_settings.selected_server_slug.trim();
     if target_slug.is_empty() {
         return false;
     }
 
-    let Ok(Some(target)) =
-        resolve_service_machine_for_slug(app, state, &service_settings, target_slug)
-    else {
-        return false;
-    };
+    if runtime_active_slug.as_deref() == Some(target_slug.as_str())
+        || cached_server
+            .as_ref()
+            .map(|server| machine_counts_as_started(&server.machine_status))
+            .unwrap_or(false)
+    {
+        return true;
+    }
+
+    let binding = service_settings
+        .machines
+        .iter()
+        .find(|binding| binding.server_slug == target_slug)
+        .cloned();
+    let machine_id = cached_server
+        .as_ref()
+        .and_then(|server| server.machine_id.as_deref())
+        .or_else(|| binding.as_ref().map(|binding| binding.machine_id.as_str()))
+        .or(runtime_active_machine_id.as_deref())
+        .filter(|machine_id| !machine_id.trim().is_empty());
+    let api_key_prefix = cached_server
+        .as_ref()
+        .and_then(|server| server.api_key_prefix.as_deref())
+        .filter(|prefix| !prefix.trim().is_empty());
+    let api_key = binding
+        .as_ref()
+        .map(|binding| binding.api_key.as_str())
+        .filter(|api_key| !api_key.trim().is_empty());
+
     find_daemon_process_ids(
         &service_settings.server_url,
-        Some(target_slug),
-        Some(target.binding.machine_id.as_str()).filter(|machine_id| !machine_id.trim().is_empty()),
-        target.api_key_prefix.as_deref(),
-        Some(target.binding.api_key.as_str()).filter(|api_key| !api_key.trim().is_empty()),
+        Some(target_slug.as_str()),
+        machine_id,
+        api_key_prefix,
+        api_key,
         false,
     )
     .map(|pids| !pids.is_empty())
@@ -3086,6 +3153,74 @@ fn fetch_service_servers(
     Ok(snapshots)
 }
 
+fn fetch_service_server_catalog(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+) -> Result<Vec<ServiceServerSnapshot>, String> {
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+    let servers = load_authenticated_json::<Vec<ApiServer>>(
+        app,
+        state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers"))
+                .bearer_auth(access_token)
+        },
+    )?;
+    let cached_servers = state
+        .service
+        .lock()
+        .ok()
+        .map(|runtime| runtime.cached_servers.clone())
+        .unwrap_or_default();
+
+    let mut snapshots = Vec::with_capacity(servers.len());
+    for server in servers {
+        let binding = find_service_binding(settings, &server.id, &server.slug);
+        let cached = cached_servers
+            .iter()
+            .find(|item| item.id == server.id || item.slug == server.slug);
+        let machine_id = binding
+            .as_ref()
+            .map(|item| item.machine_id.clone())
+            .filter(|machine_id| !machine_id.trim().is_empty())
+            .or_else(|| cached.and_then(|item| item.machine_id.clone()));
+        let machine_name = binding
+            .as_ref()
+            .map(|item| item.machine_name.clone())
+            .filter(|machine_name| !machine_name.trim().is_empty())
+            .or_else(|| cached.and_then(|item| item.machine_name.clone()));
+        let machine_status = cached
+            .map(|item| item.machine_status.clone())
+            .unwrap_or_else(|| {
+                if binding.is_some() {
+                    "offline".to_string()
+                } else {
+                    "not linked".to_string()
+                }
+            });
+        let api_key_prefix = cached.and_then(|item| item.api_key_prefix.clone());
+        let api_key_ready = api_key_prefix.is_some() || machine_id.is_some();
+
+        snapshots.push(ServiceServerSnapshot {
+            id: server.id.clone(),
+            name: server.name,
+            slug: server.slug.clone(),
+            selected: server.slug == settings.selected_server_slug,
+            machine_id,
+            machine_name,
+            machine_status,
+            api_key_ready,
+            api_key_prefix,
+        });
+    }
+
+    Ok(snapshots)
+}
+
 fn fetch_server_machines(
     app: &AppHandle,
     state: &DesktopState,
@@ -3696,6 +3831,7 @@ pub fn run() {
             open_workspace,
             save_service_settings,
             refresh_service_servers,
+            refresh_service_server_catalog,
             select_service_server,
             start_service,
             stop_service,
@@ -4262,6 +4398,8 @@ mod tests {
             close_server: "Close server and quit",
             cancel: "Cancel",
             remember: "Remember this choice",
+            processing_keep_server: "Keeping server running and quitting…",
+            processing_close_server: "Closing server and quitting…",
             error: "Close handling failed. Try again.",
         });
 
@@ -4270,6 +4408,7 @@ mod tests {
         assert!(script.contains("data-close-action=\"keepServer\""));
         assert!(script.contains("data-close-action=\"closeServer\""));
         assert!(script.contains("resolve_app_close_request"));
+        assert!(script.contains("data-close-busy"));
         assert!(script.contains("surfaceLooksDark"));
         assert!(script.contains("document.querySelector(\".studio-shell\")"));
         assert!(script.contains("prefers-color-scheme: dark"));

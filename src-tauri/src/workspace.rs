@@ -1670,7 +1670,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .theme-option:disabled {
-      cursor: wait;
+      cursor: default;
       opacity: 0.72;
     }
 

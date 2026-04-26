@@ -4,6 +4,15 @@
   height: 100svh;
 }
 
+:where(button:disabled, input:disabled, textarea:disabled, select:disabled, [aria-disabled='true']) {
+  cursor: default;
+}
+
+.studio-shell[aria-busy='true'],
+.studio-shell[aria-busy='true'] * {
+  cursor: default !important;
+}
+
 .loading-shell {
   display: grid;
   place-content: center;
@@ -25,6 +34,12 @@
   height: 22px;
   margin: 0 auto;
   color: var(--accent);
+}
+
+.loading-detail {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .studio-shell {
@@ -390,7 +405,7 @@
 }
 
 .service-server-row:disabled {
-  cursor: wait;
+  cursor: default;
   opacity: 0.78;
   transform: none;
 }
@@ -417,6 +432,24 @@
   color: var(--muted);
   font-family: 'Space Mono', monospace;
   font-size: 0.7rem;
+}
+
+.service-loading-row {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-strong) 60%, transparent);
+  font-size: 0.82rem;
+}
+
+.service-loading-row .service-action-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
 }
 
 .server-search {
@@ -673,7 +706,7 @@
 }
 
 .icon-option:disabled {
-  cursor: wait;
+  cursor: default;
   opacity: 0.7;
 }
 
@@ -735,7 +768,7 @@
 
 .launch-button:disabled,
 .theme-button:disabled {
-  cursor: wait;
+  cursor: default;
   opacity: 0.8;
   transform: none;
 }

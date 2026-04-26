@@ -10,6 +10,7 @@ import {
   installDesktopUpdate,
   loadBootstrap,
   openWorkspace,
+  refreshServiceServerCatalog,
   refreshServiceServers,
   renameCustomTheme,
   selectServiceServer,
@@ -102,6 +103,11 @@ const COPY = {
     noServers: 'No servers available on this account yet.',
     refreshServers: 'Refresh Servers',
     refreshingServers: 'Refreshing…',
+    loadingServerCatalog: 'Loading server list…',
+    syncingServerStatus: 'Checking local server status…',
+    startingSelectedServer: 'Starting selected server…',
+    closingSelectedServer: 'Closing selected server…',
+    savingSelectedServer: 'Saving selected server…',
     serviceSignInHint: 'Open Slock once, sign in, and the launcher will sync your server list automatically.',
     machineStatus: 'Machine status',
     startService: 'Start Service',
@@ -140,6 +146,7 @@ const COPY = {
     creatingTheme: 'Creating…',
     deletingTheme: 'Deleting…',
     appBootingTitle: 'slock.ai',
+    appBootingDetail: 'Starting desktop…',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -183,6 +190,11 @@ const COPY = {
     noServers: '当前账号下还没有可用 server。',
     refreshServers: '刷新 Server 列表',
     refreshingServers: '刷新中…',
+    loadingServerCatalog: '正在读取 Server 列表…',
+    syncingServerStatus: '正在同步本地 Server 状态…',
+    startingSelectedServer: '正在启动所选 Server…',
+    closingSelectedServer: '正在关闭所选 Server…',
+    savingSelectedServer: '正在保存所选 Server…',
     serviceSignInHint: '先打开一次 Slock 并完成登录，launcher 就会自动同步 server 列表。',
     machineStatus: '本地 machine 状态',
     startService: '启动服务',
@@ -221,10 +233,12 @@ const COPY = {
     creatingTheme: '创建中…',
     deletingTheme: '删除中…',
     appBootingTitle: 'slock.ai',
+    appBootingDetail: '正在启动桌面端…',
   },
 } as const
 
 type UiCopy = (typeof COPY)[keyof typeof COPY]
+type ServiceRefreshPhase = 'catalog' | 'status' | null
 
 interface NewThemeDraft {
   name: string
@@ -239,6 +253,7 @@ function App() {
   const [serverQuery, setServerQuery] = useState('')
   const [workspaceLaunchActive, setWorkspaceLaunchActive] = useState(false)
   const [workspaceLaunchTarget, setWorkspaceLaunchTarget] = useState<string | null>(null)
+  const [serviceRefreshPhase, setServiceRefreshPhase] = useState<ServiceRefreshPhase>(null)
   const [renamingThemeId, setRenamingThemeId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [newThemeDraft, setNewThemeDraft] = useState<NewThemeDraft | null>(null)
@@ -278,24 +293,34 @@ function App() {
 
     initialServiceRefreshRef.current = true
     let cancelled = false
-    const delay = savedServiceSlugRef.current.trim() ? 750 : 0
-    const timer = window.setTimeout(() => {
-      void refreshServiceServers()
-        .then((next) => {
-          if (!cancelled) {
-            startTransition(() => setSnapshot(next))
-          }
-        })
-        .catch((error) => {
-          if (!cancelled) {
-            setErrorMessage(getErrorMessage(error))
-          }
-        })
-    }, delay)
+    setServiceRefreshPhase('catalog')
+    void refreshServiceServerCatalog()
+      .then((next) => {
+        if (cancelled) {
+          return null
+        }
+        startTransition(() => setSnapshot(next))
+        setServiceRefreshPhase('status')
+        return refreshServiceServers()
+      })
+      .then((next) => {
+        if (!cancelled && next) {
+          startTransition(() => setSnapshot(next))
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setErrorMessage(getErrorMessage(error))
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setServiceRefreshPhase(null)
+        }
+      })
 
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
     }
   }, [snapshot?.service.authenticated])
 
@@ -475,12 +500,19 @@ function App() {
   async function handleServiceRefresh() {
     try {
       setBusyAction('refresh-service')
+      setServiceRefreshPhase('catalog')
       setErrorMessage(null)
+      await waitForNextPaint()
+      const catalog = await refreshServiceServerCatalog()
+      startTransition(() => setSnapshot(catalog))
+      setServiceRefreshPhase('status')
+      await waitForNextPaint()
       const next = await refreshServiceServers()
       startTransition(() => setSnapshot(next))
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
     } finally {
+      setServiceRefreshPhase(null)
       setBusyAction(null)
     }
   }
@@ -507,6 +539,7 @@ function App() {
     try {
       setBusyAction('stop-service')
       setErrorMessage(null)
+      await waitForNextPaint()
       const next = await stopService(selectedSlug)
       startTransition(() => setSnapshot(next))
     } catch (error) {
@@ -538,6 +571,7 @@ function App() {
     try {
       setBusyAction('start-service')
       setErrorMessage(null)
+      await waitForNextPaint()
       const next = await startService(selectedSlug)
       startTransition(() => setSnapshot(next))
     } catch (error) {
@@ -551,6 +585,7 @@ function App() {
     try {
       setBusyAction(`select-service:${selectedServerSlug}`)
       setErrorMessage(null)
+      await waitForNextPaint()
       const next = await selectServiceServer(selectedServerSlug)
       startTransition(() => setSnapshot(next))
     } catch (error) {
@@ -571,6 +606,7 @@ function App() {
         loading: true,
         error: null,
       }))
+      await waitForNextPaint()
 
       const response = await fetch(snapshot.updates.latestReleaseApiUrl, {
         headers: {
@@ -607,6 +643,7 @@ function App() {
         installing: true,
         error: null,
       }))
+      await waitForNextPaint()
       await installDesktopUpdate()
     } catch (error) {
       setReleaseState((current) => ({
@@ -625,6 +662,7 @@ function App() {
         <SlockBrandMark className="loading-mark" />
         <SpinnerIcon />
         <p className="eyebrow">{bootCopy.appBootingTitle}</p>
+        <p className="loading-detail">{bootCopy.appBootingDetail}</p>
       </main>
     )
   }
@@ -658,6 +696,12 @@ function App() {
   const serviceStatusLabel = getServiceStatusLabel(
     snapshot.service,
     selectedServiceServer,
+    copy,
+  )
+  const serviceRefreshing = Boolean(serviceRefreshPhase) || busyAction === 'refresh-service'
+  const serviceBusyMessage = getServiceBusyMessage(
+    busyAction,
+    serviceRefreshPhase,
     copy,
   )
   const serviceActionBusy =
@@ -808,11 +852,11 @@ function App() {
                 <button
                   className="icon-action-button"
                   onClick={handleServiceRefresh}
-                  disabled={busyAction === 'refresh-service'}
+                  disabled={serviceRefreshing}
                   aria-label={copy.refreshServers}
                   title={copy.refreshServers}
                 >
-                  <ServiceActionIcon type="refresh" busy={busyAction === 'refresh-service'} />
+                  <ServiceActionIcon type="refresh" busy={serviceRefreshing} />
                 </button>
               </div>
             </div>
@@ -823,7 +867,7 @@ function App() {
               <p className="inline-note error">{snapshot.service.lastError}</p>
             ) : !snapshot.service.authenticated ? (
               <p className="inline-note">{copy.serviceSignInHint}</p>
-            ) : snapshot.service.servers.length === 0 ? (
+            ) : snapshot.service.servers.length === 0 && !serviceRefreshing ? (
               <p className="inline-note">{copy.noServers}</p>
             ) : null}
 
@@ -841,6 +885,12 @@ function App() {
             ) : null}
 
             <div className="service-server-list" role="list" aria-label={copy.selectedServer}>
+              {serviceBusyMessage ? (
+                <div className="service-loading-row" role="status" aria-live="polite">
+                  <SpinnerIcon />
+                  <span>{serviceBusyMessage}</span>
+                </div>
+              ) : null}
               {filteredServiceServers.map((server) => {
                 const selected = server.slug === selectedServiceSlug
                 const selecting = busyAction === `select-service:${server.slug}`
@@ -1644,6 +1694,34 @@ function getServiceServerStatusLabel(
   }
 
   return getMachineStatusLabel(server.machineStatus, copy)
+}
+
+function getServiceBusyMessage(
+  busyAction: string | null,
+  serviceRefreshPhase: ServiceRefreshPhase,
+  copy: UiCopy,
+) {
+  if (busyAction === 'start-service') {
+    return copy.startingSelectedServer
+  }
+
+  if (busyAction === 'stop-service') {
+    return copy.closingSelectedServer
+  }
+
+  if (busyAction?.startsWith('select-service:')) {
+    return copy.savingSelectedServer
+  }
+
+  if (serviceRefreshPhase === 'catalog') {
+    return copy.loadingServerCatalog
+  }
+
+  if (serviceRefreshPhase === 'status' || busyAction === 'refresh-service') {
+    return copy.syncingServerStatus
+  }
+
+  return null
 }
 
 function getErrorMessage(error: unknown) {

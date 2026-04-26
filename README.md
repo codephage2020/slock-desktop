@@ -2,7 +2,7 @@
 
 Slock Desktop is a Tauri app for running the Slock workspace as a desktop application. It opens `https://app.slock.ai`, applies a desktop theme layer, and gives the user local controls for themes, language, updates, and Slock server daemons.
 
-Current version: `0.0.2`
+Current version: `0.0.3`
 
 ## Features
 

@@ -130,6 +130,10 @@ export async function refreshServiceServers() {
   return invoke<BootstrapPayload>('refresh_service_servers')
 }
 
+export async function refreshServiceServerCatalog() {
+  return invoke<BootstrapPayload>('refresh_service_server_catalog')
+}
+
 export async function updateService(selectedServerSlug?: string) {
   return invoke<BootstrapPayload>('update_service', { selectedServerSlug })
 }
