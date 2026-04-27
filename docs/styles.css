@@ -944,6 +944,28 @@ h3 {
   font-size: 0.92rem;
 }
 
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.footer-links a {
+  color: var(--text);
+  font-weight: 700;
+  transition:
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.footer-links a:hover {
+  color: var(--accent-hover);
+}
+
+.footer-links a:active {
+  transform: scale(0.97);
+}
+
 @keyframes copy-enter {
   from {
     opacity: 0;
