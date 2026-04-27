@@ -255,6 +255,7 @@ h3 {
 }
 
 .slider-toggle:focus-visible,
+.icon-action:focus-visible,
 .primary-action:focus-visible,
 .text-action:focus-visible,
 .setting-row a:focus-visible,
@@ -312,6 +313,7 @@ h3 {
 
 .side-directory a:active,
 .slider-toggle:active,
+.icon-action:active,
 .primary-action:active,
 .text-action:active,
 .setting-row a:active {
@@ -609,6 +611,49 @@ h3 {
   display: grid;
   gap: 22px;
   animation: copy-enter 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.hero-title-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.hero-title-links {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.icon-action {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 54%, transparent);
+  color: var(--muted);
+  box-shadow: var(--shadow-tight);
+  backdrop-filter: blur(12px);
+  transition:
+    transform 180ms ease,
+    color 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease;
+}
+
+.icon-action:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--text);
+}
+
+.icon-action svg {
+  width: 19px;
+  height: 19px;
+  fill: currentColor;
 }
 
 .eyebrow,
@@ -1126,6 +1171,15 @@ h3 {
     max-width: calc(100vw - 40px);
     min-width: 0;
     gap: 18px;
+  }
+
+  .hero-title-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .hero-title-links {
+    padding-top: 0;
   }
 
   .hero-lede {
