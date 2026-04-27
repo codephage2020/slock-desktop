@@ -4,6 +4,13 @@
   height: 100svh;
 }
 
+:root:has(.loading-shell),
+body:has(.loading-shell),
+#root:has(.loading-shell),
+.loading-shell {
+  background: transparent;
+}
+
 :where(button:disabled, input:disabled, textarea:disabled, select:disabled, [aria-disabled='true']) {
   cursor: default;
 }
