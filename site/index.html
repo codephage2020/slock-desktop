@@ -49,12 +49,6 @@
         <span>Slock Desktop</span>
       </a>
       <div class="header-actions">
-        <nav class="nav-links" aria-label="Landing page sections" data-i18n-aria-label="nav.sections">
-          <a href="#workflow" data-i18n="nav.workflow">Client</a>
-          <a href="#control" data-i18n="nav.control">Settings</a>
-          <a href="https://discord.gg/JY747zGc" data-i18n="nav.community">Community</a>
-          <a href="https://github.com/codephage2020/slock-desktop/releases/latest" data-i18n="nav.download">Download</a>
-        </nav>
         <div class="preference-toggles" aria-label="Page preferences" data-i18n-aria-label="controls.preferences">
           <button
             class="slider-toggle language-toggle"
@@ -101,6 +95,13 @@
         </div>
       </div>
     </header>
+
+    <nav class="side-directory" aria-label="Page sections" data-i18n-aria-label="toc.label">
+      <a href="#top" data-i18n="toc.overview">Overview</a>
+      <a href="#workflow" data-i18n="toc.client">Client</a>
+      <a href="#control" data-i18n="toc.settings">Settings</a>
+      <a href="#releases" data-i18n="toc.releases">Releases</a>
+    </nav>
 
     <main id="top">
       <section class="hero-section" aria-labelledby="hero-title">
@@ -270,7 +271,7 @@
         </div>
       </section>
 
-      <section class="release-band" aria-labelledby="release-title">
+      <section class="release-band" id="releases" aria-labelledby="release-title">
         <div>
           <p class="eyebrow">GitHub Pages</p>
           <h2 id="release-title" data-i18n="release.title">Desktop client releases for app.slock.ai users.</h2>
@@ -299,6 +300,11 @@
           'nav.control': 'Settings',
           'nav.community': 'Community',
           'nav.download': 'Download',
+          'toc.label': 'Page sections',
+          'toc.overview': 'Overview',
+          'toc.client': 'Client',
+          'toc.settings': 'Settings',
+          'toc.releases': 'Releases',
           'brand.home': 'Slock Desktop home',
           'controls.preferences': 'Page preferences',
           'controls.language': 'Language',
@@ -370,6 +376,11 @@
           'nav.control': '设置',
           'nav.community': '社区',
           'nav.download': '下载',
+          'toc.label': '页面目录',
+          'toc.overview': '概览',
+          'toc.client': '客户端',
+          'toc.settings': '设置',
+          'toc.releases': '发布',
           'brand.home': 'Slock Desktop 首页',
           'controls.preferences': '页面偏好',
           'controls.language': '语言',

@@ -77,6 +77,7 @@
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: 96px;
 }
 
 body {
@@ -133,7 +134,6 @@ h3 {
 
 .brand-link,
 .header-actions,
-.nav-links,
 .preference-toggles,
 .hero-actions,
 .workspace-status,
@@ -155,10 +155,6 @@ h3 {
   height: 34px;
   border-radius: var(--radius-md);
   box-shadow: 0 12px 24px rgba(134, 59, 255, 0.16);
-}
-
-.nav-links {
-  gap: 6px;
 }
 
 .header-actions {
@@ -262,32 +258,59 @@ h3 {
 .primary-action:focus-visible,
 .text-action:focus-visible,
 .setting-row a:focus-visible,
-.nav-links a:focus-visible {
+.side-directory a:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 30%, transparent);
   outline-offset: 3px;
 }
 
-.nav-links a {
+.side-directory {
+  position: fixed;
+  z-index: 19;
+  top: 120px;
+  right: max(24px, calc((100vw - 1120px) / 2));
+  width: 132px;
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--header-bg);
+  box-shadow: var(--shadow-tight);
+  backdrop-filter: blur(18px);
+}
+
+.side-directory a {
   min-height: 36px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 12px;
+  gap: 8px;
+  padding: 0 10px;
   border-radius: var(--radius-sm);
   color: var(--muted);
   font-size: 0.9rem;
+  font-weight: 700;
   transition:
     color 180ms ease,
     background 180ms ease,
     transform 180ms ease;
 }
 
-.nav-links a:hover {
+.side-directory a::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.46;
+}
+
+.side-directory a:hover {
   color: var(--text);
   background: var(--hover-bg);
 }
 
-.nav-links a:active,
+.side-directory a:active,
 .slider-toggle:active,
 .primary-action:active,
 .text-action:active,
@@ -989,6 +1012,10 @@ h3 {
 }
 
 @media (max-width: 1020px) {
+  .side-directory {
+    display: none;
+  }
+
   .hero-section {
     min-height: 920px;
     align-items: start;
@@ -1034,10 +1061,7 @@ h3 {
     padding: 8px 9px 8px 10px;
   }
 
-  .nav-links a[href="#workflow"],
-  .nav-links a[href="#control"],
-  .nav-links a[href="https://discord.gg/JY747zGc"],
-  .nav-links a[href="https://github.com/codephage2020/slock-desktop/releases/latest"] {
+  .side-directory {
     display: none;
   }
 
@@ -1216,10 +1240,6 @@ h3 {
 
   .site-header {
     gap: 12px;
-  }
-
-  .nav-links a {
-    padding-inline: 10px;
   }
 
   .hero-copy h1 {
