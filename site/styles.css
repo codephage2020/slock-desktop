@@ -154,8 +154,9 @@ h3 {
 .brand-link img {
   width: 34px;
   height: 34px;
-  border-radius: var(--radius-md);
-  box-shadow: 0 12px 24px rgba(134, 59, 255, 0.16);
+  border-radius: 0;
+  object-fit: contain;
+  box-shadow: 0 12px 24px rgba(16, 163, 127, 0.14);
 }
 
 .header-actions {
@@ -646,6 +647,13 @@ h3 {
   width: 18px;
   height: 18px;
   fill: currentColor;
+}
+
+.icon-action img {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
 }
 
 .eyebrow,
