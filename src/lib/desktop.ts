@@ -50,7 +50,15 @@ export interface ServiceServerSnapshot {
 
 export interface UpdateSnapshot {
   currentVersion: string
-  latestReleaseApiUrl: string
+}
+
+export interface DesktopUpdateCheck {
+  currentVersion: string
+  available: boolean
+  version: string | null
+  body: string | null
+  date: string | null
+  downloadUrl: string | null
 }
 
 export interface BootstrapPayload {
@@ -140,6 +148,10 @@ export async function updateService(selectedServerSlug?: string) {
 
 export async function openServiceLog(serverSlug: string) {
   return invoke('open_service_log', { serverSlug })
+}
+
+export async function checkDesktopUpdate() {
+  return invoke<DesktopUpdateCheck>('check_desktop_update')
 }
 
 export async function installDesktopUpdate() {

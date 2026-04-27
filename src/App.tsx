@@ -4,7 +4,9 @@ import './Settings.css'
 import {
   type BootstrapPayload,
   type CustomThemeSnapshot,
+  type DesktopUpdateCheck,
   type ThemeDefinition,
+  checkDesktopUpdate,
   createCustomTheme,
   deleteCustomTheme,
   installDesktopUpdate,
@@ -23,20 +25,11 @@ import {
   updateThemeMode,
 } from './lib/desktop'
 
-interface ReleaseInfo {
-  tagName: string
-  name: string
-  publishedAt: string
-  body: string
-  prerelease: boolean
-  updateAvailable: boolean
-}
-
 interface ReleaseState {
   loading: boolean
   installing: boolean
   error: string | null
-  latest: ReleaseInfo | null
+  latest: DesktopUpdateCheck | null
 }
 
 const INITIAL_RELEASE_STATE: ReleaseState = {
@@ -620,18 +613,7 @@ function App() {
       }))
       await waitForNextPaint()
 
-      const response = await fetch(snapshot.updates.latestReleaseApiUrl, {
-        headers: {
-          Accept: 'application/vnd.github+json',
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`GitHub release check failed with ${response.status}`)
-      }
-
-      const payload = await response.json()
-      const latest = mapReleasePayload(payload, snapshot.updates.currentVersion)
+      const latest = await checkDesktopUpdate()
       setReleaseState({
         loading: false,
         installing: false,
@@ -731,14 +713,18 @@ function App() {
     snapshot.workspaceOpen
   const activeIsOriginal = snapshot.colorScheme === 'original' || !snapshot.colorScheme
   const releaseIsCurrent =
-    Boolean(releaseState.latest) && !releaseState.latest?.updateAvailable
-  const releaseUpdateAvailable = Boolean(releaseState.latest?.updateAvailable)
+    Boolean(releaseState.latest) && !releaseState.latest?.available
+  const releaseUpdateAvailable = Boolean(releaseState.latest?.available)
   const releaseStatusLabel = releaseState.latest
-    ? releaseState.latest.updateAvailable
+    ? releaseState.latest.available
       ? copy.updateAvailable
       : copy.current
     : copy.notChecked
-  const releaseStatusTitle = releaseState.error ?? releaseStatusLabel
+  const releaseStatusTitle =
+    releaseState.error ??
+    (releaseState.latest?.version
+      ? `${releaseStatusLabel}: ${releaseState.latest.version}`
+      : releaseStatusLabel)
 
   return (
     <main
@@ -1774,58 +1760,6 @@ function waitForNextPaint() {
   return new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
   })
-}
-
-function normalizeVersion(value: string) {
-  return value
-    .trim()
-    .replace(/^v/i, '')
-    .split('-')[0]
-}
-
-function compareVersions(left: string, right: string) {
-  const leftParts = normalizeVersion(left)
-    .split('.')
-    .map((part) => Number.parseInt(part, 10) || 0)
-  const rightParts = normalizeVersion(right)
-    .split('.')
-    .map((part) => Number.parseInt(part, 10) || 0)
-  const max = Math.max(leftParts.length, rightParts.length)
-
-  for (let index = 0; index < max; index += 1) {
-    const l = leftParts[index] ?? 0
-    const r = rightParts[index] ?? 0
-
-    if (l > r) {
-      return 1
-    }
-
-    if (l < r) {
-      return -1
-    }
-  }
-
-  return 0
-}
-
-function mapReleasePayload(payload: unknown, currentVersion: string): ReleaseInfo {
-  const release = payload as {
-    tag_name?: string
-    name?: string
-    published_at?: string
-    body?: string
-    prerelease?: boolean
-  }
-
-  const tagName = release.tag_name ?? 'unknown'
-  return {
-    tagName,
-    name: release.name ?? '',
-    publishedAt: release.published_at ?? '',
-    body: release.body ?? '',
-    prerelease: Boolean(release.prerelease),
-    updateAvailable: compareVersions(tagName, currentVersion) > 0,
-  }
 }
 
 export default App

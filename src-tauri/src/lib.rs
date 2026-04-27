@@ -25,7 +25,7 @@ use tauri::{
     window::Color,
     AppHandle, LogicalSize, Manager, RunEvent, State, Theme, Url, WindowEvent,
 };
-use tauri_plugin_updater::UpdaterExt;
+use tauri_plugin_updater::{Updater, UpdaterExt};
 use theme::{meta_catalog, resolve_theme, sanitize_hex, CustomThemeItem, CustomThemeSet};
 
 const MAIN_LABEL: &str = "main";
@@ -44,7 +44,6 @@ const WORKSPACE_WINDOW_MIN_HEIGHT: f64 = 760.0;
 const DAEMON_SERVER_SLUG_ARG: &str = "--slock-desktop-server-slug";
 const DAEMON_MACHINE_ID_ARG: &str = "--slock-desktop-machine-id";
 const DAEMON_DESKTOP_MANAGED_ARG: &str = "--slock-desktop-managed";
-const DESKTOP_RELEASE_REPOSITORY: &str = "codephage2020/slock-desktop";
 const DESKTOP_UPDATER_ENDPOINT: &str =
     "https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json";
 const WORKSPACE_SERVICE_START_DELAY_MS: u64 = 750;
@@ -181,7 +180,17 @@ struct ServiceServerSnapshot {
 #[serde(rename_all = "camelCase")]
 struct UpdateSnapshot {
     current_version: String,
-    latest_release_api_url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopUpdateCheck {
+    current_version: String,
+    available: bool,
+    version: Option<String>,
+    body: Option<String>,
+    date: Option<String>,
+    download_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -713,17 +722,34 @@ fn open_service_log(app: AppHandle, server_slug: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn check_desktop_update(app: AppHandle) -> Result<DesktopUpdateCheck, String> {
+    let current_version = app.package_info().version.to_string();
+    let updater = desktop_updater(&app)?;
+    let update = updater.check().await.map_err(|err| err.to_string())?;
+
+    Ok(match update {
+        Some(update) => DesktopUpdateCheck {
+            current_version,
+            available: true,
+            version: Some(update.version),
+            body: update.body,
+            date: update.date.map(|date| date.to_string()),
+            download_url: Some(update.download_url.to_string()),
+        },
+        None => DesktopUpdateCheck {
+            current_version,
+            available: false,
+            version: None,
+            body: None,
+            date: None,
+            download_url: None,
+        },
+    })
+}
+
+#[tauri::command]
 async fn install_desktop_update(app: AppHandle) -> Result<(), String> {
-    let pubkey = desktop_updater_public_key()?;
-    let endpoint = Url::parse(DESKTOP_UPDATER_ENDPOINT).map_err(|err| err.to_string())?;
-    let updater = app
-        .updater_builder()
-        .pubkey(pubkey)
-        .timeout(Duration::from_secs(30))
-        .endpoints(vec![endpoint])
-        .map_err(|err| err.to_string())?
-        .build()
-        .map_err(|err| err.to_string())?;
+    let updater = desktop_updater(&app)?;
 
     let Some(update) = updater.check().await.map_err(|err| err.to_string())? else {
         return Err("Slock Desktop is already up to date.".to_string());
@@ -734,6 +760,16 @@ async fn install_desktop_update(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|err| err.to_string())?;
     app.restart()
+}
+
+fn desktop_updater(app: &AppHandle) -> Result<Updater, String> {
+    let endpoint = Url::parse(DESKTOP_UPDATER_ENDPOINT).map_err(|err| err.to_string())?;
+    app.updater_builder()
+        .timeout(Duration::from_secs(30))
+        .endpoints(vec![endpoint])
+        .map_err(|err| err.to_string())?
+        .build()
+        .map_err(|err| err.to_string())
 }
 
 fn handle_window_close_requested(app: &AppHandle, state: &DesktopState) {
@@ -1160,15 +1196,6 @@ fn close_app_behavior_id(behavior: CloseAppServiceBehavior) -> &'static str {
     }
 }
 
-fn desktop_updater_public_key() -> Result<&'static str, String> {
-    option_env!("SLOCK_DESKTOP_UPDATER_PUBKEY")
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            "Slock Desktop updater public key is not configured. Set SLOCK_DESKTOP_UPDATER_PUBKEY when building the app.".to_string()
-        })
-}
-
 fn build_bootstrap(
     app: &AppHandle,
     state: &State<'_, DesktopState>,
@@ -1184,10 +1211,6 @@ fn build_bootstrap(
     let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
     let updates = UpdateSnapshot {
         current_version: app.package_info().version.to_string(),
-        latest_release_api_url: format!(
-            "https://api.github.com/repos/{}/releases/latest",
-            DESKTOP_RELEASE_REPOSITORY
-        ),
     };
 
     Ok(BootstrapPayload {
@@ -4188,6 +4211,7 @@ pub fn run() {
             resolve_app_close_request,
             update_service,
             open_service_log,
+            check_desktop_update,
             install_desktop_update
         ])
         .build(tauri::generate_context!())
