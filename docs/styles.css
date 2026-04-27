@@ -267,20 +267,20 @@ h3 {
   position: fixed;
   z-index: 19;
   top: 120px;
-  right: max(24px, calc((100vw - 1120px) / 2));
+  left: max(24px, calc((100vw - 1120px) / 2 - 156px));
   width: 132px;
   display: grid;
-  gap: 4px;
-  padding: 8px;
-  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  gap: 10px;
+  padding: 12px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
   border-radius: var(--radius-lg);
-  background: var(--header-bg);
+  background: color-mix(in srgb, var(--header-bg) 72%, transparent);
   box-shadow: var(--shadow-tight);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(20px);
 }
 
 .side-directory a {
-  min-height: 36px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -324,7 +324,11 @@ h3 {
   overflow: hidden;
   display: grid;
   align-items: center;
-  padding: 132px max(24px, calc((100vw - 1120px) / 2)) 116px;
+  padding:
+    132px
+    max(24px, calc((100vw - 1120px) / 2))
+    116px
+    max(190px, calc((100vw - 1120px) / 2));
   isolation: isolate;
 }
 
@@ -1019,7 +1023,7 @@ h3 {
   .hero-section {
     min-height: 920px;
     align-items: start;
-    padding-top: 132px;
+    padding: 132px 24px 116px;
   }
 
   .hero-copy h1 {
