@@ -478,19 +478,16 @@
 }
 
 .service-server-row {
-  appearance: none;
   width: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 6px 10px;
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
   background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
   color: var(--text);
-  text-align: left;
-  cursor: pointer;
   transition:
     border-color 160ms ease,
     background 160ms ease,
@@ -504,10 +501,14 @@
   background: color-mix(in srgb, var(--accent) 6%, var(--surface-strong));
 }
 
-.service-server-row:disabled {
-  cursor: default;
+.service-server-row[data-disabled='true'] {
   opacity: 0.78;
   transform: none;
+}
+
+.service-server-row:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .service-server-row.selected {
@@ -518,6 +519,29 @@
 
 .service-server-row.running {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+
+.service-server-select-button {
+  appearance: none;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.service-server-select-button:disabled {
+  cursor: default;
+}
+
+.service-server-select-button:focus-visible {
+  outline: 0;
 }
 
 .server-count-pill {
@@ -615,6 +639,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.service-server-select-button .status-chip {
+  grid-column: 2;
+}
+
+.service-server-log-button {
+  grid-column: 2;
+  width: 30px;
+  height: 30px;
+  opacity: 0.72;
+}
+
+.service-server-row:hover .service-server-log-button,
+.service-server-row:focus-within .service-server-log-button {
+  opacity: 1;
 }
 
 .theme-rail {
@@ -1139,6 +1179,20 @@
   }
 
   .service-server-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .service-server-select-button {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .service-server-select-button .status-chip {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .service-server-log-button {
+    grid-column: 2;
+    grid-row: 1;
   }
 }

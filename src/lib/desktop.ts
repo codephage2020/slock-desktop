@@ -138,6 +138,10 @@ export async function updateService(selectedServerSlug?: string) {
   return invoke<BootstrapPayload>('update_service', { selectedServerSlug })
 }
 
+export async function openServiceLog(serverSlug: string) {
+  return invoke('open_service_log', { serverSlug })
+}
+
 export async function installDesktopUpdate() {
   return invoke('install_desktop_update')
 }

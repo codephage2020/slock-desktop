@@ -9,6 +9,7 @@ import {
   deleteCustomTheme,
   installDesktopUpdate,
   loadBootstrap,
+  openServiceLog,
   openWorkspace,
   refreshServiceServerCatalog,
   refreshServiceServers,
@@ -102,6 +103,7 @@ const COPY = {
     selectedServerPlaceholder: 'Choose a server',
     noServers: 'No servers available on this account yet.',
     refreshServers: 'Refresh Servers',
+    openServerLog: 'View server logs',
     refreshingServers: 'Refreshing…',
     loadingServerCatalog: 'Loading server list…',
     syncingServerStatus: 'Checking local server status…',
@@ -189,6 +191,7 @@ const COPY = {
     selectedServerPlaceholder: '选择一个 server',
     noServers: '当前账号下还没有可用 server。',
     refreshServers: '刷新 Server 列表',
+    openServerLog: '查看 server 日志',
     refreshingServers: '刷新中…',
     loadingServerCatalog: '正在读取 Server 列表…',
     syncingServerStatus: '正在同步本地 Server 状态…',
@@ -595,6 +598,15 @@ function App() {
     }
   }
 
+  async function handleServiceLogOpen(serverSlug: string) {
+    try {
+      setErrorMessage(null)
+      await openServiceLog(serverSlug)
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    }
+  }
+
   async function handleReleaseCheck() {
     if (!snapshot) {
       return
@@ -945,6 +957,12 @@ function App() {
               {filteredServiceServers.map((server) => {
                 const selected = server.slug === selectedServiceSlug
                 const selecting = busyAction === `select-service:${server.slug}`
+                const serverSelectionDisabled =
+                  busyAction?.startsWith('select-service:') ||
+                  busyAction === 'start-service' ||
+                  busyAction === 'workspace' ||
+                  busyAction === 'stop-service' ||
+                  busyAction === 'refresh-service'
                 const running =
                   snapshot.service.running &&
                   server.slug === snapshot.service.activeServerSlug
@@ -956,30 +974,38 @@ function App() {
                 )
 
                 return (
-                  <button
+                  <div
                     key={server.id}
                     className={`service-server-row${selected ? ' selected' : ''}${running ? ' running' : ''}`}
-                    type="button"
-                    aria-pressed={selected}
-                    disabled={
-                      busyAction?.startsWith('select-service:') ||
-                      busyAction === 'start-service' ||
-                      busyAction === 'workspace' ||
-                      busyAction === 'stop-service' ||
-                      busyAction === 'refresh-service'
-                    }
-                    onClick={() => handleServiceServerSelect(server.slug)}
+                    data-disabled={serverSelectionDisabled}
                   >
-                    <span className="service-server-copy">
-                      <span className="service-server-name-line">
-                        <span className="service-server-name">{server.name}</span>
-                        <span className="service-server-slug">{server.slug}</span>
+                    <button
+                      className="service-server-select-button"
+                      type="button"
+                      aria-pressed={selected}
+                      disabled={serverSelectionDisabled}
+                      onClick={() => handleServiceServerSelect(server.slug)}
+                    >
+                      <span className="service-server-copy">
+                        <span className="service-server-name-line">
+                          <span className="service-server-name">{server.name}</span>
+                          <span className="service-server-slug">{server.slug}</span>
+                        </span>
                       </span>
-                    </span>
-                    <span className={`status-chip${running ? ' live' : ''}`}>
-                      {selecting ? copy.saving : serverStatusLabel}
-                    </span>
-                  </button>
+                      <span className={`status-chip${running ? ' live' : ''}`}>
+                        {selecting ? copy.saving : serverStatusLabel}
+                      </span>
+                    </button>
+                    <button
+                      className="icon-action-button compact service-server-log-button"
+                      type="button"
+                      onClick={() => handleServiceLogOpen(server.slug)}
+                      aria-label={`${copy.openServerLog}: ${server.name}`}
+                      title={copy.openServerLog}
+                    >
+                      <ShellIcon />
+                    </button>
+                  </div>
                 )
               })}
               {snapshot.service.servers.length > 0 && filteredServiceServers.length === 0 ? (
@@ -1498,6 +1524,25 @@ function TrashIcon() {
       <path d="M10 11v6" />
       <path d="M14 11v6" />
       <path d="M6 6l1 15h10l1-15" />
+    </svg>
+  )
+}
+
+function ShellIcon() {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m4 8 4 4-4 4" />
+      <path d="M10 16h10" />
+      <rect width="20" height="16" x="2" y="4" rx="2" />
     </svg>
   )
 }

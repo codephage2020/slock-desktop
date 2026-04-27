@@ -8,7 +8,6 @@ use config::{
 };
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-#[cfg(debug_assertions)]
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -695,6 +694,22 @@ fn update_service(
     stop_service_process(&app, &state, Some(&service_settings), None)?;
     force_start_service(&app, &state, &service_settings)?;
     build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn open_service_log(app: AppHandle, server_slug: String) -> Result<(), String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("Choose a server before opening logs.".to_string());
+    }
+
+    let log_path = service_log_path(&app, slug)?;
+    if !log_path.exists() {
+        fs::write(&log_path, format!("Slock daemon log for {slug}\n"))
+            .map_err(|err| format!("Unable to create server log: {err}"))?;
+    }
+
+    open_log_tail(&app, slug, &log_path)
 }
 
 #[tauri::command]
@@ -1946,6 +1961,17 @@ fn force_start_service(
     }
 
     let service_command = resolve_service_command()?;
+    let mut log_file = open_service_log_file(app, &binding.server_slug)?;
+    writeln!(
+        &mut log_file,
+        "\n--- starting daemon for {} at {:?} ---",
+        binding.server_slug,
+        std::time::SystemTime::now()
+    )
+    .map_err(|err| format!("Unable to write service log header: {err}"))?;
+    let log_file_for_stdout = log_file
+        .try_clone()
+        .map_err(|err| format!("Unable to prepare service log: {err}"))?;
     let mut command = Command::new(&service_command.executable);
     command
         .args([
@@ -1963,8 +1989,8 @@ fn force_start_service(
         ])
         .env("PATH", &service_command.path_env)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::from(log_file_for_stdout))
+        .stderr(Stdio::from(log_file));
 
     let child = command.spawn().map_err(|err| {
         format!(
@@ -1981,6 +2007,101 @@ fn force_start_service(
     runtime.active_machine_id = Some(binding.machine_id);
     runtime.child = Some(child);
     Ok(())
+}
+
+fn open_service_log_file(app: &AppHandle, server_slug: &str) -> Result<fs::File, String> {
+    let log_path = service_log_path(app, server_slug)?;
+    fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|err| format!("Unable to open service log: {err}"))
+}
+
+fn service_log_path(app: &AppHandle, server_slug: &str) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|err| err.to_string())?
+        .join("server-logs");
+    fs::create_dir_all(&dir)
+        .map_err(|err| format!("Unable to create server log directory: {err}"))?;
+    Ok(dir.join(format!("{}.log", safe_log_slug(server_slug))))
+}
+
+fn open_log_tail(app: &AppHandle, server_slug: &str, log_path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let dir = app
+            .path()
+            .app_config_dir()
+            .map_err(|err| err.to_string())?
+            .join("server-logs");
+        fs::create_dir_all(&dir)
+            .map_err(|err| format!("Unable to create server log directory: {err}"))?;
+        let script_path = dir.join(format!("tail-{}.command", safe_log_slug(server_slug)));
+        let script = format!(
+            "#!/bin/zsh\nLOG_PATH={}\nclear\nprintf 'Slock daemon logs: {}\\n\\n'\ntouch \"$LOG_PATH\"\ntail -n 200 -F \"$LOG_PATH\"\n",
+            shell_quote(log_path),
+            server_slug.replace('\'', "'\\''")
+        );
+        fs::write(&script_path, script)
+            .map_err(|err| format!("Unable to create log viewer: {err}"))?;
+        let mut permissions = fs::metadata(&script_path)
+            .map_err(|err| format!("Unable to inspect log viewer: {err}"))?
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script_path, permissions)
+            .map_err(|err| format!("Unable to prepare log viewer: {err}"))?;
+        Command::new("open")
+            .arg(&script_path)
+            .spawn()
+            .map_err(|err| format!("Unable to open server log: {err}"))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(["/C", "start", "", &log_path.to_string_lossy()])
+            .spawn()
+            .map_err(|err| format!("Unable to open server log: {err}"))?;
+        return Ok(());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open")
+            .arg(log_path)
+            .spawn()
+            .map_err(|err| format!("Unable to open server log: {err}"))?;
+        return Ok(());
+    }
+}
+
+fn safe_log_slug(value: &str) -> String {
+    let sanitized: String = value
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    if sanitized.is_empty() {
+        "server".to_string()
+    } else {
+        sanitized
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn shell_quote(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
 
 fn resolve_service_command() -> Result<ServiceCommand, String> {
@@ -4066,6 +4187,7 @@ pub fn run() {
             stop_service,
             resolve_app_close_request,
             update_service,
+            open_service_log,
             install_desktop_update
         ])
         .build(tauri::generate_context!())
