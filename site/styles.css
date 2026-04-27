@@ -276,7 +276,7 @@ h3 {
   position: fixed;
   z-index: 19;
   top: 50%;
-  left: 24px;
+  right: 24px;
   width: 132px;
   transform: translateY(-50%);
   display: grid;
