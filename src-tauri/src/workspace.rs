@@ -35,8 +35,22 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const initialResolvedLanguage = __SLOCK_DESKTOP_RESOLVED_LANGUAGE__;
   let activeSection = window.__slockDesktopSettingsSection || "appearance";
   let serviceSnapshot = window.__slockDesktopServiceSnapshot || null;
+  let themeCatalog = window.__slockDesktopThemeCatalog || themes;
+  let updateSnapshot = window.__slockDesktopUpdateSnapshot || null;
+  let serviceQuery = window.__slockDesktopServiceQuery || "";
+  let releaseState = window.__slockDesktopReleaseState || {
+    loading: false,
+    installing: false,
+    error: null,
+    latest: null,
+  };
+  let newThemeDraft = null;
+  let renamingThemeId = null;
+  let renameDraft = "";
   let serviceBusyAction = null;
   let serviceError = null;
+  let appearanceBusyAction = null;
+  let updateBusyAction = null;
   const modes = [
     { id: "light", icon: "☼", key: "modeLight" },
     { id: "dark", icon: "◐", key: "modeDark" },
@@ -47,6 +61,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     { id: "zh-CN", shortKey: "languageChineseShort", key: "languageChinese" },
     { id: "system", shortKey: "languageSystemShort", key: "languageSystem" },
   ];
+  const chineseLanguageIcon = () =>
+    `<svg class="language-icon" aria-hidden="true" viewBox="0 0 1024 1024" fill="currentColor"><path d="M555.231787 330.203429v-107.997284h-68.202727v108.038827H263.433935v273.457531H487.02906v210.976899h68.202727V603.70431h224.21827V330.203429H555.231787z m-68.202727 209.074952h-157.337694v-144.605675h157.335888v144.605675z m226.131053 0H555.195662v-144.605675h157.962645v144.605675z"></path></svg>`;
   const copy = {
     "en-US": {
       launcher: "Desktop Settings",
@@ -62,6 +78,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       serverUrl: "Server URL",
       selectedServer: "Selected server",
       selectedServerPlaceholder: "Choose a server",
+      serverSearch: "Find server",
+      noMatchingServers: "No matching servers.",
       serviceStatus: "Service status",
       serviceRunning: "running",
       serviceIdle: "not running",
@@ -74,6 +92,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       loadingService: "Loading server settings...",
       refreshServers: "Refresh servers",
       refreshingServers: "Refreshing...",
+      openServerLog: "View server logs",
       startService: "Start service",
       closeServer: "Close server",
       closingServer: "Closing...",
@@ -81,6 +100,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       openSelectedServer: "Open selected server",
       openingServer: "Opening...",
       startingService: "Starting...",
+      saving: "Saving...",
       mode: "Mode",
       modeLight: "Light",
       modeDark: "Dark",
@@ -95,6 +115,28 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       languageSystemShort: "System",
       saved: "Saved in desktop config",
       themes: "themes",
+      themeNewLabel: "New theme",
+      themeCreate: "Create",
+      themeRename: "Rename",
+      themeDelete: "Delete",
+      themeRenameSave: "Save",
+      themeRenameCancel: "Cancel",
+      themeEmptyHint: "No custom themes yet.",
+      themeNamePlaceholder: "Untitled theme",
+      themeAccent: "Accent",
+      creatingTheme: "Creating...",
+      deletingTheme: "Deleting...",
+      updatesTitle: "Desktop version",
+      currentVersion: "Current version",
+      updateAvailable: "Update available",
+      upToDate: "Up to date",
+      notChecked: "Not checked",
+      checkUpdates: "Check for updates",
+      checkingUpdates: "Checking...",
+      installUpdate: "Update",
+      installingUpdate: "Updating...",
+      updateCheckFailed: "Update check failed.",
+      noReleaseNotes: "No release notes were provided.",
       dragHint: "Drag to move",
       themeNames: {
         original: "Original",
@@ -117,6 +159,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       serverUrl: "Server URL",
       selectedServer: "已选 Server",
       selectedServerPlaceholder: "选择一个 server",
+      serverSearch: "搜索 server",
+      noMatchingServers: "没有匹配的 server。",
       serviceStatus: "服务状态",
       serviceRunning: "运行中",
       serviceIdle: "未运行",
@@ -129,6 +173,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       loadingService: "正在读取 server 设置...",
       refreshServers: "刷新 Server",
       refreshingServers: "刷新中...",
+      openServerLog: "查看 server 日志",
       startService: "启动服务",
       closeServer: "关闭 Server",
       closingServer: "关闭中...",
@@ -136,6 +181,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       openSelectedServer: "打开所选 Server",
       openingServer: "打开中...",
       startingService: "启动中...",
+      saving: "保存中...",
       mode: "模式",
       modeLight: "亮色",
       modeDark: "暗黑",
@@ -150,6 +196,28 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       languageSystemShort: "跟随系统",
       saved: "已保存到桌面配置",
       themes: "个主题",
+      themeNewLabel: "新建主题",
+      themeCreate: "创建",
+      themeRename: "重命名",
+      themeDelete: "删除",
+      themeRenameSave: "保存",
+      themeRenameCancel: "取消",
+      themeEmptyHint: "还没有自定义主题。",
+      themeNamePlaceholder: "未命名主题",
+      themeAccent: "强调色",
+      creatingTheme: "创建中...",
+      deletingTheme: "删除中...",
+      updatesTitle: "桌面版本",
+      currentVersion: "当前版本",
+      updateAvailable: "有可用更新",
+      upToDate: "已是最新",
+      notChecked: "未检查",
+      checkUpdates: "检查更新",
+      checkingUpdates: "检查中...",
+      installUpdate: "更新",
+      installingUpdate: "更新中...",
+      updateCheckFailed: "更新检查失败。",
+      noReleaseNotes: "此版本没有提供发布说明。",
       dragHint: "拖动移动",
       themeNames: {
         original: "原主题",
@@ -251,23 +319,196 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     if (selected) return service.configured ? t("serviceIdle") : t("serviceNotLinked");
     return service.configured ? t("serviceIdle") : t("serviceNotLinked");
   };
-  const syncServicePayload = (payload) => {
-    if (!payload?.service) return;
-    serviceSnapshot = payload.service;
+  const syncDesktopPayload = (payload) => {
+    if (!payload) return;
+    if (payload.service) {
+      serviceSnapshot = payload.service;
+      window.__slockDesktopServiceSnapshot = serviceSnapshot;
+    }
+    if (payload.themes) {
+      themeCatalog = payload.themes;
+      window.__slockDesktopThemeCatalog = themeCatalog;
+    }
+    if (payload.updates) {
+      updateSnapshot = payload.updates;
+      window.__slockDesktopUpdateSnapshot = updateSnapshot;
+    }
+    if (payload.colorScheme) activeThemeId = payload.colorScheme;
+    if (payload.appearanceMode) activeMode = payload.appearanceMode;
+    if (payload.language) activeLanguage = payload.language;
     serviceError = null;
-    window.__slockDesktopServiceSnapshot = serviceSnapshot;
   };
   const loadServiceSnapshot = async (command = "bootstrap", args = {}, busy = "service-load") => {
     serviceBusyAction = busy;
     render();
     try {
       const payload = await invokeDesktop(command, args);
-      syncServicePayload(payload);
+      syncDesktopPayload(payload);
     } catch (error) {
       serviceError = error?.message || String(error);
       console.warn("[Slock Desktop] service settings sync failed", error);
     } finally {
       serviceBusyAction = null;
+      render();
+    }
+  };
+  const refreshServiceSnapshot = async () => {
+    serviceBusyAction = "service-refresh";
+    render();
+    try {
+      let payload = await invokeDesktop("refresh_service_server_catalog", {});
+      syncDesktopPayload(payload);
+      serviceBusyAction = "service-status";
+      render();
+      payload = await invokeDesktop("refresh_service_servers", {});
+      syncDesktopPayload(payload);
+    } catch (error) {
+      serviceError = error?.message || String(error);
+      console.warn("[Slock Desktop] service settings sync failed", error);
+    } finally {
+      serviceBusyAction = null;
+      render();
+    }
+  };
+  const normalizeVersion = (value) =>
+    String(value || "")
+      .trim()
+      .replace(/^v/i, "")
+      .split("-")[0];
+  const compareVersions = (left, right) => {
+    const leftParts = normalizeVersion(left).split(".").map((part) => Number.parseInt(part, 10) || 0);
+    const rightParts = normalizeVersion(right).split(".").map((part) => Number.parseInt(part, 10) || 0);
+    const max = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < max; index += 1) {
+      const l = leftParts[index] || 0;
+      const r = rightParts[index] || 0;
+      if (l > r) return 1;
+      if (l < r) return -1;
+    }
+    return 0;
+  };
+  const mapReleasePayload = (payload, currentVersion) => {
+    const tagName = payload?.tag_name || "unknown";
+    return {
+      tagName,
+      name: payload?.name || "",
+      publishedAt: payload?.published_at || "",
+      body: payload?.body || "",
+      prerelease: !!payload?.prerelease,
+      updateAvailable: compareVersions(tagName, currentVersion) > 0,
+    };
+  };
+  const checkDesktopRelease = async () => {
+    if (!updateSnapshot?.latestReleaseApiUrl) {
+      const payload = await invokeDesktop("bootstrap", { refresh: false });
+      syncDesktopPayload(payload);
+    }
+    releaseState = { ...releaseState, loading: true, error: null };
+    window.__slockDesktopReleaseState = releaseState;
+    render();
+    try {
+      const response = await fetch(updateSnapshot.latestReleaseApiUrl, {
+        headers: { Accept: "application/vnd.github+json" },
+      });
+      if (!response.ok) throw new Error(`${t("updateCheckFailed")} ${response.status}`);
+      const payload = await response.json();
+      releaseState = {
+        loading: false,
+        installing: false,
+        error: null,
+        latest: mapReleasePayload(payload, updateSnapshot.currentVersion),
+      };
+    } catch (error) {
+      releaseState = {
+        loading: false,
+        installing: false,
+        error: error?.message || String(error || t("updateCheckFailed")),
+        latest: null,
+      };
+    }
+    window.__slockDesktopReleaseState = releaseState;
+    render();
+  };
+  const installDesktopRelease = async () => {
+    releaseState = { ...releaseState, installing: true, error: null };
+    window.__slockDesktopReleaseState = releaseState;
+    render();
+    try {
+      await invokeDesktop("install_desktop_update", {});
+    } catch (error) {
+      releaseState = {
+        ...releaseState,
+        installing: false,
+        error: error?.message || String(error || t("updateCheckFailed")),
+      };
+      window.__slockDesktopReleaseState = releaseState;
+      render();
+    }
+  };
+  const syncAppearancePayload = (payload) => {
+    syncDesktopPayload(payload);
+    render();
+    translateSlockMenus();
+  };
+  const createCustomTheme = async (name, accent) => {
+    appearanceBusyAction = "theme-create";
+    render();
+    try {
+      const payload = await invokeDesktop("create_custom_theme", { name, accent });
+      newThemeDraft = null;
+      syncAppearancePayload(payload);
+    } catch (error) {
+      console.warn("[Slock Desktop] custom theme create failed", error);
+    } finally {
+      appearanceBusyAction = null;
+      render();
+    }
+  };
+  const renameCustomTheme = async (id, name) => {
+    const trimmed = String(name || "").trim();
+    if (!trimmed) {
+      renamingThemeId = null;
+      renameDraft = "";
+      render();
+      return;
+    }
+    appearanceBusyAction = `theme-rename:${id}`;
+    render();
+    try {
+      const payload = await invokeDesktop("rename_custom_theme", { id, name: trimmed });
+      renamingThemeId = null;
+      renameDraft = "";
+      syncAppearancePayload(payload);
+    } catch (error) {
+      console.warn("[Slock Desktop] custom theme rename failed", error);
+    } finally {
+      appearanceBusyAction = null;
+      render();
+    }
+  };
+  const updateCustomThemeAccent = async (id, accent) => {
+    appearanceBusyAction = `theme-accent:${id}`;
+    render();
+    try {
+      const payload = await invokeDesktop("update_custom_theme_accent", { id, accent });
+      syncAppearancePayload(payload);
+    } catch (error) {
+      console.warn("[Slock Desktop] custom theme accent update failed", error);
+    } finally {
+      appearanceBusyAction = null;
+      render();
+    }
+  };
+  const deleteCustomTheme = async (id) => {
+    appearanceBusyAction = `theme-delete:${id}`;
+    render();
+    try {
+      const payload = await invokeDesktop("delete_custom_theme", { id });
+      syncAppearancePayload(payload);
+    } catch (error) {
+      console.warn("[Slock Desktop] custom theme delete failed", error);
+    } finally {
+      appearanceBusyAction = null;
       render();
     }
   };
@@ -1398,8 +1639,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	    .launcher,
 	    .mode-option,
 	    .theme-option,
+      .theme-row,
+      .theme-select,
+      .tiny-button,
 	    .nav-item,
 	    .settings-icon-button,
+      .service-row-wrap,
 	    .service-row,
 	    .service-open-button {
 	      pointer-events: auto;
@@ -1602,6 +1847,133 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 7px;
     }
 
+    .content-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .theme-row,
+    .theme-draft {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 6px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 72%, transparent);
+      border-radius: var(--desktop-radius-lg);
+      background: transparent;
+    }
+
+    .theme-row.active {
+      border-color: color-mix(in srgb, var(--desktop-accent) 28%, var(--desktop-line));
+      background: var(--desktop-selection);
+    }
+
+    .theme-select {
+      appearance: none;
+      min-width: 0;
+      min-height: 46px;
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr) 18px;
+      align-items: center;
+      gap: 9px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--desktop-text);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .theme-select:disabled {
+      cursor: default;
+      opacity: 0.72;
+    }
+
+    .theme-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .theme-draft {
+      grid-template-columns: 30px minmax(0, 1fr) auto auto;
+      border-style: dashed;
+      background: var(--desktop-surface-secondary);
+    }
+
+    .theme-name-input {
+      width: 100%;
+      min-width: 0;
+      min-height: 30px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 78%, transparent);
+      border-radius: var(--desktop-radius-sm);
+      background: var(--desktop-surface);
+      color: var(--desktop-text);
+      padding: 4px 8px;
+      outline: 0;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .theme-name-input:focus {
+      border-color: color-mix(in srgb, var(--desktop-accent) 40%, var(--desktop-line));
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--desktop-accent) 16%, transparent);
+    }
+
+    .accent-dot {
+      position: relative;
+      width: 24px;
+      height: 24px;
+      display: inline-block;
+      border-radius: var(--desktop-radius-pill);
+      background: var(--custom-accent);
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 0 0 3px color-mix(in srgb, var(--desktop-surface) 70%, transparent);
+      cursor: pointer;
+    }
+
+    .accent-dot.large {
+      width: 28px;
+      height: 28px;
+    }
+
+    .accent-dot input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .tiny-button {
+      min-height: 28px;
+      padding: 4px 9px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-sm);
+      background: var(--desktop-surface-secondary);
+      color: var(--desktop-text);
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    .tiny-button.accent {
+      border-color: color-mix(in srgb, var(--desktop-accent) 45%, var(--desktop-line));
+      background: var(--desktop-accent);
+      color: #fff;
+    }
+
+    .tiny-button.muted {
+      color: var(--desktop-muted);
+      background: transparent;
+    }
+
     .quick-controls {
       display: flex;
       flex-wrap: wrap;
@@ -1641,6 +2013,17 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       font-size: 12px;
       font-weight: 600;
       white-space: nowrap;
+    }
+
+    .language-option[data-language-id="zh-CN"] {
+      min-width: 34px;
+      padding: 0;
+    }
+
+    .language-icon {
+      width: 14px;
+      height: 14px;
+      display: block;
     }
 
     .language-option.active,
@@ -1770,18 +2153,37 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	      flex: 0 0 auto;
 	    }
 
+      .service-count {
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        border-radius: var(--desktop-radius-pill);
+        background: var(--desktop-surface-secondary);
+        color: var(--desktop-muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
 		    .settings-icon-button {
 		      width: 32px;
 		      height: 32px;
 		      display: inline-grid;
 		      place-items: center;
 		      padding: 0;
-		      border: 1px solid color-mix(in srgb, var(--desktop-border) 72%, transparent);
+		      border: 1px solid color-mix(in srgb, var(--desktop-line) 72%, transparent);
 		      border-radius: var(--desktop-radius-pill);
 		      background: color-mix(in srgb, var(--desktop-surface-secondary) 58%, transparent);
 		      color: var(--desktop-muted);
 		      font-size: 14px;
 		    }
+
+        .settings-icon-button.compact {
+          width: 28px;
+          height: 28px;
+          font-size: 13px;
+        }
 
 		    .settings-icon-button svg {
 		      width: 16px;
@@ -1792,13 +2194,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 		    .settings-icon-button.positive:hover {
 		      color: var(--desktop-accent);
 		      background: var(--desktop-selection);
-		      border-color: color-mix(in srgb, var(--desktop-accent) 32%, var(--desktop-border));
+		      border-color: color-mix(in srgb, var(--desktop-accent) 32%, var(--desktop-line));
 		    }
 
 		    .settings-icon-button.danger:hover {
 		      color: color-mix(in srgb, #c24141 82%, var(--desktop-text));
 		      background: color-mix(in srgb, #c24141 10%, var(--desktop-surface-secondary));
-		      border-color: color-mix(in srgb, #c24141 30%, var(--desktop-border));
+		      border-color: color-mix(in srgb, #c24141 30%, var(--desktop-line));
 		    }
 
 	    .settings-icon-button:disabled,
@@ -1839,6 +2241,54 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	      overflow: auto;
 	    }
 
+      .server-search {
+        min-height: 32px;
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr);
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        border: 1px solid color-mix(in srgb, var(--desktop-line) 66%, transparent);
+        border-radius: var(--desktop-radius-md);
+        background: var(--desktop-surface-secondary);
+        color: var(--desktop-muted);
+      }
+
+      .server-search input {
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--desktop-text);
+        font: inherit;
+        font-size: 12px;
+      }
+
+      .server-search input::placeholder {
+        color: color-mix(in srgb, var(--desktop-muted) 76%, transparent);
+      }
+
+      .server-search:focus-within {
+        border-color: color-mix(in srgb, var(--desktop-accent) 32%, var(--desktop-line));
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--desktop-accent) 12%, transparent);
+      }
+
+      .service-row-wrap {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 7px;
+        border: 1px solid color-mix(in srgb, var(--desktop-line) 72%, transparent);
+        border-radius: var(--desktop-radius-md);
+        background: transparent;
+      }
+
+      .service-row-wrap.active {
+        border-color: color-mix(in srgb, var(--desktop-accent) 28%, var(--desktop-line));
+        background: var(--desktop-selection);
+      }
+
 	    .service-row {
 	      display: grid;
 	      grid-template-columns: minmax(0, 1fr) auto;
@@ -1846,16 +2296,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	      gap: 10px;
 	      min-height: 54px;
 	      padding: 8px 10px;
-	      border: 1px solid color-mix(in srgb, var(--desktop-line) 72%, transparent);
+	      border: 0;
 	      border-radius: var(--desktop-radius-md);
 	      background: transparent;
 	      color: var(--desktop-text);
 	      text-align: left;
-	    }
-
-	    .service-row.active {
-	      border-color: color-mix(in srgb, var(--desktop-accent) 28%, var(--desktop-line));
-	      background: var(--desktop-selection);
 	    }
 
 	    .service-row-copy {
@@ -1896,6 +2341,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	      white-space: nowrap;
 	    }
 
+      .service-log-button {
+        margin-right: 7px;
+      }
+
 	    .service-chip.live {
 	      background: var(--desktop-selection);
 	      color: var(--desktop-accent);
@@ -1910,6 +2359,27 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	      font-size: 12px;
 	      font-weight: 700;
 	    }
+
+      .service-open-button.secondary {
+        background: var(--desktop-surface-secondary);
+        color: var(--desktop-text);
+        border-color: var(--desktop-line);
+      }
+
+      .updates-panel {
+        display: grid;
+        gap: 12px;
+      }
+
+      .updates-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .updates-actions .service-open-button {
+        padding: 0 12px;
+      }
 
     @media (hover: hover) {
       .launcher:hover {
@@ -1930,12 +2400,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
 		      .nav-item:hover,
 		      .settings-icon-button:hover,
+		      .service-row-wrap:hover,
 		      .service-row:hover {
 		        background: var(--desktop-hover);
 		      }
 
 		      .settings-icon-button:hover {
-		        border-color: color-mix(in srgb, var(--desktop-text) 18%, var(--desktop-border));
+		        border-color: color-mix(in srgb, var(--desktop-text) 18%, var(--desktop-line));
 		      }
 
 	      .service-open-button:hover {
@@ -1949,6 +2420,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	    .theme-option:active,
 	    .nav-item:active,
 		    .settings-icon-button:active,
+        .theme-row:active,
+        .theme-select:active,
+        .service-row-wrap:active,
 		    .service-row:active,
 		    .service-open-button:active {
 		      transform: scale(0.97);
@@ -1984,8 +2458,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	      .language-option,
 	      .mode-option,
 	      .theme-option,
+        .theme-row,
+        .theme-select,
+        .tiny-button,
 	      .nav-item,
 	      .settings-icon-button,
+        .service-row-wrap,
 	      .service-row,
 	      .service-open-button,
 	      .panel {
@@ -1997,20 +2475,96 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const navItem = (section, label) =>
     `<button class="nav-item${activeSection === section ? " active" : ""}" type="button" data-section="${section}">${label}</button>`;
 
-  const appearanceContent = () => `
-    <p class="setting-title">${t("theme")}</p>
-    <div class="theme-list" role="radiogroup" aria-label="${t("theme")}"></div>
-    <div class="status">
-      <span>${t("saved")}</span>
-      <span>${themes.length} ${t("themes")}</span>
-    </div>
-  `;
+  const isCustomTheme = (theme) => theme.id !== "original";
+  const appearanceContent = () => {
+    const themeRows = themeCatalog
+      .map((theme) => {
+        const selected = theme.id === activeThemeId || (theme.id === "original" && !activeThemeId);
+        const display = themeDisplay(theme);
+        const custom = isCustomTheme(theme);
+        const renaming = renamingThemeId === theme.id;
+        const deleting = appearanceBusyAction === `theme-delete:${theme.id}`;
+        const swatchStyle = [
+          `--theme-canvas:${escapeHtml(theme.canvas)}`,
+          `--theme-surface:${escapeHtml(theme.surface)}`,
+          `--theme-strong:${escapeHtml(theme.surfaceStrong)}`,
+          `--theme-line:${escapeHtml(theme.line)}`,
+          `--theme-accent:${escapeHtml(theme.accent)}`,
+        ].join(";");
+        return `
+          <div class="theme-row${selected ? " active" : ""}${custom ? "" : " locked"}" data-theme-id="${escapeHtml(theme.id)}">
+            <button
+              class="theme-select"
+              type="button"
+              role="radio"
+              aria-checked="${selected}"
+              data-theme-select="${escapeHtml(theme.id)}"
+              ${appearanceBusyAction ? "disabled" : ""}
+            >
+              <span class="swatch" style="${swatchStyle}" aria-hidden="true"><span></span><span></span><span></span></span>
+              <span class="theme-copy">
+                ${
+                  renaming
+                    ? `<input class="theme-name-input" data-theme-rename-input="${escapeHtml(theme.id)}" value="${escapeHtml(renameDraft)}" aria-label="${t("themeRename")}">`
+                    : `<span class="theme-name">${escapeHtml(display.name)}</span><span class="theme-summary">${escapeHtml(custom ? theme.accent : display.summary)}</span>`
+                }
+              </span>
+              <span class="check" aria-hidden="true">${selected ? "✓" : ""}</span>
+            </button>
+            ${
+              custom
+                ? `<div class="theme-actions">
+                    <label class="accent-dot" style="--custom-accent:${escapeHtml(theme.accent)}" title="${t("themeAccent")}">
+                      <span class="sr-only">${t("themeAccent")}</span>
+                      <input type="color" value="${escapeHtml(theme.accent)}" data-theme-accent="${escapeHtml(theme.id)}" ${appearanceBusyAction ? "disabled" : ""}>
+                    </label>
+                    ${
+                      renaming
+                        ? `<button class="tiny-button" type="button" data-theme-rename-save="${escapeHtml(theme.id)}">${t("themeRenameSave")}</button>
+                           <button class="tiny-button muted" type="button" data-theme-rename-cancel>${t("themeRenameCancel")}</button>`
+                        : `<button class="settings-icon-button compact" type="button" data-theme-rename="${escapeHtml(theme.id)}" title="${t("themeRename")}" aria-label="${t("themeRename")}" ${appearanceBusyAction ? "disabled" : ""}>✎</button>
+                           <button class="settings-icon-button danger compact" type="button" data-theme-delete="${escapeHtml(theme.id)}" title="${t("themeDelete")}" aria-label="${t("themeDelete")}" ${deleting ? "disabled" : ""}>${deleting ? actionIcon("refresh", true) : "×"}</button>`
+                    }
+                  </div>`
+                : ""
+            }
+          </div>
+        `;
+      })
+      .join("");
+    const draft = newThemeDraft
+      ? `<div class="theme-draft">
+          <label class="accent-dot large" style="--custom-accent:${escapeHtml(newThemeDraft.accent)}" title="${t("themeAccent")}">
+            <span class="sr-only">${t("themeAccent")}</span>
+            <input type="color" value="${escapeHtml(newThemeDraft.accent)}" data-theme-draft-accent>
+          </label>
+          <input class="theme-name-input" data-theme-draft-name value="${escapeHtml(newThemeDraft.name)}" placeholder="${t("themeNamePlaceholder")}" aria-label="${t("themeNewLabel")}">
+          <button class="tiny-button accent" type="button" data-theme-create ${appearanceBusyAction === "theme-create" ? "disabled" : ""}>${appearanceBusyAction === "theme-create" ? t("creatingTheme") : t("themeCreate")}</button>
+          <button class="tiny-button muted" type="button" data-theme-draft-cancel>${t("themeRenameCancel")}</button>
+        </div>`
+      : "";
+
+    return `
+      <div class="content-head">
+        <p class="setting-title">${t("theme")}</p>
+        <button class="settings-icon-button positive" type="button" data-theme-new title="${t("themeNewLabel")}" aria-label="${t("themeNewLabel")}" ${newThemeDraft || appearanceBusyAction ? "disabled" : ""}>+</button>
+      </div>
+      <div class="theme-list" role="radiogroup" aria-label="${t("theme")}">
+        ${themeRows || `<p class="service-empty">${t("themeEmptyHint")}</p>`}
+        ${draft}
+      </div>
+      <div class="status">
+        <span>${t("saved")}</span>
+        <span>${themeCatalog.length} ${t("themes")}</span>
+      </div>
+    `;
+  };
 
   const serviceContent = () => {
     const service = serviceSnapshot;
     const selected = selectedServiceServer();
     const busy = serviceBusyAction;
-    const busyRefresh = busy === "service-refresh" || busy === "service-load";
+    const busyRefresh = busy === "service-refresh" || busy === "service-status" || busy === "service-load";
     const busyStart = busy === "service-start";
     const busyClose = busy === "service-stop";
     const busyOpen = busy === "service-open";
@@ -2027,7 +2581,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
             ? t("noServers")
             : t("serverSettingsDescription"));
     const servers = service?.servers || [];
+    const normalizedQuery = serviceQuery.trim().toLowerCase();
+    const visibleServers = normalizedQuery
+      ? servers.filter((server) =>
+          `${server.name} ${server.slug} ${server.machineName || ""}`.toLowerCase().includes(normalizedQuery),
+        )
+      : servers;
     const serverRows = servers
+      .filter((server) => visibleServers.includes(server))
       .map((server) => {
         const selectedRow = server.slug === selectedSlug;
         const running = service?.running && server.slug === service.activeServerSlug;
@@ -2043,23 +2604,29 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           ? `${t("machineStatus")}: ${escapeHtml(server.machineName)}`
           : `${t("machineStatus")}: ${escapeHtml(status)}`;
         return `
-          <button
-            class="service-row${selectedRow ? " active" : ""}${running ? " running" : ""}"
-            type="button"
-            data-service-action="select"
-            data-server-slug="${escapeHtml(server.slug)}"
-            aria-pressed="${selectedRow}"
-            ${busy ? "disabled" : ""}
-          >
-            <span class="service-row-copy">
-              <span class="service-row-name">${escapeHtml(server.name)}</span>
-              <span class="service-row-meta">${escapeHtml(server.slug)} · ${machineMeta}</span>
-            </span>
-            <span class="service-chip${running ? " live" : ""}">${busySelect ? t("saving") : escapeHtml(status)}</span>
-          </button>
+          <div class="service-row-wrap${selectedRow ? " active" : ""}${running ? " running" : ""}">
+            <button
+              class="service-row"
+              type="button"
+              data-service-action="select"
+              data-server-slug="${escapeHtml(server.slug)}"
+              aria-pressed="${selectedRow}"
+              ${busy ? "disabled" : ""}
+            >
+              <span class="service-row-copy">
+                <span class="service-row-name">${escapeHtml(server.name)}</span>
+                <span class="service-row-meta">${escapeHtml(server.slug)} · ${machineMeta}</span>
+              </span>
+              <span class="service-chip${running ? " live" : ""}">${busySelect ? t("saving") : escapeHtml(status)}</span>
+            </button>
+            <button class="settings-icon-button compact service-log-button" type="button" data-service-action="log" data-server-slug="${escapeHtml(server.slug)}" title="${t("openServerLog")}" aria-label="${t("openServerLog")}: ${escapeHtml(server.name)}">⌁</button>
+          </div>
         `;
       })
       .join("");
+    const emptyRows = servers.length > 0 && visibleServers.length === 0
+      ? `<p class="service-empty">${t("noMatchingServers")}</p>`
+      : `<p class="service-empty">${escapeHtml(serviceNote)}</p>`;
 
     return `
       <div class="service-panel">
@@ -2068,6 +2635,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
             <p class="setting-title">${t("serverSettings")}</p>
             <p class="service-description">${escapeHtml(serviceNote)}</p>
           </div>
+          <span class="service-count">${normalizedQuery ? `${visibleServers.length}/${servers.length}` : servers.length}</span>
           <div class="service-actions">
             <button class="settings-icon-button positive" type="button" data-service-action="start" title="${t("startService")}" aria-label="${t("startService")}" ${!selectedSlug || busy ? "disabled" : ""}>
               ${actionIcon("start", busyStart)}
@@ -2088,12 +2656,63 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           <span>${t("selectedServer")}</span>
           <strong>${escapeHtml(selected?.name || selectedSlug || t("selectedServerPlaceholder"))}</strong>
         </div>
+        ${
+          servers.length > 0
+            ? `<label class="server-search">
+                <span aria-hidden="true">⌕</span>
+                <span class="sr-only">${t("serverSearch")}</span>
+                <input data-service-search value="${escapeHtml(serviceQuery)}" placeholder="${t("serverSearch")}" aria-label="${t("serverSearch")}">
+              </label>`
+            : ""
+        }
         <div class="service-list" role="list" aria-label="${t("selectedServer")}">
-          ${serverRows || `<p class="service-empty">${escapeHtml(serviceNote)}</p>`}
+          ${serverRows || emptyRows}
         </div>
         <button class="service-open-button" type="button" data-service-action="open" ${!selectedSlug || busy ? "disabled" : ""}>
           ${busyOpen ? t("openingServer") : t("openSelectedServer")}
         </button>
+      </div>
+    `;
+  };
+  const updatesContent = () => {
+    const currentVersion = updateSnapshot?.currentVersion || "";
+    const latest = releaseState.latest;
+    const updateAvailable = !!latest?.updateAvailable;
+    const status = releaseState.error
+      ? releaseState.error
+      : latest
+        ? updateAvailable
+          ? t("updateAvailable")
+          : t("upToDate")
+        : t("notChecked");
+    const checking = releaseState.loading || updateBusyAction === "release-check";
+    const installing = releaseState.installing || updateBusyAction === "release-install";
+    return `
+      <div class="updates-panel">
+        <div class="content-head">
+          <p class="setting-title">${t("updatesTitle")}</p>
+          <span class="service-chip${updateAvailable ? " live" : ""}">${escapeHtml(status)}</span>
+        </div>
+        <div class="service-facts">
+          <span>${t("currentVersion")}</span>
+          <strong>${escapeHtml(currentVersion || t("notChecked"))}</strong>
+          ${
+            latest
+              ? `<span>${t("updateAvailable")}</span><strong>${escapeHtml(latest.tagName)}</strong>`
+              : `<span>${t("updateAvailable")}</span><strong>${t("notChecked")}</strong>`
+          }
+        </div>
+        <div class="updates-actions">
+          <button class="service-open-button secondary" type="button" data-update-action="check" ${checking || installing ? "disabled" : ""}>
+            ${checking ? t("checkingUpdates") : t("checkUpdates")}
+          </button>
+          ${
+            updateAvailable
+              ? `<button class="service-open-button" type="button" data-update-action="install" ${installing || checking ? "disabled" : ""}>${installing ? t("installingUpdate") : t("installUpdate")}</button>`
+              : ""
+          }
+        </div>
+        <p class="service-description">${escapeHtml(latest?.name || releaseState.error || t("noReleaseNotes"))}</p>
       </div>
     `;
   };
@@ -2137,14 +2756,19 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         <nav class="nav" aria-label="${t("settingsSections")}">
           ${navItem("appearance", t("appearance"))}
           ${navItem("service", t("service"))}
-          <div class="nav-item inert">${t("updates")}</div>
+          ${navItem("updates", t("updates"))}
         </nav>
-        <div class="content">${activeSection === "service" ? serviceContent() : appearanceContent()}</div>
+        <div class="content">${
+          activeSection === "service"
+            ? serviceContent()
+            : activeSection === "updates"
+              ? updatesContent()
+              : appearanceContent()
+        }</div>
       </div>
     `;
 
     const modeList = inner.querySelector(".mode-list");
-    const list = inner.querySelector(".theme-list");
     const languageList = inner.querySelector(".language-list");
 
     inner.querySelectorAll("[data-section]").forEach((item) => {
@@ -2178,51 +2802,106 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       option.setAttribute("role", "radio");
       option.setAttribute("aria-checked", String(selected));
       option.title = t(language.key);
-      option.textContent = t(language.shortKey);
+      option.dataset.languageId = language.id;
+      option.innerHTML = language.id === "zh-CN" ? chineseLanguageIcon() : escapeHtml(t(language.shortKey));
       option.addEventListener("click", () => setLanguage(language.id));
       languageList.appendChild(option);
     });
 
-    themes.forEach((theme) => {
-      if (!list) return;
-      const selected = theme.id === activeThemeId;
-      const display = themeDisplay(theme);
-      const option = document.createElement("button");
-      option.className = `theme-option${selected ? " active" : ""}`;
-      option.type = "button";
-      option.setAttribute("role", "radio");
-      option.setAttribute("aria-checked", String(selected));
-      option.style.setProperty("--theme-canvas", theme.canvas);
-      option.style.setProperty("--theme-surface", theme.surface);
-      option.style.setProperty("--theme-strong", theme.surfaceStrong);
-      option.style.setProperty("--theme-line", theme.line);
-      option.style.setProperty("--theme-accent", theme.accent);
-
-      const swatch = document.createElement("span");
-      swatch.className = "swatch";
-      swatch.setAttribute("aria-hidden", "true");
-      swatch.innerHTML = "<span></span><span></span><span></span>";
-
-      const copy = document.createElement("span");
-      copy.className = "theme-copy";
-
-      const name = document.createElement("span");
-      name.className = "theme-name";
-      name.textContent = display.name;
-
-      const summary = document.createElement("span");
-      summary.className = "theme-summary";
-      summary.textContent = display.summary;
-
-      const check = document.createElement("span");
-      check.className = "check";
-      check.setAttribute("aria-hidden", "true");
-      check.textContent = selected ? "✓" : "";
-
-      copy.append(name, summary);
-      option.append(swatch, copy, check);
-      option.addEventListener("click", () => setTheme(theme.id));
-      list.appendChild(option);
+    inner.querySelectorAll("[data-theme-select]").forEach((action) => {
+      action.addEventListener("click", (event) => {
+        if (event.target instanceof Element && event.target.closest("input")) return;
+        const themeId = action.getAttribute("data-theme-select");
+        if (themeId && renamingThemeId !== themeId) setTheme(themeId);
+      });
+    });
+    inner.querySelector("[data-theme-new]")?.addEventListener("click", () => {
+      newThemeDraft = { name: "", accent: '#10a37f' };
+      render();
+      queueMicrotask(() => shadow.querySelector("[data-theme-draft-name]")?.focus());
+    });
+    inner.querySelector("[data-theme-draft-accent]")?.addEventListener("change", (event) => {
+      newThemeDraft = {
+        ...(newThemeDraft || { name: "", accent: '#10a37f' }),
+        accent: event.target.value,
+      };
+      render();
+    });
+    inner.querySelector("[data-theme-draft-name]")?.addEventListener("input", (event) => {
+      newThemeDraft = {
+        ...(newThemeDraft || { name: "", accent: '#10a37f' }),
+        name: event.target.value,
+      };
+    });
+    inner.querySelector("[data-theme-draft-name]")?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (newThemeDraft) createCustomTheme(newThemeDraft.name, newThemeDraft.accent);
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        newThemeDraft = null;
+        render();
+      }
+    });
+    inner.querySelector("[data-theme-create]")?.addEventListener("click", () => {
+      if (newThemeDraft) createCustomTheme(newThemeDraft.name, newThemeDraft.accent);
+    });
+    inner.querySelector("[data-theme-draft-cancel]")?.addEventListener("click", () => {
+      newThemeDraft = null;
+      render();
+    });
+    inner.querySelectorAll("[data-theme-accent]").forEach((input) => {
+      input.addEventListener("change", (event) => {
+        const themeId = input.getAttribute("data-theme-accent");
+        if (themeId) updateCustomThemeAccent(themeId, event.target.value);
+      });
+    });
+    inner.querySelectorAll("[data-theme-rename]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const themeId = button.getAttribute("data-theme-rename");
+        const theme = themeCatalog.find((item) => item.id === themeId);
+        if (!theme) return;
+        renamingThemeId = theme.id;
+        renameDraft = theme.name || "";
+        render();
+        queueMicrotask(() => shadow.querySelector("[data-theme-rename-input]")?.focus());
+      });
+    });
+    inner.querySelectorAll("[data-theme-rename-input]").forEach((input) => {
+      input.addEventListener("input", (event) => {
+        renameDraft = event.target.value;
+      });
+      input.addEventListener("keydown", (event) => {
+        const themeId = input.getAttribute("data-theme-rename-input");
+        if (event.key === "Enter" && themeId) {
+          event.preventDefault();
+          renameCustomTheme(themeId, renameDraft);
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          renamingThemeId = null;
+          renameDraft = "";
+          render();
+        }
+      });
+    });
+    inner.querySelectorAll("[data-theme-rename-save]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const themeId = button.getAttribute("data-theme-rename-save");
+        if (themeId) renameCustomTheme(themeId, renameDraft);
+      });
+    });
+    inner.querySelector("[data-theme-rename-cancel]")?.addEventListener("click", () => {
+      renamingThemeId = null;
+      renameDraft = "";
+      render();
+    });
+    inner.querySelectorAll("[data-theme-delete]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const themeId = button.getAttribute("data-theme-delete");
+        if (themeId) deleteCustomTheme(themeId);
+      });
     });
 
     inner.querySelectorAll("[data-service-action]").forEach((action) => {
@@ -2230,7 +2909,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         const serviceAction = action.dataset.serviceAction;
         const serverSlug = action.dataset.serverSlug;
         if (serviceAction === "refresh") {
-          loadServiceSnapshot("refresh_service_servers", {}, "service-refresh");
+          refreshServiceSnapshot();
         } else if (serviceAction === "start") {
           const selected = selectedServiceServer();
           const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug || "";
@@ -2261,6 +2940,33 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           if (selectedServerSlug) {
             loadServiceSnapshot("open_workspace", { selectedServerSlug }, "service-open");
           }
+        } else if (serviceAction === "log" && serverSlug) {
+          invokeDesktop("open_service_log", { serverSlug }).catch((error) => {
+            serviceError = error?.message || String(error);
+            render();
+          });
+        }
+      });
+    });
+    inner.querySelector("[data-service-search]")?.addEventListener("input", (event) => {
+      serviceQuery = event.target.value;
+      window.__slockDesktopServiceQuery = serviceQuery;
+      render();
+      queueMicrotask(() => {
+        const input = shadow.querySelector("[data-service-search]");
+        if (input) {
+          input.focus();
+          input.setSelectionRange?.(serviceQuery.length, serviceQuery.length);
+        }
+      });
+    });
+    inner.querySelectorAll("[data-update-action]").forEach((action) => {
+      action.addEventListener("click", () => {
+        const updateAction = action.getAttribute("data-update-action");
+        if (updateAction === "check") {
+          checkDesktopRelease();
+        } else if (updateAction === "install") {
+          installDesktopRelease();
         }
       });
     });
@@ -2269,7 +2975,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       queueMicrotask(async () => {
         await loadServiceSnapshot("bootstrap", { refresh: false });
         if (serviceBusyAction) return;
-        loadServiceSnapshot("refresh_service_servers", {}, "service-refresh");
+        refreshServiceSnapshot();
+      });
+    }
+    if (activeSection === "updates" && !updateSnapshot && !updateBusyAction) {
+      updateBusyAction = "updates-load";
+      queueMicrotask(async () => {
+        await loadServiceSnapshot("bootstrap", { refresh: false }, null);
+        updateBusyAction = null;
+        render();
       });
     }
 
@@ -2338,11 +3052,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     render();
 
     try {
-      const invoke = window.__TAURI__?.core?.invoke;
-      if (typeof invoke !== "function") {
-        throw new Error("Tauri invoke API is unavailable");
-      }
-      await invoke("set_theme", { themeId });
+      const payload = await invokeDesktop("set_theme", { themeId });
+      syncDesktopPayload(payload);
+      render();
     } catch (error) {
       console.error("[Slock Desktop] theme update failed", error);
     }
@@ -2353,11 +3065,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     render();
 
     try {
-      const invoke = window.__TAURI__?.core?.invoke;
-      if (typeof invoke !== "function") {
-        throw new Error("Tauri invoke API is unavailable");
-      }
-      await invoke("set_theme_mode", { themeMode: mode });
+      const payload = await invokeDesktop("set_theme_mode", { themeMode: mode });
+      syncDesktopPayload(payload);
+      render();
     } catch (error) {
       console.error("[Slock Desktop] theme mode update failed", error);
     }
@@ -2369,11 +3079,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     translateSlockMenus();
 
     try {
-      const invoke = window.__TAURI__?.core?.invoke;
-      if (typeof invoke !== "function") {
-        throw new Error("Tauri invoke API is unavailable");
-      }
-      await invoke("set_language", { language });
+      const payload = await invokeDesktop("set_language", { language });
+      syncDesktopPayload(payload);
+      render();
     } catch (error) {
       console.error("[Slock Desktop] language update failed", error);
     }
@@ -2520,7 +3228,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           await loadServiceSnapshot("bootstrap", { refresh: false });
         }
         if (serviceBusyAction) return;
-        loadServiceSnapshot("refresh_service_servers", {}, "service-refresh");
+        refreshServiceSnapshot();
       })();
     }, 1500);
   }
@@ -2581,5 +3289,17 @@ mod tests {
         assert!(
             script.contains("service.configured ? t(\"serviceIdle\") : t(\"serviceNotLinked\")")
         );
+    }
+
+    #[test]
+    fn settings_overlay_exposes_launcher_settings_controls() {
+        let script = settings_overlay_script("default", "system", "zh-CN", "zh-CN", &[]);
+
+        assert!(script.contains("data-theme-new"));
+        assert!(script.contains("create_custom_theme"));
+        assert!(script.contains("data-service-search"));
+        assert!(script.contains("open_service_log"));
+        assert!(script.contains("data-update-action=\"check\""));
+        assert!(script.contains("install_desktop_update"));
     }
 }

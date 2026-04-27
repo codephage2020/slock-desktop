@@ -141,11 +141,10 @@ const COPY = {
     creatingTheme: 'Creating…',
     deletingTheme: 'Deleting…',
     appBootingTitle: 'slock-desktop',
-    appBootingDetail: 'Starting desktop…',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
-    workspaceParked: '工作区待启动',
+    workspaceParked: '',
     appearance: '主题',
     service: '服务',
     updates: '更新',
@@ -229,7 +228,6 @@ const COPY = {
     creatingTheme: '创建中…',
     deletingTheme: '删除中…',
     appBootingTitle: 'slock-desktop',
-    appBootingDetail: '正在启动桌面端…',
   },
 } as const
 
@@ -656,7 +654,6 @@ function App() {
         <SlockBrandMark className="loading-mark" />
         <SpinnerIcon />
         <p className="eyebrow">{bootCopy.appBootingTitle}</p>
-        <p className="loading-detail">{bootCopy.appBootingDetail}</p>
       </main>
     )
   }
@@ -809,9 +806,9 @@ function App() {
 
         <header className="launch-meta-row">
           <div className="launch-status-group">
-            <span className={`status-pill${snapshot.workspaceOpen ? ' live' : ''}`}>
-              {snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}
-            </span>
+            {snapshot.workspaceOpen ? (
+              <span className="status-pill live">{copy.workspaceActive}</span>
+            ) : null}
             <span className={`status-pill${snapshot.service.running ? ' live' : ''}`}>
               {serviceStatusLabel}
             </span>
@@ -1344,17 +1341,10 @@ function OptionIcon({ type }: { type: OptionIconType }) {
       <svg
         className="option-icon"
         aria-hidden="true"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        viewBox="0 0 1024 1024"
+        fill="currentColor"
       >
-        <path d="M6 8h12" />
-        <path d="M12 5v3" />
-        <path d="M8 11c1.1 3.4 2.6 5.5 4 6.8" />
-        <path d="M16 11c-1.1 3.4-2.6 5.5-4 6.8" />
+        <path d="M555.231787 330.203429v-107.997284h-68.202727v108.038827H263.433935v273.457531H487.02906v210.976899h68.202727V603.70431h224.21827V330.203429H555.231787z m-68.202727 209.074952h-157.337694v-144.605675h157.335888v144.605675z m226.131053 0H555.195662v-144.605675h157.962645v144.605675z" />
       </svg>
     )
   }

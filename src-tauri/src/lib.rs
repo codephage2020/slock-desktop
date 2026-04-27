@@ -46,7 +46,6 @@ const DAEMON_MACHINE_ID_ARG: &str = "--slock-desktop-machine-id";
 const DAEMON_DESKTOP_MANAGED_ARG: &str = "--slock-desktop-managed";
 const DESKTOP_UPDATER_ENDPOINT: &str =
     "https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json";
-const WORKSPACE_SERVICE_START_DELAY_MS: u64 = 750;
 #[cfg(debug_assertions)]
 const WORKSPACE_LAUNCH_LOG_PATH: &str = "/tmp/slock-desktop-launch.log";
 
@@ -539,6 +538,7 @@ fn open_workspace(
     };
     let target_url = workspace_url_for_slug(&selected_server_slug);
     begin_workspace_launch_trace(&state, command_started, &target_url);
+    maybe_start_service(&app, &state, &service_settings, true)?;
 
     enter_workspace_in_main_window(
         &app,
@@ -549,8 +549,7 @@ fn open_workspace(
         &custom_theme_set(&custom_themes),
         &selected_server_slug,
     )?;
-    start_workspace_service_in_background(app.clone(), service_settings);
-    build_bootstrap(&app, &state, false)
+    build_bootstrap(&app, &state, true)
 }
 
 #[tauri::command]
@@ -646,12 +645,7 @@ fn resolve_app_close_request(
         settings.service.clone()
     };
 
-    if behavior == CloseAppServiceBehavior::Stop {
-        stop_service_process(&app, &state, Some(&service_settings), None)?;
-    }
-
-    mark_app_close_confirmed(&state);
-    app.exit(0);
+    finish_app_close_async(app, behavior, Some(service_settings));
     Ok(())
 }
 
@@ -788,9 +782,14 @@ fn handle_window_close_requested(app: &AppHandle, state: &DesktopState) {
             }
         }
         behavior => {
-            apply_remembered_close_behavior(app, state, behavior);
-            mark_app_close_confirmed(state);
-            app.exit(0);
+            if request_app_close_progress(app, state, behavior) {
+                let service_settings = state
+                    .settings
+                    .lock()
+                    .ok()
+                    .map(|settings| settings.service.clone());
+                finish_app_close_async(app.clone(), behavior, service_settings);
+            }
         }
     }
 }
@@ -809,9 +808,21 @@ fn handle_app_exit_requested(app: &AppHandle, state: &DesktopState) -> bool {
                 true
             }
         }
-        behavior => {
-            apply_remembered_close_behavior(app, state, behavior);
-            true
+        CloseAppServiceBehavior::Keep => true,
+        CloseAppServiceBehavior::Stop => {
+            if request_app_close_progress(app, state, CloseAppServiceBehavior::Stop) {
+                let service_settings = state
+                    .settings
+                    .lock()
+                    .ok()
+                    .map(|settings| settings.service.clone());
+                finish_app_close_async(
+                    app.clone(),
+                    CloseAppServiceBehavior::Stop,
+                    service_settings,
+                );
+            }
+            false
         }
     }
 }
@@ -827,20 +838,31 @@ fn handle_app_exit(app: &AppHandle, state: &DesktopState) {
     }
 }
 
-fn apply_remembered_close_behavior(
-    app: &AppHandle,
-    state: &DesktopState,
+fn finish_app_close_async(
+    app: AppHandle,
     behavior: CloseAppServiceBehavior,
+    service_settings: Option<ServiceSettings>,
 ) {
-    if behavior != CloseAppServiceBehavior::Stop {
-        return;
-    }
-    let service_settings = state
-        .settings
-        .lock()
-        .ok()
-        .map(|settings| settings.service.clone());
-    let _ = stop_service_process(app, state, service_settings.as_ref(), None);
+    thread::spawn(move || {
+        let state = app.state::<DesktopState>();
+        let result = if behavior == CloseAppServiceBehavior::Stop {
+            stop_service_process(&app, &state, service_settings.as_ref(), None)
+        } else {
+            Ok(())
+        };
+
+        match result {
+            Ok(()) => {
+                mark_app_close_confirmed(&state);
+                app.exit(0);
+            }
+            Err(err) => {
+                log::warn!("failed to close app with selected server behavior: {err}");
+                mark_app_close_prompt_visible(&state, false);
+                show_app_close_error(&app, &err);
+            }
+        }
+    });
 }
 
 fn current_close_app_behavior(state: &DesktopState) -> CloseAppServiceBehavior {
@@ -872,6 +894,59 @@ fn request_app_close_prompt(app: &AppHandle, state: &DesktopState) {
     if let Err(err) = result {
         log::warn!("failed to show app close prompt: {err}");
         mark_app_close_prompt_visible(state, false);
+    }
+}
+
+fn request_app_close_progress(
+    app: &AppHandle,
+    state: &DesktopState,
+    behavior: CloseAppServiceBehavior,
+) -> bool {
+    if !mark_app_close_prompt_requested(state) {
+        return false;
+    }
+
+    let copy = app_close_prompt_copy(state);
+    let prompt_script = app_close_prompt_script(&copy);
+    let progress_script = app_close_progress_script(behavior);
+    let result = app
+        .get_webview_window(MAIN_LABEL)
+        .ok_or_else(|| "Main window is unavailable".to_string())
+        .and_then(|window| {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+            window.eval(&prompt_script).map_err(|err| err.to_string())?;
+            window.eval(&progress_script).map_err(|err| err.to_string())
+        });
+
+    if let Err(err) = result {
+        log::warn!("failed to show app close progress: {err}");
+        mark_app_close_prompt_visible(state, false);
+        return false;
+    }
+
+    true
+}
+
+fn close_app_action_for_behavior(behavior: CloseAppServiceBehavior) -> &'static str {
+    match behavior {
+        CloseAppServiceBehavior::Stop => "closeServer",
+        _ => "keepServer",
+    }
+}
+
+fn app_close_progress_script(behavior: CloseAppServiceBehavior) -> String {
+    let action = close_app_action_for_behavior(behavior);
+    let payload = serde_json::to_string(action).unwrap_or_else(|_| "\"keepServer\"".to_string());
+    format!("window.__slockDesktopCloseSetBusy?.({payload});")
+}
+
+fn show_app_close_error(app: &AppHandle, message: &str) {
+    let payload = serde_json::to_string(message).unwrap_or_else(|_| "\"\"".to_string());
+    let script = format!("window.__slockDesktopCloseSetError?.({payload});");
+    if let Some(window) = app.get_webview_window(MAIN_LABEL) {
+        let _ = window.eval(&script);
     }
 }
 
@@ -1023,6 +1098,17 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
       button.style.opacity = busy ? ".65" : "1";
       button.style.cursor = busy ? "default" : "pointer";
     }});
+  }};
+  window.__slockDesktopCloseSetBusy = (action) => {{
+    if (error) error.style.display = "none";
+    setBusy(true, action);
+  }};
+  window.__slockDesktopCloseSetError = (message) => {{
+    setBusy(false, "closeServer");
+    if (error) {{
+      error.textContent = message || copy.error;
+      error.style.display = "block";
+    }}
   }};
   host.addEventListener("click", async (event) => {{
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;
@@ -1343,9 +1429,9 @@ fn apply_theme_to_workspace(
     custom_theme: &CustomThemeSet,
 ) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(MAIN_LABEL) {
-        apply_window_theme(&window, theme_mode);
         apply_window_language(app, &window, language, window_is_workspace(&window));
         if window_is_workspace(&window) {
+            apply_window_theme(&window, theme_mode);
             let active_theme_id = theme.id.clone();
             apply_workspace_scripts_to_window(
                 &window,
@@ -1356,6 +1442,8 @@ fn apply_theme_to_workspace(
                 resolve_desktop_language(language),
                 custom_theme,
             )?;
+        } else {
+            apply_launcher_window_theme(&window, theme_mode);
         }
     }
 
@@ -1363,14 +1451,9 @@ fn apply_theme_to_workspace(
 }
 
 fn apply_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
-    let normalized_mode = theme::normalize_mode(theme_mode);
-    let native_theme = match normalized_mode {
-        "light" => Some(Theme::Light),
-        "dark" => Some(Theme::Dark),
-        _ => None,
-    };
-    let _ = window.set_theme(native_theme);
+    apply_native_window_theme(window, theme_mode);
 
+    let normalized_mode = theme::normalize_mode(theme_mode);
     let effective_dark = normalized_mode == "dark"
         || (normalized_mode == "system" && matches!(window.theme(), Ok(Theme::Dark)));
     let background = if effective_dark {
@@ -1379,6 +1462,21 @@ fn apply_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
         Color(255, 255, 255, 255)
     };
     let _ = window.set_background_color(Some(background));
+}
+
+fn apply_launcher_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
+    apply_native_window_theme(window, theme_mode);
+    let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
+}
+
+fn apply_native_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
+    let normalized_mode = theme::normalize_mode(theme_mode);
+    let native_theme = match normalized_mode {
+        "light" => Some(Theme::Light),
+        "dark" => Some(Theme::Dark),
+        _ => None,
+    };
+    let _ = window.set_theme(native_theme);
 }
 
 fn apply_window_language(
@@ -1905,23 +2003,6 @@ fn should_start_service_for_workspace(
 ) -> bool {
     !settings.selected_server_slug.trim().is_empty()
         && (force_for_workspace || settings.auto_start_with_workspace)
-}
-
-fn start_workspace_service_in_background(app: AppHandle, settings: ServiceSettings) {
-    if settings.selected_server_slug.trim().is_empty() {
-        return;
-    }
-
-    thread::spawn(move || {
-        sleep(Duration::from_millis(WORKSPACE_SERVICE_START_DELAY_MS));
-        let state = app.state::<DesktopState>();
-        if let Err(err) = maybe_start_service(&app, &state, &settings, true) {
-            log::warn!("failed to start workspace service in background: {err}");
-            if let Ok(mut runtime) = state.service.lock() {
-                runtime.last_error = Some(err);
-            }
-        }
-    });
 }
 
 fn force_start_service(
@@ -4184,7 +4265,7 @@ pub fn run() {
                     .map(|settings| (settings.appearance_mode.clone(), settings.language.clone()))
                     .unwrap_or_else(|_| ("system".to_string(), "system".to_string()));
                 apply_window_language(app.handle(), &window, &language, false);
-                apply_window_theme(&window, &appearance_mode);
+                apply_launcher_window_theme(&window, &appearance_mode);
                 apply_launcher_titlebar_style(&window);
                 apply_launcher_window_size(&window);
             }
@@ -4283,6 +4364,35 @@ mod tests {
             "slock-desktop-{name}-{}-{suffix}",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn tauri_config_keeps_startup_window_transparent_on_macos() {
+        let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("tauri config should parse");
+        let app = config
+            .get("app")
+            .and_then(|value| value.as_object())
+            .expect("tauri config should include app settings");
+        let window = app
+            .get("windows")
+            .and_then(|value| value.as_array())
+            .and_then(|windows| windows.first())
+            .and_then(|value| value.as_object())
+            .expect("tauri config should include the main window");
+
+        assert_eq!(
+            app.get("macOSPrivateApi").and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            window.get("transparent").and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            window.get("backgroundColor"),
+            Some(&serde_json::json!([0, 0, 0, 0]))
+        );
     }
 
     #[test]
@@ -4847,6 +4957,8 @@ mod tests {
         assert!(script.contains("data-close-action=\"closeServer\""));
         assert!(script.contains("resolve_app_close_request"));
         assert!(script.contains("data-close-busy"));
+        assert!(script.contains("__slockDesktopCloseSetBusy"));
+        assert!(script.contains("__slockDesktopCloseSetError"));
         assert!(script.contains("surfaceLooksDark"));
         assert!(script.contains("document.querySelector(\".studio-shell\")"));
         assert!(script.contains("prefers-color-scheme: dark"));
