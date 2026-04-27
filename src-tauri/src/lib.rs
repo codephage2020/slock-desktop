@@ -8,15 +8,18 @@ use config::{
 };
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+#[cfg(debug_assertions)]
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
-    env,
+    env, fs,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Mutex, OnceLock},
     thread::{self, sleep},
     time::{Duration, Instant},
 };
-#[cfg(debug_assertions)]
-use std::{fs::OpenOptions, io::Write};
 use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::PageLoadEvent,
@@ -79,6 +82,12 @@ struct ServiceRuntime {
     active_machine_id: Option<String>,
     cached_servers: Vec<ServiceServerSnapshot>,
     cached_sync_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ServiceCommand {
+    executable: PathBuf,
+    path_env: String,
 }
 
 #[derive(Default)]
@@ -1668,7 +1677,7 @@ fn log_workspace_launch_step(
     eprintln!("{message}");
     log::info!("{message}");
     #[cfg(debug_assertions)]
-    if let Ok(mut file) = OpenOptions::new()
+    if let Ok(mut file) = fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(WORKSPACE_LAUNCH_LOG_PATH)
@@ -1913,7 +1922,8 @@ fn force_start_service(
         return Err("Selected server did not return a daemon API key.".to_string());
     }
 
-    let mut command = Command::new("npx");
+    let service_command = resolve_service_command()?;
+    let mut command = Command::new(&service_command.executable);
     command
         .args([
             "--yes",
@@ -1928,13 +1938,17 @@ fn force_start_service(
             binding.machine_id.as_str(),
             DAEMON_DESKTOP_MANAGED_ARG,
         ])
+        .env("PATH", &service_command.path_env)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
-    let child = command
-        .spawn()
-        .map_err(|err| format!("Failed to start service: {err}"))?;
+    let child = command.spawn().map_err(|err| {
+        format!(
+            "Failed to start service with {}: {err}",
+            service_command.executable.display()
+        )
+    })?;
     let mut runtime = state
         .service
         .lock()
@@ -1944,6 +1958,196 @@ fn force_start_service(
     runtime.active_machine_id = Some(binding.machine_id);
     runtime.child = Some(child);
     Ok(())
+}
+
+fn resolve_service_command() -> Result<ServiceCommand, String> {
+    let mut search_dirs = service_command_search_dirs();
+    if let Some(command) = resolve_service_command_from_dirs(search_dirs.clone()) {
+        return Ok(command);
+    }
+
+    append_login_shell_path_dirs(&mut search_dirs);
+    resolve_service_command_from_dirs(search_dirs).ok_or_else(|| {
+        "Unable to find npx and Node.js. Install Node.js/npm, then restart Slock Desktop."
+            .to_string()
+    })
+}
+
+fn resolve_service_command_from_dirs(search_dirs: Vec<PathBuf>) -> Option<ServiceCommand> {
+    let executable = find_executable_in_dirs("npx", &search_dirs)?;
+    let mut path_dirs = Vec::new();
+    if let Some(parent) = executable.parent() {
+        push_unique_path(&mut path_dirs, parent.to_path_buf());
+    }
+    for dir in search_dirs {
+        push_unique_path(&mut path_dirs, dir);
+    }
+
+    find_executable_in_dirs("node", &path_dirs)?;
+    let path_env = env::join_paths(&path_dirs)
+        .ok()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| {
+            path_dirs
+                .iter()
+                .map(|dir| dir.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(":")
+        });
+
+    Some(ServiceCommand {
+        executable,
+        path_env,
+    })
+}
+
+fn service_command_search_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(path_env) = env::var_os("PATH") {
+        push_path_env_dirs(&mut dirs, &path_env);
+    }
+
+    append_node_install_dirs(&mut dirs);
+
+    for dir in [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/opt/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ] {
+        push_unique_path(&mut dirs, PathBuf::from(dir));
+    }
+
+    dirs
+}
+
+fn append_login_shell_path_dirs(dirs: &mut Vec<PathBuf>) {
+    let shell = env::var("SHELL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "/bin/zsh".to_string());
+    let Ok(output) = Command::new(shell)
+        .args(["-lc", "printf '%s' \"$PATH\""])
+        .output()
+    else {
+        return;
+    };
+    if output.status.success() {
+        let path_env =
+            std::ffi::OsString::from(String::from_utf8_lossy(&output.stdout).into_owned());
+        push_path_env_dirs(dirs, &path_env);
+    }
+}
+
+fn append_node_install_dirs(dirs: &mut Vec<PathBuf>) {
+    append_homebrew_node_dirs(dirs, Path::new("/opt/homebrew/opt"));
+    append_homebrew_node_dirs(dirs, Path::new("/usr/local/opt"));
+
+    let Some(home) = env::var_os("HOME").map(PathBuf::from) else {
+        return;
+    };
+
+    push_existing_dir(dirs, home.join(".volta/bin"));
+    push_existing_dir(dirs, home.join(".asdf/shims"));
+    append_versioned_node_bins(dirs, &home.join(".nvm/versions/node"), &["bin"]);
+    append_versioned_node_bins(
+        dirs,
+        &home.join(".fnm/node-versions"),
+        &["installation", "bin"],
+    );
+    append_versioned_node_bins(
+        dirs,
+        &home.join(".local/share/mise/installs/node"),
+        &["bin"],
+    );
+}
+
+fn append_homebrew_node_dirs(dirs: &mut Vec<PathBuf>, root: &Path) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    let mut node_bins = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name == "node" || name.starts_with("node@") {
+                Some(entry.path().join("bin"))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    node_bins.sort();
+    node_bins.reverse();
+    for dir in node_bins {
+        push_existing_dir(dirs, dir);
+    }
+}
+
+fn append_versioned_node_bins(dirs: &mut Vec<PathBuf>, root: &Path, suffix: &[&str]) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    let mut bins = entries
+        .flatten()
+        .map(|entry| {
+            suffix
+                .iter()
+                .fold(entry.path(), |path, segment| path.join(segment))
+        })
+        .collect::<Vec<_>>();
+    bins.sort();
+    bins.reverse();
+    for dir in bins {
+        push_existing_dir(dirs, dir);
+    }
+}
+
+fn find_executable_in_dirs(command_name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    dirs.iter()
+        .map(|dir| dir.join(command_name))
+        .find(|path| executable_exists(path))
+}
+
+fn executable_exists(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        metadata.permissions().mode() & 0o111 != 0
+    }
+
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn push_path_env_dirs(dirs: &mut Vec<PathBuf>, path_env: &std::ffi::OsStr) {
+    for dir in env::split_paths(path_env) {
+        push_unique_path(dirs, dir);
+    }
+}
+
+fn push_existing_dir(dirs: &mut Vec<PathBuf>, dir: PathBuf) {
+    if dir.is_dir() {
+        push_unique_path(dirs, dir);
+    }
+}
+
+fn push_unique_path(dirs: &mut Vec<PathBuf>, dir: PathBuf) {
+    if !dirs.iter().any(|existing| existing == &dir) {
+        dirs.push(dir);
+    }
 }
 
 fn prepare_runtime_for_service_target(
@@ -3868,7 +4072,8 @@ mod tests {
         app_close_prompt_script, close_app_behavior_from_action, close_app_behavior_from_id,
         close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
         prepare_runtime_for_service_target, process_entries_from_ps_output,
-        process_tree_pids_from_entries, sanitize_service_settings, select_existing_machine,
+        process_tree_pids_from_entries, resolve_service_command_from_dirs,
+        sanitize_service_settings, select_existing_machine,
         selected_service_daemon_process_from_server_snapshots,
         service_daemon_process_from_resolved_target, should_refresh_service_servers,
         should_start_service_for_workspace, terminate_daemon_process,
@@ -3878,7 +4083,69 @@ mod tests {
         WorkspaceSessionSeed,
     };
     use crate::config::{AppSettings, ServiceMachineBinding, ServiceSettings};
-    use std::{process::Command, sync::Mutex};
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::{
+        env, fs,
+        path::{Path, PathBuf},
+        process::Command,
+        sync::Mutex,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn make_executable(path: &Path) {
+        fs::write(path, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            let mut permissions = fs::metadata(path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
+    }
+
+    fn temp_test_dir(name: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        env::temp_dir().join(format!(
+            "slock-desktop-{name}-{}-{suffix}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn service_command_resolution_adds_node_dir_for_npx_shebang() {
+        let root = temp_test_dir("service-command-path");
+        let node_bin = root.join("node-v24/bin");
+        fs::create_dir_all(&node_bin).unwrap();
+        let npx = node_bin.join("npx");
+        make_executable(&npx);
+        make_executable(&node_bin.join("node"));
+
+        let command =
+            resolve_service_command_from_dirs(vec![PathBuf::from("/usr/bin"), node_bin.clone()])
+                .unwrap();
+        let path_dirs = env::split_paths(&command.path_env).collect::<Vec<_>>();
+
+        assert_eq!(command.executable, npx);
+        assert_eq!(path_dirs.first(), Some(&node_bin));
+        assert!(path_dirs.contains(&node_bin));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn service_command_resolution_requires_node_for_npx() {
+        let root = temp_test_dir("service-command-missing-node");
+        let node_bin = root.join("node-v24/bin");
+        fs::create_dir_all(&node_bin).unwrap();
+        make_executable(&node_bin.join("npx"));
+
+        assert!(resolve_service_command_from_dirs(vec![node_bin]).is_none());
+
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn daemon_command_matching_respects_target_api_key() {

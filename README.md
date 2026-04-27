@@ -2,7 +2,7 @@
 
 Slock Desktop is a Tauri app for running the Slock workspace as a desktop application. It opens `https://app.slock.ai`, applies a desktop theme layer, and gives the user local controls for themes, language, updates, and Slock server daemons.
 
-Current version: `0.0.3`
+Current version: `0.0.4`
 
 ## Features
 
@@ -80,6 +80,12 @@ Published builds live on the GitHub Releases page:
 
 ```text
 https://github.com/codephage2020/slock-desktop/releases
+```
+
+Current macOS builds are unsigned. After dragging the app into `/Applications`, remove the quarantine attribute before opening:
+
+```bash
+sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app
 ```
 
 For a release build, set the version in all three files:
