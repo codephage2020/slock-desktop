@@ -1,5 +1,8 @@
 # Slock Desktop
 
+> [!TIP]
+> Unsigned app unlock / 未签名应用解除隔离: `sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app`
+
 Slock Desktop is the macOS client for the Slock workspace at `https://app.slock.ai`. It adds desktop controls for themes, language, updates, and local Slock services.
 
 Slock Desktop 是 Slock 工作区的 macOS 桌面客户端，内置主题、语言、更新和本地服务管理。
@@ -33,7 +36,6 @@ src-tauri/target/release/bundle/macos/Slock Desktop.app
 ## Release / 发布
 
 - Builds / 发布包: [GitHub Releases](https://github.com/codephage2020/slock-desktop/releases)
-- Unsigned app unlock / 未签名应用解除隔离: `sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app`
 - Version files / 版本文件: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
 - Updater manifest / 更新清单: `https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json`
 
