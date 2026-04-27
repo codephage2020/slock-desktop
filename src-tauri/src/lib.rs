@@ -1176,7 +1176,7 @@ fn build_bootstrap(
     };
 
     Ok(BootstrapPayload {
-        app_name: "Slock Desktop".to_string(),
+        app_name: "slock-desktop".to_string(),
         workspace_url: workspace_url_for_slug(&settings.service.selected_server_slug),
         color_scheme: settings.color_scheme.clone(),
         appearance_mode: appearance_mode.clone(),
@@ -1329,9 +1329,9 @@ fn apply_window_language(
     let resolved_language = resolve_desktop_language(language);
     let title = match (resolved_language, workspace) {
         ("zh-CN", true) => "Slock 工作区",
-        ("zh-CN", false) => "Slock 桌面端",
+        ("zh-CN", false) => "slock-desktop",
         (_, true) => "Slock Workspace",
-        (_, false) => "Slock Desktop",
+        (_, false) => "slock-desktop",
     };
     let _ = window.set_title(title);
     if let Err(err) = apply_native_menu(app, resolved_language) {

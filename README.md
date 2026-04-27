@@ -4,7 +4,7 @@ Slock Desktop is the macOS client for the Slock workspace at `https://app.slock.
 
 Slock Desktop 是 Slock 工作区的 macOS 桌面客户端，内置主题、语言、更新和本地服务管理。
 
-- Version / 版本: `0.0.4`
+- Version / 版本: `0.0.5`
 - Discord / 社区: [discord.gg/JY747zGc](https://discord.gg/JY747zGc)
 
 ## Requirements / 环境

@@ -145,7 +145,7 @@ const COPY = {
     themeCreate: 'Create',
     creatingTheme: 'Creating…',
     deletingTheme: 'Deleting…',
-    appBootingTitle: 'slock.ai',
+    appBootingTitle: 'slock-desktop',
     appBootingDetail: 'Starting desktop…',
   },
   'zh-CN': {
@@ -232,7 +232,7 @@ const COPY = {
     themeCreate: '创建',
     creatingTheme: '创建中…',
     deletingTheme: '删除中…',
-    appBootingTitle: 'slock.ai',
+    appBootingTitle: 'slock-desktop',
     appBootingDetail: '正在启动桌面端…',
   },
 } as const
@@ -726,6 +726,7 @@ function App() {
       ? copy.updateAvailable
       : copy.current
     : copy.notChecked
+  const releaseStatusTitle = releaseState.error ?? releaseStatusLabel
 
   return (
     <main
@@ -760,55 +761,104 @@ function App() {
         <header className="launch-bar">
           <div className="launch-bar-brand">
             <SlockBrandMark className="launch-bar-mark" />
-            <span className="launch-bar-wordmark">slock.ai</span>
+            <span className="launch-bar-wordmark">slock-desktop</span>
           </div>
 
           <div className="launch-bar-controls">
-            <span className={`status-pill${snapshot.workspaceOpen ? ' live' : ''}`}>
-              {snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}
-            </span>
-            <span className={`status-pill${snapshot.service.running ? ' live' : ''}`}>
-              {serviceStatusLabel}
-            </span>
-            <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.mode}>
-              {THEME_MODES.map((mode) => {
-                const selected = mode.id === snapshot.appearanceMode
-                return (
-                  <button
-                    key={mode.id}
-                    className={`icon-option${selected ? ' selected' : ''}`}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    title={copy[mode.labelKey]}
-                    onClick={() => handleThemeModeChange(mode.id)}
-                    disabled={busyAction === `mode:${mode.id}`}
-                  >
-                    <OptionIcon type={mode.icon} />
-                    <span className="sr-only">{copy[mode.labelKey]}</span>
-                  </button>
-                )
-              })}
+            <div className="titlebar-settings" aria-label={`${copy.mode} / ${copy.language}`}>
+              <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.mode}>
+                {THEME_MODES.map((mode) => {
+                  const selected = mode.id === snapshot.appearanceMode
+                  return (
+                    <button
+                      key={mode.id}
+                      className={`icon-option${selected ? ' selected' : ''}`}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      title={copy[mode.labelKey]}
+                      onClick={() => handleThemeModeChange(mode.id)}
+                      disabled={busyAction === `mode:${mode.id}`}
+                    >
+                      <OptionIcon type={mode.icon} />
+                      <span className="sr-only">{copy[mode.labelKey]}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.language}>
+                {LANGUAGE_OPTIONS.map((language) => {
+                  const selected = language.id === snapshot.language
+                  return (
+                    <button
+                      key={language.id}
+                      className={`icon-option${selected ? ' selected' : ''}`}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      title={copy[language.labelKey]}
+                      onClick={() => handleLanguageChange(language.id)}
+                      disabled={busyAction === `language:${language.id}`}
+                    >
+                      <OptionIcon type={language.icon} />
+                      <span className="sr-only">{copy[language.labelKey]}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.language}>
-              {LANGUAGE_OPTIONS.map((language) => {
-                const selected = language.id === snapshot.language
-                return (
-                  <button
-                    key={language.id}
-                    className={`icon-option${selected ? ' selected' : ''}`}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    title={copy[language.labelKey]}
-                    onClick={() => handleLanguageChange(language.id)}
-                    disabled={busyAction === `language:${language.id}`}
-                  >
-                    <OptionIcon type={language.icon} />
-                    <span className="sr-only">{copy[language.labelKey]}</span>
-                  </button>
-                )
-              })}
+
+            <div className="titlebar-status">
+              <span className={`status-pill${snapshot.workspaceOpen ? ' live' : ''}`}>
+                {snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}
+              </span>
+              <span className={`status-pill${snapshot.service.running ? ' live' : ''}`}>
+                {serviceStatusLabel}
+              </span>
+            </div>
+
+            <div className="titlebar-release" aria-label={copy.releaseCheck}>
+              <span
+                className={`status-chip titlebar-release-status${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
+                title={releaseStatusTitle}
+              >
+                {copy.currentVersion} {snapshot.updates.currentVersion} / {releaseStatusLabel}
+              </span>
+              <button
+                type="button"
+                className={`titlebar-release-button${releaseIsCurrent ? ' static-disabled' : ''}`}
+                onClick={handleReleaseCheck}
+                disabled={
+                  releaseState.loading ||
+                  releaseState.installing ||
+                  releaseIsCurrent
+                }
+                title={releaseStatusTitle}
+              >
+                {releaseState.loading ? <SpinnerIcon /> : <ServiceActionIcon type="refresh" />}
+                <span>
+                  {releaseState.loading
+                    ? copy.checkingRelease
+                    : releaseIsCurrent
+                      ? copy.current
+                      : copy.checkGitHubRelease}
+                </span>
+              </button>
+              {releaseUpdateAvailable ? (
+                <button
+                  type="button"
+                  className="titlebar-release-button accent"
+                  onClick={handleDesktopUpdateInstall}
+                  disabled={releaseState.installing || releaseState.loading}
+                >
+                  {releaseState.installing ? <SpinnerIcon /> : null}
+                  <span>
+                    {releaseState.installing
+                      ? copy.installingDesktopUpdate
+                      : copy.installDesktopUpdate}
+                  </span>
+                </button>
+              ) : null}
             </div>
           </div>
         </header>
@@ -1061,81 +1111,6 @@ function App() {
                 </li>
               ) : null}
             </ul>
-          </section>
-
-          <section className="control-card update-card">
-            <div className="control-card-head version-card-head">
-              <div>
-                <p className="eyebrow">{copy.releaseCheck}</p>
-                <p className="version-current">
-                  {copy.currentVersion} {snapshot.updates.currentVersion}
-                </p>
-              </div>
-              <span className={`status-chip ${releaseUpdateAvailable ? 'warm' : ''}`}>
-                {releaseStatusLabel}
-              </span>
-            </div>
-
-            <div className="control-body">
-              {releaseState.error ? (
-                <p className="inline-note error">{releaseState.error}</p>
-              ) : releaseState.latest?.updateAvailable ? (
-                <div className="release-panel">
-                  <div className="release-head">
-                    <div>
-                      <p className="theme-name">
-                        {releaseState.latest.name || releaseState.latest.tagName}
-                      </p>
-                      <p className="theme-summary">
-                        {copy.published}{' '}
-                        {formatDate(
-                          releaseState.latest.publishedAt,
-                          snapshot.language,
-                          snapshot.resolvedLanguage,
-                          copy.unknownDate,
-                        )}
-                      </p>
-                    </div>
-                    {releaseState.latest.prerelease ? (
-                      <span className="mode-chip">{copy.prerelease}</span>
-                    ) : null}
-                  </div>
-
-                  <p className="release-body">
-                    {releaseState.latest.body || copy.noReleaseNotes}
-                  </p>
-                </div>
-              ) : null}
-
-              <div className="button-row">
-                <button
-                  className={`theme-button${releaseIsCurrent ? ' static-disabled' : ''}`}
-                  onClick={handleReleaseCheck}
-                  disabled={
-                    releaseState.loading ||
-                    releaseState.installing ||
-                    releaseIsCurrent
-                  }
-                >
-                  {releaseState.loading
-                    ? copy.checkingRelease
-                    : releaseIsCurrent
-                      ? copy.current
-                      : copy.checkGitHubRelease}
-                </button>
-                {releaseUpdateAvailable ? (
-                  <button
-                    className="theme-button accent-save-button"
-                    onClick={handleDesktopUpdateInstall}
-                    disabled={releaseState.installing || releaseState.loading}
-                  >
-                    {releaseState.installing
-                      ? copy.installingDesktopUpdate
-                      : copy.installDesktopUpdate}
-                  </button>
-                ) : null}
-              </div>
-            </div>
           </section>
         </section>
 
@@ -1788,21 +1763,6 @@ function mapReleasePayload(payload: unknown, currentVersion: string): ReleaseInf
     prerelease: Boolean(release.prerelease),
     updateAvailable: compareVersions(tagName, currentVersion) > 0,
   }
-}
-
-function formatDate(
-  value: string,
-  language: BootstrapPayload['language'],
-  resolvedLanguage: BootstrapPayload['resolvedLanguage'],
-  fallback: string,
-) {
-  if (!value) {
-    return fallback
-  }
-
-  return new Intl.DateTimeFormat(getResolvedLanguage(language, resolvedLanguage), {
-    dateStyle: 'medium',
-  }).format(new Date(value))
 }
 
 export default App
