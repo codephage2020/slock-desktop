@@ -1,124 +1,47 @@
 # Slock Desktop
 
-Slock Desktop is a Tauri app for running the Slock workspace as a desktop application. It opens `https://app.slock.ai`, applies a desktop theme layer, and gives the user local controls for themes, language, updates, and Slock server daemons.
+Slock Desktop is the macOS client for the Slock workspace at `https://app.slock.ai`. It adds desktop controls for themes, language, updates, and local Slock services.
 
-Current version: `0.0.4`
+Slock Desktop 是 Slock 工作区的 macOS 桌面客户端，内置主题、语言、更新和本地服务管理。
 
-## Features
+- Version / 版本: `0.0.4`
+- Discord / 社区: [discord.gg/JY747zGc](https://discord.gg/JY747zGc)
 
-- React + Vite launcher for desktop settings and workspace entry.
-- Tauri shell that opens the signed-in Slock workspace in the main window.
-- Built-in themes, custom accent themes, light/dark/system modes, and language settings.
-- Runtime CSS and script injection for the Slock workspace.
-- Local server daemon discovery, start, stop, and workspace auto-start.
-- Close-app behavior settings for keeping or stopping local server daemons.
-- Version panel with current version, update check, release notes, and signed in-app update install.
+## Requirements / 环境
 
-## Requirements
+macOS, Node.js with `pnpm`, Rust with Cargo, Tauri macOS dependencies, and a Slock account.
 
-- macOS for the current packaged desktop build.
-- Node.js with `pnpm`.
-- Rust toolchain with Cargo.
-- Tauri system dependencies for macOS.
-- A Slock account with access to `https://app.slock.ai`.
+需要 macOS、Node.js 和 `pnpm`、Rust 和 Cargo、Tauri macOS 依赖，以及 Slock 账号。
 
-## Setup
+## Commands / 命令
 
-```bash
-pnpm install
-```
+| Task / 任务 | Command / 命令 |
+| --- | --- |
+| Install / 安装依赖 | `pnpm install` |
+| Desktop dev / 桌面开发 | `pnpm tauri:dev` |
+| Frontend dev / 前端开发 | `pnpm dev` |
+| Checks / 项目检查 | `pnpm test` |
+| Rust tests / Rust 测试 | `cargo test --manifest-path src-tauri/Cargo.toml` |
+| Build app / 构建应用 | `pnpm build && pnpm tauri build --bundles app` |
 
-Start the desktop app in development mode:
-
-```bash
-pnpm tauri:dev
-```
-
-Run the Vite frontend by itself:
-
-```bash
-pnpm dev
-```
-
-## Verification
-
-Run the project checks:
-
-```bash
-pnpm test
-```
-
-Run Rust tests:
-
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml
-```
-
-## Build
-
-Build the frontend:
-
-```bash
-pnpm build
-```
-
-Build the macOS `.app` bundle:
-
-```bash
-pnpm tauri build --bundles app
-```
-
-The app bundle is written to:
+Build output / 构建产物:
 
 ```text
 src-tauri/target/release/bundle/macos/Slock Desktop.app
 ```
 
-## Releases
+## Release / 发布
 
-Published builds live on the GitHub Releases page:
+- Builds / 发布包: [GitHub Releases](https://github.com/codephage2020/slock-desktop/releases)
+- Unsigned app unlock / 未签名应用解除隔离: `sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app`
+- Version files / 版本文件: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
+- Updater manifest / 更新清单: `https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json`
 
-```text
-https://github.com/codephage2020/slock-desktop/releases
-```
+For signed updater builds, generate a key with `pnpm tauri signer generate -w ~/.tauri/slock-desktop.key`, set `SLOCK_DESKTOP_UPDATER_PUBKEY` and `TAURI_SIGNING_PRIVATE_KEY`, then run checks and build.
 
-Current macOS builds are unsigned. After dragging the app into `/Applications`, remove the quarantine attribute before opening:
+签名更新包需要先生成 Tauri updater key，设置 `SLOCK_DESKTOP_UPDATER_PUBKEY` 和 `TAURI_SIGNING_PRIVATE_KEY`，再运行检查和构建。
 
-```bash
-sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app
-```
-
-For a release build, set the version in all three files:
-
-```text
-package.json
-src-tauri/Cargo.toml
-src-tauri/tauri.conf.json
-```
-
-Generate a Tauri updater signing key once and keep the private key outside git:
-
-```bash
-pnpm tauri signer generate -w ~/.tauri/slock-desktop.key
-```
-
-Build release artifacts with the signing key and embed the public key in the app:
-
-```bash
-export SLOCK_DESKTOP_UPDATER_PUBKEY="public key printed by signer generate"
-export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/slock-desktop.key"
-pnpm test
-cargo test --manifest-path src-tauri/Cargo.toml
-pnpm tauri build --bundles app
-```
-
-Publish the signed updater bundle and `latest.json` to GitHub Releases. The desktop updater checks:
-
-```text
-https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json
-```
-
-## Project Layout
+## Project / 项目
 
 ```text
 src/                 React desktop launcher
@@ -128,6 +51,8 @@ src-tauri/src/       Desktop state, service, theme, and workspace logic
 src-tauri/icons/     App icons
 ```
 
-## Security
+## Security / 安全
 
-This is a public repository. Keep API keys, local machine tokens, and signed-in session data out of git. The desktop app stores local settings in the app config directory and reads authenticated Slock state from the user session.
+Store API keys, local tokens, and signed-in session data outside git. The desktop app stores local settings in the app config directory.
+
+API key、本地 token 和登录会话数据放在 git 之外。桌面应用把本地设置保存在 app 配置目录中。
