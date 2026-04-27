@@ -6,12 +6,12 @@
     <title>Slock Desktop</title>
     <meta
       name="description"
-      content="A calm macOS-first desktop shell for the Slock AI collaboration workspace."
+      content="A macOS-first desktop client that opens app.slock.ai with local service controls, themes, and release checks."
     />
     <meta property="og:title" content="Slock Desktop" />
     <meta
       property="og:description"
-      content="Open Slock as a durable desktop workspace with local service controls, synced themes, and release checks."
+      content="Open app.slock.ai in a focused desktop client with local service controls, synced themes, and release checks."
     />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="./assets/slock-icon.png" />
@@ -50,8 +50,8 @@
       </a>
       <div class="header-actions">
         <nav class="nav-links" aria-label="Landing page sections" data-i18n-aria-label="nav.sections">
-          <a href="#workflow" data-i18n="nav.workflow">Workflow</a>
-          <a href="#control" data-i18n="nav.control">Control</a>
+          <a href="#workflow" data-i18n="nav.workflow">Client</a>
+          <a href="#control" data-i18n="nav.control">Settings</a>
           <a href="https://discord.gg/JY747zGc" data-i18n="nav.community">Community</a>
           <a href="https://github.com/codephage2020/slock-desktop/releases/latest" data-i18n="nav.download">Download</a>
         </nav>
@@ -125,7 +125,7 @@
               <div class="console-main">
                 <div class="workspace-status">
                   <span class="status-dot"></span>
-                  <span data-i18n="preview.workspaceActive">Workspace active</span>
+                  <span data-i18n="preview.workspaceActive">app.slock.ai loaded</span>
                 </div>
                 <div class="workspace-thread">
                   <div class="message user"></div>
@@ -160,29 +160,29 @@
 
         <div class="hero-copy">
           <p class="eyebrow">Slock Desktop</p>
-          <h1 id="hero-title" data-i18n="hero.title">A steady desktop home for daily AI collaboration.</h1>
+          <h1 id="hero-title" data-i18n="hero.title">A desktop client for slock.ai.</h1>
           <p class="hero-lede" data-i18n="hero.lede">
-            Open the original Slock workspace in a native shell, keep local services close, and carry one visual rhythm across startup, settings, and workspace sessions.
+            Slock Desktop opens app.slock.ai inside a native shell, then adds desktop settings, local service controls, and release checks around that web session.
           </p>
           <div class="hero-actions">
             <a class="primary-action" href="https://github.com/codephage2020/slock-desktop/releases/latest" data-i18n="hero.download">
-              Download latest release
+              Download desktop client
             </a>
-            <a class="text-action" href="https://app.slock.ai" data-i18n="hero.openWeb">Open Slock web app</a>
+            <a class="text-action" href="https://app.slock.ai" data-i18n="hero.openWeb">Open app.slock.ai</a>
             <a class="text-action" href="https://discord.gg/JY747zGc" data-i18n="hero.joinDiscord">Join Discord community</a>
             <a class="text-action" href="https://github.com/codephage2020/slock-desktop" data-i18n="hero.github">GitHub</a>
           </div>
         </div>
       </section>
 
-      <section class="signal-strip" aria-label="Product signals" data-i18n-aria-label="signals.label">
+      <section class="signal-strip" aria-label="Client signals" data-i18n-aria-label="signals.label">
         <div>
-          <span data-i18n="signals.workspaceLabel">Workspace</span>
-          <strong data-i18n="signals.workspaceText">Loads app.slock.ai directly</strong>
+          <span data-i18n="signals.workspaceLabel">slock.ai</span>
+          <strong data-i18n="signals.workspaceText">Opens app.slock.ai in a desktop window</strong>
         </div>
         <div>
-          <span data-i18n="signals.themesLabel">Themes</span>
-          <strong data-i18n="signals.themesText">Light, dark, system, custom accent</strong>
+          <span data-i18n="signals.themesLabel">Client shell</span>
+          <strong data-i18n="signals.themesText">Local theme and language settings</strong>
         </div>
         <div>
           <span data-i18n="signals.daemonLabel">Local daemon</span>
@@ -196,34 +196,34 @@
 
       <section class="section-band" id="workflow" aria-labelledby="workflow-title">
         <div class="section-heading">
-          <p class="eyebrow" data-i18n="workflow.eyebrow">Workflow</p>
-          <h2 id="workflow-title" data-i18n="workflow.title">Designed for long sessions, fast returns, and fewer context shifts.</h2>
+          <p class="eyebrow" data-i18n="workflow.eyebrow">Client</p>
+          <h2 id="workflow-title" data-i18n="workflow.title">A thin desktop layer around the slock.ai web app.</h2>
         </div>
         <div class="feature-grid">
           <article>
             <span class="feature-index">01</span>
-            <h3 data-i18n="workflow.feature1Title">Original workspace, desktop frame</h3>
-            <p data-i18n="workflow.feature1Text">Slock Desktop opens the hosted workspace after launch, then keeps the shell controls available around the session.</p>
+            <h3 data-i18n="workflow.feature1Title">app.slock.ai, in a desktop window</h3>
+            <p data-i18n="workflow.feature1Text">The client loads the hosted slock.ai web app and keeps navigation, window state, and shell controls close to the session.</p>
           </article>
           <article>
             <span class="feature-index">02</span>
-            <h3 data-i18n="workflow.feature2Title">One theme model everywhere</h3>
-            <p data-i18n="workflow.feature2Text">Startup, injected workspace settings, and the remote page share the same appearance mode and accent color.</p>
+            <h3 data-i18n="workflow.feature2Title">Client settings around the web app</h3>
+            <p data-i18n="workflow.feature2Text">Appearance, language, and accent settings live in the desktop client and apply to startup and injected shell UI.</p>
           </article>
           <article>
             <span class="feature-index">03</span>
-            <h3 data-i18n="workflow.feature3Title">Local service on demand</h3>
-            <p data-i18n="workflow.feature3Text">The desktop console reads available servers from the signed-in workspace and starts the chosen daemon in the background.</p>
+            <h3 data-i18n="workflow.feature3Title">Local service bridge</h3>
+            <p data-i18n="workflow.feature3Text">After sign-in, the client can start the selected local daemon while the main work stays inside app.slock.ai.</p>
           </article>
         </div>
       </section>
 
       <section class="control-section" id="control" aria-labelledby="control-title">
         <div class="control-copy">
-          <p class="eyebrow" data-i18n="control.eyebrow">Control Surface</p>
-          <h2 id="control-title" data-i18n="control.title">Settings stay close to the work.</h2>
+          <p class="eyebrow" data-i18n="control.eyebrow">Desktop Settings</p>
+          <h2 id="control-title" data-i18n="control.title">Desktop settings around slock.ai.</h2>
           <p data-i18n="control.text">
-            Appearance, language, server selection, and release checks live in the desktop layer, so the workspace remains focused on conversations and tasks.
+            The client keeps appearance, language, server selection, and release checks in the desktop layer while app.slock.ai remains the working surface.
           </p>
         </div>
         <div class="settings-preview" aria-label="Desktop Settings preview" data-i18n-aria-label="settings.previewLabel">
@@ -273,7 +273,7 @@
       <section class="release-band" aria-labelledby="release-title">
         <div>
           <p class="eyebrow">GitHub Pages</p>
-          <h2 id="release-title" data-i18n="release.title">Project page for releases, onboarding, and desktop distribution.</h2>
+          <h2 id="release-title" data-i18n="release.title">Desktop client releases for app.slock.ai users.</h2>
         </div>
         <a class="primary-action" href="https://github.com/codephage2020/slock-desktop" data-i18n="release.source">View source on GitHub</a>
       </section>
@@ -281,7 +281,7 @@
 
     <footer class="site-footer">
       <span>Slock Desktop</span>
-      <span data-i18n="footer.text">Built for the Slock AI collaboration workspace.</span>
+      <span data-i18n="footer.text">Desktop client for app.slock.ai.</span>
       <div class="footer-links" aria-label="Project links" data-i18n-aria-label="footer.links">
         <a href="https://github.com/codephage2020/slock-desktop" data-i18n="footer.github">GitHub</a>
         <a href="https://discord.gg/JY747zGc" data-i18n="footer.discord">Discord</a>
@@ -291,11 +291,12 @@
       const translations = {
         en: {
           metaTitle: 'Slock Desktop',
-          metaDescription: 'A calm macOS-first desktop shell for the Slock AI collaboration workspace.',
+          metaDescription:
+            'A macOS-first desktop client that opens app.slock.ai with local service controls, themes, and release checks.',
           'nav.label': 'Primary navigation',
           'nav.sections': 'Landing page sections',
-          'nav.workflow': 'Workflow',
-          'nav.control': 'Control',
+          'nav.workflow': 'Client',
+          'nav.control': 'Settings',
           'nav.community': 'Community',
           'nav.download': 'Download',
           'brand.home': 'Slock Desktop home',
@@ -305,41 +306,41 @@
           'theme.light': 'Light',
           'theme.dark': 'Dark',
           'preview.console': 'Desktop Console',
-          'preview.workspaceActive': 'Workspace active',
+          'preview.workspaceActive': 'app.slock.ai loaded',
           'preview.appearance': 'Appearance',
           'preview.localService': 'Local Service',
           'preview.updateCenter': 'Update Center',
-          'hero.title': 'A steady desktop home for daily AI collaboration.',
+          'hero.title': 'A desktop client for slock.ai.',
           'hero.lede':
-            'Open the original Slock workspace in a native shell, keep local services close, and carry one visual rhythm across startup, settings, and workspace sessions.',
-          'hero.download': 'Download latest release',
-          'hero.openWeb': 'Open Slock web app',
+            'Slock Desktop opens app.slock.ai inside a native shell, then adds desktop settings, local service controls, and release checks around that web session.',
+          'hero.download': 'Download desktop client',
+          'hero.openWeb': 'Open app.slock.ai',
           'hero.joinDiscord': 'Join Discord community',
           'hero.github': 'GitHub',
-          'signals.label': 'Product signals',
-          'signals.workspaceLabel': 'Workspace',
-          'signals.workspaceText': 'Loads app.slock.ai directly',
-          'signals.themesLabel': 'Themes',
-          'signals.themesText': 'Light, dark, system, custom accent',
+          'signals.label': 'Client signals',
+          'signals.workspaceLabel': 'slock.ai',
+          'signals.workspaceText': 'Opens app.slock.ai in a desktop window',
+          'signals.themesLabel': 'Client shell',
+          'signals.themesText': 'Local theme and language settings',
           'signals.daemonLabel': 'Local daemon',
           'signals.daemonText': 'Starts selected server on launch',
           'signals.updatesLabel': 'Updates',
           'signals.updatesText': 'Checks GitHub releases in app',
-          'workflow.eyebrow': 'Workflow',
-          'workflow.title': 'Designed for long sessions, fast returns, and fewer context shifts.',
-          'workflow.feature1Title': 'Original workspace, desktop frame',
+          'workflow.eyebrow': 'Client',
+          'workflow.title': 'A thin desktop layer around the slock.ai web app.',
+          'workflow.feature1Title': 'app.slock.ai, in a desktop window',
           'workflow.feature1Text':
-            'Slock Desktop opens the hosted workspace after launch, then keeps the shell controls available around the session.',
-          'workflow.feature2Title': 'One theme model everywhere',
+            'The client loads the hosted slock.ai web app and keeps navigation, window state, and shell controls close to the session.',
+          'workflow.feature2Title': 'Client settings around the web app',
           'workflow.feature2Text':
-            'Startup, injected workspace settings, and the remote page share the same appearance mode and accent color.',
-          'workflow.feature3Title': 'Local service on demand',
+            'Appearance, language, and accent settings live in the desktop client and apply to startup and injected shell UI.',
+          'workflow.feature3Title': 'Local service bridge',
           'workflow.feature3Text':
-            'The desktop console reads available servers from the signed-in workspace and starts the chosen daemon in the background.',
-          'control.eyebrow': 'Control Surface',
-          'control.title': 'Settings stay close to the work.',
+            'After sign-in, the client can start the selected local daemon while the main work stays inside app.slock.ai.',
+          'control.eyebrow': 'Desktop Settings',
+          'control.title': 'Desktop settings around slock.ai.',
           'control.text':
-            'Appearance, language, server selection, and release checks live in the desktop layer, so the workspace remains focused on conversations and tasks.',
+            'The client keeps appearance, language, server selection, and release checks in the desktop layer while app.slock.ai remains the working surface.',
           'settings.previewLabel': 'Desktop Settings preview',
           'settings.appearance': 'Appearance',
           'settings.service': 'Service',
@@ -353,20 +354,20 @@
           'settings.releaseTitle': 'Release channel',
           'settings.releaseText': 'GitHub latest release',
           'settings.viewRelease': 'View release',
-          'release.title': 'Project page for releases, onboarding, and desktop distribution.',
+          'release.title': 'Desktop client releases for app.slock.ai users.',
           'release.source': 'View source on GitHub',
-          'footer.text': 'Built for the Slock AI collaboration workspace.',
+          'footer.text': 'Desktop client for app.slock.ai.',
           'footer.links': 'Project links',
           'footer.github': 'GitHub',
           'footer.discord': 'Discord',
         },
         zh: {
           metaTitle: 'Slock Desktop',
-          metaDescription: '一个安静、稳定、macOS 优先的 Slock AI 协作桌面外壳。',
+          metaDescription: '一个 macOS 优先的 app.slock.ai 桌面客户端，提供本地服务控制、主题和版本检查。',
           'nav.label': '主导航',
           'nav.sections': '落地页分区',
-          'nav.workflow': '工作流',
-          'nav.control': '控制',
+          'nav.workflow': '客户端',
+          'nav.control': '设置',
           'nav.community': '社区',
           'nav.download': '下载',
           'brand.home': 'Slock Desktop 首页',
@@ -376,37 +377,37 @@
           'theme.light': '亮色',
           'theme.dark': '暗色',
           'preview.console': '桌面控制台',
-          'preview.workspaceActive': '工作区已打开',
+          'preview.workspaceActive': 'app.slock.ai 已加载',
           'preview.appearance': '外观',
           'preview.localService': '本地服务',
           'preview.updateCenter': '更新中心',
-          'hero.title': '给日常 AI 协作\n一个稳定桌面入口。',
+          'hero.title': 'slock.ai 的\n桌面客户端。',
           'hero.lede':
-            '在原生桌面外壳中打开原始 Slock 工作区，让本地服务保持就近可控，并把启动、设置和工作区会话统一到同一种视觉节奏。',
-          'hero.download': '下载最新版',
-          'hero.openWeb': '打开 Slock 网页版',
+            'Slock Desktop 在原生桌面外壳中打开 app.slock.ai，并围绕这个网页会话提供桌面设置、本地服务控制和版本检查。',
+          'hero.download': '下载桌面客户端',
+          'hero.openWeb': '打开 app.slock.ai',
           'hero.joinDiscord': '加入 Discord 社区',
           'hero.github': 'GitHub',
-          'signals.label': '产品信号',
-          'signals.workspaceLabel': '工作区',
-          'signals.workspaceText': '直接加载 app.slock.ai',
-          'signals.themesLabel': '主题',
-          'signals.themesText': '亮色、暗色、系统、自定义强调色',
+          'signals.label': '客户端信号',
+          'signals.workspaceLabel': 'slock.ai',
+          'signals.workspaceText': '在桌面窗口中打开 app.slock.ai',
+          'signals.themesLabel': '客户端外壳',
+          'signals.themesText': '本地主题和语言设置',
           'signals.daemonLabel': '本地 daemon',
           'signals.daemonText': '启动时拉起所选 server',
           'signals.updatesLabel': '更新',
           'signals.updatesText': '在应用内检查 GitHub release',
-          'workflow.eyebrow': '工作流',
-          'workflow.title': '为长时间会话、快速回到现场和更少上下文切换设计。',
-          'workflow.feature1Title': '原始工作区，桌面外框',
-          'workflow.feature1Text': 'Slock Desktop 启动后打开托管工作区，并让外壳控制能力围绕会话持续可用。',
-          'workflow.feature2Title': '一套主题模型贯穿全局',
-          'workflow.feature2Text': '启动页、注入的工作区设置和远端页面共享同一套外观模式与强调色。',
-          'workflow.feature3Title': '按需启动本地服务',
-          'workflow.feature3Text': '桌面控制台从已登录工作区读取可用 server，并在后台启动所选 daemon。',
-          'control.eyebrow': '控制表面',
-          'control.title': '设置紧贴工作现场。',
-          'control.text': '外观、语言、server 选择和版本检查都留在桌面层，工作区继续专注于对话和任务。',
+          'workflow.eyebrow': '客户端',
+          'workflow.title': '围绕 slock.ai 网页应用的一层轻量桌面能力。',
+          'workflow.feature1Title': 'app.slock.ai，放进桌面窗口',
+          'workflow.feature1Text': '客户端加载托管的 slock.ai 网页应用，并把导航、窗口状态和外壳控制放在会话旁边。',
+          'workflow.feature2Title': '围绕网页应用的客户端设置',
+          'workflow.feature2Text': '外观、语言和强调色设置保存在桌面客户端，并应用到启动页和注入的外壳 UI。',
+          'workflow.feature3Title': '本地服务桥接',
+          'workflow.feature3Text': '登录后，客户端可以启动所选本地 daemon，主要工作继续在 app.slock.ai 中完成。',
+          'control.eyebrow': '桌面设置',
+          'control.title': '围绕 slock.ai 的桌面设置。',
+          'control.text': '客户端在桌面层管理外观、语言、server 选择和版本检查，主要工作界面保持 app.slock.ai。',
           'settings.previewLabel': '桌面设置预览',
           'settings.appearance': '外观',
           'settings.service': '服务',
@@ -420,9 +421,9 @@
           'settings.releaseTitle': '发布通道',
           'settings.releaseText': 'GitHub 最新 release',
           'settings.viewRelease': '查看 release',
-          'release.title': '用于版本发布、入门介绍和桌面端分发的项目页面。',
+          'release.title': '面向 app.slock.ai 用户的桌面客户端发布页。',
           'release.source': '查看 GitHub 源码',
-          'footer.text': '为 Slock AI 协作工作区构建。',
+          'footer.text': 'app.slock.ai 的桌面客户端。',
           'footer.links': '项目链接',
           'footer.github': 'GitHub',
           'footer.discord': 'Discord',
