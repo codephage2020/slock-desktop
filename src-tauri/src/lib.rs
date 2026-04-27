@@ -34,9 +34,9 @@ const WORKSPACE_URL: &str = "https://app.slock.ai";
 const DEFAULT_SERVER_URL: &str = "https://api.slock.ai";
 const DAEMON_PACKAGE: &str = "@slock-ai/daemon@latest";
 const DAEMON_MACHINE_NAME: &str = "Slock Desktop";
-const LAUNCHER_WINDOW_WIDTH: f64 = 860.0;
+const LAUNCHER_WINDOW_WIDTH: f64 = 800.0;
 const LAUNCHER_WINDOW_HEIGHT: f64 = 460.0;
-const LAUNCHER_WINDOW_MIN_WIDTH: f64 = 760.0;
+const LAUNCHER_WINDOW_MIN_WIDTH: f64 = 720.0;
 const LAUNCHER_WINDOW_MIN_HEIGHT: f64 = 420.0;
 const WORKSPACE_WINDOW_WIDTH: f64 = 1480.0;
 const WORKSPACE_WINDOW_HEIGHT: f64 = 980.0;
@@ -1212,6 +1212,7 @@ fn enter_workspace_in_main_window(
         let _ = window.unminimize();
         let _ = window.show();
         apply_workspace_window_size(&window);
+        apply_workspace_titlebar_style(&window);
         let _ = window.set_focus();
         apply_window_theme(&window, theme_mode);
         apply_window_language(app, &window, language, true);
@@ -1233,6 +1234,7 @@ fn enter_workspace_in_main_window(
 
     apply_window_language(app, &window, language, true);
     apply_window_theme(&window, theme_mode);
+    apply_workspace_titlebar_style(&window);
     let _ = window.set_focus();
     mark_workspace_launch_navigate_called(state, target_url.as_str());
     window.navigate(target_url).map_err(|err| err.to_string())
@@ -1250,6 +1252,13 @@ fn apply_launcher_window_size(window: &tauri::WebviewWindow) {
     let _ = window.center();
 }
 
+fn apply_launcher_titlebar_style(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
+    }
+}
+
 fn apply_workspace_window_size(window: &tauri::WebviewWindow) {
     let _ = window.set_min_size(Some(LogicalSize::new(
         WORKSPACE_WINDOW_MIN_WIDTH,
@@ -1262,6 +1271,13 @@ fn apply_workspace_window_size(window: &tauri::WebviewWindow) {
     let _ = window.center();
 }
 
+fn apply_workspace_titlebar_style(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window.set_title_bar_style(tauri::TitleBarStyle::Visible);
+    }
+}
+
 fn apply_workspace_window_size_to_window(window: &tauri::Window) {
     let _ = window.set_min_size(Some(LogicalSize::new(
         WORKSPACE_WINDOW_MIN_WIDTH,
@@ -1272,6 +1288,13 @@ fn apply_workspace_window_size_to_window(window: &tauri::Window) {
         WORKSPACE_WINDOW_HEIGHT,
     ));
     let _ = window.center();
+}
+
+fn apply_workspace_titlebar_style_to_window(window: &tauri::Window) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window.set_title_bar_style(tauri::TitleBarStyle::Visible);
+    }
 }
 
 fn apply_theme_to_workspace(
@@ -3936,6 +3959,7 @@ pub fn run() {
                 if let Err(err) = apply_workspace_session_seed_to_webview(webview, &state) {
                     log::warn!("failed to seed workspace session: {err}");
                 }
+                apply_workspace_titlebar_style_to_window(&webview.window());
                 apply_workspace_window_size_to_window(&webview.window());
                 return;
             }
@@ -4017,6 +4041,7 @@ pub fn run() {
                     .unwrap_or_else(|_| ("system".to_string(), "system".to_string()));
                 apply_window_language(app.handle(), &window, &language, false);
                 apply_window_theme(&window, &appearance_mode);
+                apply_launcher_titlebar_style(&window);
                 apply_launcher_window_size(&window);
             }
 

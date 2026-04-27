@@ -735,6 +735,57 @@ function App() {
       style={shellStyle}
       aria-busy={workspaceLaunching}
     >
+      <header className="tauri-titlebar">
+        <div className="tauri-titlebar-brand" data-tauri-drag-region>
+          <span className="tauri-titlebar-wordmark">slock-desktop</span>
+        </div>
+
+        <div className="tauri-titlebar-drag" data-tauri-drag-region />
+
+        <div className="titlebar-settings" aria-label={`${copy.mode} / ${copy.language}`}>
+          <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.mode}>
+            {THEME_MODES.map((mode) => {
+              const selected = mode.id === snapshot.appearanceMode
+              return (
+                <button
+                  key={mode.id}
+                  className={`icon-option${selected ? ' selected' : ''}`}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  title={copy[mode.labelKey]}
+                  onClick={() => handleThemeModeChange(mode.id)}
+                  disabled={busyAction === `mode:${mode.id}`}
+                >
+                  <OptionIcon type={mode.icon} />
+                  <span className="sr-only">{copy[mode.labelKey]}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.language}>
+            {LANGUAGE_OPTIONS.map((language) => {
+              const selected = language.id === snapshot.language
+              return (
+                <button
+                  key={language.id}
+                  className={`icon-option${selected ? ' selected' : ''}`}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  title={copy[language.labelKey]}
+                  onClick={() => handleLanguageChange(language.id)}
+                  disabled={busyAction === `language:${language.id}`}
+                >
+                  <OptionIcon type={language.icon} />
+                  <span className="sr-only">{copy[language.labelKey]}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </header>
+
       <section className="launch-board" aria-label={copy.openSlock}>
         {workspaceLaunching ? (
           <section className="workspace-loading-overlay" aria-live="polite">
@@ -758,112 +809,62 @@ function App() {
           </section>
         ) : null}
 
-        <header className="launch-bar">
-          <div className="launch-bar-brand">
-            <SlockBrandMark className="launch-bar-mark" />
-            <span className="launch-bar-wordmark">slock-desktop</span>
+        <header className="launch-meta-row">
+          <div className="launch-status-group">
+            <span className={`status-pill${snapshot.workspaceOpen ? ' live' : ''}`}>
+              {snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}
+            </span>
+            <span className={`status-pill${snapshot.service.running ? ' live' : ''}`}>
+              {serviceStatusLabel}
+            </span>
           </div>
 
-          <div className="launch-bar-controls">
-            <div className="titlebar-settings" aria-label={`${copy.mode} / ${copy.language}`}>
-              <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.mode}>
-                {THEME_MODES.map((mode) => {
-                  const selected = mode.id === snapshot.appearanceMode
-                  return (
-                    <button
-                      key={mode.id}
-                      className={`icon-option${selected ? ' selected' : ''}`}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      title={copy[mode.labelKey]}
-                      onClick={() => handleThemeModeChange(mode.id)}
-                      disabled={busyAction === `mode:${mode.id}`}
-                    >
-                      <OptionIcon type={mode.icon} />
-                      <span className="sr-only">{copy[mode.labelKey]}</span>
-                    </button>
-                  )
-                })}
-              </div>
-              <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.language}>
-                {LANGUAGE_OPTIONS.map((language) => {
-                  const selected = language.id === snapshot.language
-                  return (
-                    <button
-                      key={language.id}
-                      className={`icon-option${selected ? ' selected' : ''}`}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      title={copy[language.labelKey]}
-                      onClick={() => handleLanguageChange(language.id)}
-                      disabled={busyAction === `language:${language.id}`}
-                    >
-                      <OptionIcon type={language.icon} />
-                      <span className="sr-only">{copy[language.labelKey]}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="titlebar-status">
-              <span className={`status-pill${snapshot.workspaceOpen ? ' live' : ''}`}>
-                {snapshot.workspaceOpen ? copy.workspaceActive : copy.workspaceParked}
+          <div className="launch-release-group" aria-label={copy.releaseCheck}>
+            <span
+              className={`status-chip launch-release-status${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
+              title={releaseStatusTitle}
+            >
+              {copy.currentVersion} {snapshot.updates.currentVersion} / {releaseStatusLabel}
+            </span>
+            <button
+              type="button"
+              className={`launch-release-button${releaseIsCurrent ? ' static-disabled' : ''}`}
+              onClick={handleReleaseCheck}
+              disabled={
+                releaseState.loading ||
+                releaseState.installing ||
+                releaseIsCurrent
+              }
+              title={releaseStatusTitle}
+            >
+              {releaseState.loading ? <SpinnerIcon /> : <ServiceActionIcon type="refresh" />}
+              <span>
+                {releaseState.loading
+                  ? copy.checkingRelease
+                  : releaseIsCurrent
+                    ? copy.current
+                    : copy.checkGitHubRelease}
               </span>
-              <span className={`status-pill${snapshot.service.running ? ' live' : ''}`}>
-                {serviceStatusLabel}
-              </span>
-            </div>
-
-            <div className="titlebar-release" aria-label={copy.releaseCheck}>
-              <span
-                className={`status-chip titlebar-release-status${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
-                title={releaseStatusTitle}
-              >
-                {copy.currentVersion} {snapshot.updates.currentVersion} / {releaseStatusLabel}
-              </span>
+            </button>
+            {releaseUpdateAvailable ? (
               <button
                 type="button"
-                className={`titlebar-release-button${releaseIsCurrent ? ' static-disabled' : ''}`}
-                onClick={handleReleaseCheck}
-                disabled={
-                  releaseState.loading ||
-                  releaseState.installing ||
-                  releaseIsCurrent
-                }
-                title={releaseStatusTitle}
+                className="launch-release-button accent"
+                onClick={handleDesktopUpdateInstall}
+                disabled={releaseState.installing || releaseState.loading}
               >
-                {releaseState.loading ? <SpinnerIcon /> : <ServiceActionIcon type="refresh" />}
+                {releaseState.installing ? <SpinnerIcon /> : null}
                 <span>
-                  {releaseState.loading
-                    ? copy.checkingRelease
-                    : releaseIsCurrent
-                      ? copy.current
-                      : copy.checkGitHubRelease}
+                  {releaseState.installing
+                    ? copy.installingDesktopUpdate
+                    : copy.installDesktopUpdate}
                 </span>
               </button>
-              {releaseUpdateAvailable ? (
-                <button
-                  type="button"
-                  className="titlebar-release-button accent"
-                  onClick={handleDesktopUpdateInstall}
-                  disabled={releaseState.installing || releaseState.loading}
-                >
-                  {releaseState.installing ? <SpinnerIcon /> : null}
-                  <span>
-                    {releaseState.installing
-                      ? copy.installingDesktopUpdate
-                      : copy.installDesktopUpdate}
-                  </span>
-                </button>
-              ) : null}
-            </div>
+            ) : null}
           </div>
         </header>
 
-        <section className="launch-deck">
+        <section className="launch-layout">
           <section className="control-card service-card" aria-label={copy.service}>
             <div className="control-card-head">
               <p className="eyebrow">{copy.service}</p>
@@ -987,145 +988,147 @@ function App() {
             </div>
           </section>
 
-          <section className="control-card theme-card" aria-label={copy.appearance}>
-            <div className="control-card-head">
-              <p className="eyebrow">{copy.appearance}</p>
-              <button
-                className="icon-action-button positive theme-add-button"
-                type="button"
-                onClick={startNewTheme}
-                disabled={Boolean(newThemeDraft) || busyAction === 'create-theme'}
-                aria-label={copy.themeNewLabel}
-                title={copy.themeNewLabel}
-              >
-                <PlusIcon />
-              </button>
-            </div>
+          <div className="launch-side">
+            <section className="control-card theme-card" aria-label={copy.appearance}>
+              <div className="control-card-head">
+                <p className="eyebrow">{copy.appearance}</p>
+                <button
+                  className="icon-action-button positive theme-add-button"
+                  type="button"
+                  onClick={startNewTheme}
+                  disabled={Boolean(newThemeDraft) || busyAction === 'create-theme'}
+                  aria-label={copy.themeNewLabel}
+                  title={copy.themeNewLabel}
+                >
+                  <PlusIcon />
+                </button>
+              </div>
 
-            <ul className="theme-rail" role="radiogroup" aria-label={copy.themeColor}>
-              <li>
-                <ThemeRow
-                  themeId="original"
-                  swatch={ORIGINAL_SWATCH}
-                  name={copy.themeOriginalName}
-                  summary={copy.themeOriginalSummary}
-                  selected={activeIsOriginal}
-                  busy={busyAction === 'theme:original'}
-                  locked
-                  lockedLabel={copy.themeBuiltIn}
-                  onSelect={() => handleThemeChange('original')}
-                />
-              </li>
-              {snapshot.customThemes.map((theme) => {
-                const selected = theme.id === snapshot.colorScheme
-                const isRenaming = theme.id === renamingThemeId
-                const summary = `${theme.accent.toUpperCase()}`
-                return (
-                  <li key={theme.id}>
-                    <ThemeRow
-                      themeId={theme.id}
-                      swatch={theme.accent}
-                      name={theme.name}
-                      summary={summary}
-                      selected={selected}
-                      busy={busyAction === `theme:${theme.id}`}
-                      renaming={isRenaming}
-                      renameDraft={renameDraft}
-                      onRenameDraftChange={setRenameDraft}
-                      renameInputRef={renameInputRef}
-                      onCommitRename={() => void commitRename()}
-                      onCancelRename={cancelRename}
-                      onSelect={() => handleThemeChange(theme.id)}
-                      onStartRename={() => startRename(theme)}
-                      onAccentChange={(value) => void handleAccentChange(theme.id, value)}
-                      onDelete={() => void handleDeleteTheme(theme.id)}
-                      deleting={busyAction === `delete:${theme.id}`}
-                      renameLabel={copy.themeRename}
-                      deleteLabel={copy.themeDelete}
-                      accentLabel={copy.customThemeAccentAria}
-                    />
-                  </li>
-                )
-              })}
-              {snapshot.customThemes.length === 0 && !newThemeDraft ? (
-                <li className="theme-empty-row">
-                  <p className="inline-note">{copy.themeEmptyHint}</p>
+              <ul className="theme-rail" role="radiogroup" aria-label={copy.themeColor}>
+                <li>
+                  <ThemeRow
+                    themeId="original"
+                    swatch={ORIGINAL_SWATCH}
+                    name={copy.themeOriginalName}
+                    summary={copy.themeOriginalSummary}
+                    selected={activeIsOriginal}
+                    busy={busyAction === 'theme:original'}
+                    locked
+                    lockedLabel={copy.themeBuiltIn}
+                    onSelect={() => handleThemeChange('original')}
+                  />
                 </li>
-              ) : null}
-              {newThemeDraft ? (
-                <li className="theme-draft-row">
-                  <label
-                    className="accent-wheel"
-                    style={{ '--custom-accent': newThemeDraft.accent } as CSSProperties}
-                  >
-                    <span className="sr-only">{copy.customThemeAccentAria}</span>
+                {snapshot.customThemes.map((theme) => {
+                  const selected = theme.id === snapshot.colorScheme
+                  const isRenaming = theme.id === renamingThemeId
+                  const summary = `${theme.accent.toUpperCase()}`
+                  return (
+                    <li key={theme.id}>
+                      <ThemeRow
+                        themeId={theme.id}
+                        swatch={theme.accent}
+                        name={theme.name}
+                        summary={summary}
+                        selected={selected}
+                        busy={busyAction === `theme:${theme.id}`}
+                        renaming={isRenaming}
+                        renameDraft={renameDraft}
+                        onRenameDraftChange={setRenameDraft}
+                        renameInputRef={renameInputRef}
+                        onCommitRename={() => void commitRename()}
+                        onCancelRename={cancelRename}
+                        onSelect={() => handleThemeChange(theme.id)}
+                        onStartRename={() => startRename(theme)}
+                        onAccentChange={(value) => void handleAccentChange(theme.id, value)}
+                        onDelete={() => void handleDeleteTheme(theme.id)}
+                        deleting={busyAction === `delete:${theme.id}`}
+                        renameLabel={copy.themeRename}
+                        deleteLabel={copy.themeDelete}
+                        accentLabel={copy.customThemeAccentAria}
+                      />
+                    </li>
+                  )
+                })}
+                {snapshot.customThemes.length === 0 && !newThemeDraft ? (
+                  <li className="theme-empty-row">
+                    <p className="inline-note">{copy.themeEmptyHint}</p>
+                  </li>
+                ) : null}
+                {newThemeDraft ? (
+                  <li className="theme-draft-row">
+                    <label
+                      className="accent-wheel"
+                      style={{ '--custom-accent': newThemeDraft.accent } as CSSProperties}
+                    >
+                      <span className="sr-only">{copy.customThemeAccentAria}</span>
+                      <input
+                        type="color"
+                        value={newThemeDraft.accent}
+                        onChange={(event) =>
+                          setNewThemeDraft((current) =>
+                            current ? { ...current, accent: event.target.value } : current,
+                          )
+                        }
+                        aria-label={copy.customThemeAccentAria}
+                      />
+                    </label>
                     <input
-                      type="color"
-                      value={newThemeDraft.accent}
+                      ref={newNameInputRef}
+                      className="theme-name-input"
+                      value={newThemeDraft.name}
                       onChange={(event) =>
                         setNewThemeDraft((current) =>
-                          current ? { ...current, accent: event.target.value } : current,
+                          current ? { ...current, name: event.target.value } : current,
                         )
                       }
-                      aria-label={copy.customThemeAccentAria}
+                      placeholder={copy.customThemeNamePlaceholder}
+                      aria-label={copy.themeNewTitle}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          void handleCreateTheme()
+                        } else if (event.key === 'Escape') {
+                          event.preventDefault()
+                          cancelNewTheme()
+                        }
+                      }}
                     />
-                  </label>
-                  <input
-                    ref={newNameInputRef}
-                    className="theme-name-input"
-                    value={newThemeDraft.name}
-                    onChange={(event) =>
-                      setNewThemeDraft((current) =>
-                        current ? { ...current, name: event.target.value } : current,
-                      )
-                    }
-                    placeholder={copy.customThemeNamePlaceholder}
-                    aria-label={copy.themeNewTitle}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault()
-                        void handleCreateTheme()
-                      } else if (event.key === 'Escape') {
-                        event.preventDefault()
-                        cancelNewTheme()
-                      }
-                    }}
-                  />
-                  <div className="theme-row-actions">
-                    <button
-                      className="theme-button accent-save-button"
-                      type="button"
-                      onClick={handleCreateTheme}
-                      disabled={busyAction === 'create-theme'}
-                    >
-                      {busyAction === 'create-theme' ? copy.creatingTheme : copy.themeCreate}
-                    </button>
-                    <button
-                      className="theme-button muted-button"
-                      type="button"
-                      onClick={cancelNewTheme}
-                    >
-                      {copy.themeRenameCancel}
-                    </button>
-                  </div>
-                </li>
-              ) : null}
-            </ul>
-          </section>
-        </section>
+                    <div className="theme-row-actions">
+                      <button
+                        className="theme-button accent-save-button"
+                        type="button"
+                        onClick={handleCreateTheme}
+                        disabled={busyAction === 'create-theme'}
+                      >
+                        {busyAction === 'create-theme' ? copy.creatingTheme : copy.themeCreate}
+                      </button>
+                      <button
+                        className="theme-button muted-button"
+                        type="button"
+                        onClick={cancelNewTheme}
+                      >
+                        {copy.themeRenameCancel}
+                      </button>
+                    </div>
+                  </li>
+                ) : null}
+              </ul>
+            </section>
 
-        <div className="launch-dock">
-          <button
-            className="launch-button launch-button-bottom"
-            onClick={() => handleWorkspaceOpen(selectedServiceSlug || undefined)}
-            disabled={
-              serviceActionBusy ||
-              !canOpenWorkspace
-            }
-          >
-            {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
-          </button>
-        </div>
+            <div className="launch-dock">
+              <button
+                className="launch-button launch-button-bottom"
+                onClick={() => handleWorkspaceOpen(selectedServiceSlug || undefined)}
+                disabled={
+                  serviceActionBusy ||
+                  !canOpenWorkspace
+                }
+              >
+                {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
+              </button>
+            </div>
+          </div>
+        </section>
       </section>
     </main>
   )
@@ -1306,25 +1309,40 @@ type OptionIconType =
   | (typeof LANGUAGE_OPTIONS)[number]['icon']
 
 function OptionIcon({ type }: { type: OptionIconType }) {
-  if (type === 'latin' || type === 'han') {
+  if (type === 'latin') {
     return (
       <svg
         className="option-icon"
         aria-hidden="true"
         viewBox="0 0 24 24"
         fill="none"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
-        <text
-          x="12"
-          y="16"
-          textAnchor="middle"
-          fill="currentColor"
-          fontSize="13"
-          fontFamily="Avenir Next, SF Pro Display, PingFang SC, sans-serif"
-          fontWeight="800"
-        >
-          {type === 'latin' ? 'A' : '文'}
-        </text>
+        <path d="M7 18 12 6l5 12" />
+        <path d="M9.2 14h5.6" />
+      </svg>
+    )
+  }
+
+  if (type === 'han') {
+    return (
+      <svg
+        className="option-icon"
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M6 8h12" />
+        <path d="M12 5v3" />
+        <path d="M8 11c1.1 3.4 2.6 5.5 4 6.8" />
+        <path d="M16 11c-1.1 3.4-2.6 5.5-4 6.8" />
       </svg>
     )
   }

@@ -14,12 +14,18 @@
     "windows": [
       {
         "title": "slock-desktop",
-        "width": 860,
+        "width": 800,
         "height": 460,
-        "minWidth": 760,
+        "minWidth": 720,
         "minHeight": 420,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 19
+        }
       }
     ],
     "security": {

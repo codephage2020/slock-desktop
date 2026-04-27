@@ -43,7 +43,7 @@
 }
 
 .studio-shell {
-  padding: clamp(8px, 1.2vw, 14px);
+  padding: 38px clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
   display: grid;
 }
 
@@ -55,7 +55,6 @@
   grid-template-rows: auto minmax(0, 1fr);
   align-content: stretch;
   gap: 10px;
-  padding-bottom: 44px;
 }
 
 .workspace-loading-overlay {
@@ -142,12 +141,84 @@
   }
 }
 
-.launch-bar {
+.tauri-titlebar {
+  position: fixed;
+  z-index: 30;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 3px 12px 3px 96px;
+  background: color-mix(in srgb, var(--canvas) 96%, var(--surface));
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.tauri-titlebar-brand {
+  position: relative;
+  flex: 0 1 auto;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  max-width: 180px;
+  min-width: 0;
+  padding: 0;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.tauri-titlebar-drag {
+  align-self: stretch;
+  flex: 1 1 auto;
+  min-width: 16px;
+}
+
+.tauri-titlebar-wordmark {
+  font-family: "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.76rem;
+  letter-spacing: 0.025em;
+  color: color-mix(in srgb, var(--muted) 86%, var(--text));
+  white-space: nowrap;
+}
+
+.titlebar-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.tauri-titlebar .icon-segment {
+  padding: 1px;
+  background: color-mix(in srgb, var(--surface-strong) 48%, transparent);
+  border-color: color-mix(in srgb, var(--line) 42%, transparent);
+}
+
+.tauri-titlebar .icon-option {
+  width: 24px;
+  height: 22px;
+}
+
+.tauri-titlebar .option-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.launch-meta-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 14px;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 12px;
   border-radius: 16px;
   background: color-mix(in srgb, var(--surface) 96%, var(--canvas));
   border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
@@ -156,58 +227,18 @@
     0 12px 32px -28px color-mix(in srgb, var(--text) 28%, transparent);
 }
 
-.launch-bar-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text);
-}
-
-.launch-bar-mark {
-  width: 22px;
-  height: 21px;
-  flex: 0 0 auto;
-  color: var(--accent);
-  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--accent) 30%, transparent));
-}
-
-.launch-bar-wordmark {
-  font-family: 'Fraunces', 'Iowan Old Style', 'Times New Roman', serif;
-  font-weight: 600;
-  font-style: italic;
-  font-size: 1.05rem;
-  letter-spacing: 0;
-  color: var(--text);
-}
-
-.launch-bar-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.titlebar-settings,
-.titlebar-status,
-.titlebar-release {
+.launch-status-group,
+.launch-release-group {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.titlebar-settings {
-  padding: 2px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--canvas) 54%, transparent);
-}
-
-.titlebar-status {
+.launch-status-group {
   flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
-.titlebar-release {
+.launch-release-group {
   min-height: 32px;
   padding: 3px;
   border-radius: 999px;
@@ -215,13 +246,13 @@
   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
 }
 
-.titlebar-release-status {
+.launch-release-status {
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.titlebar-release-button {
+.launch-release-button {
   appearance: none;
   min-height: 24px;
   display: inline-flex;
@@ -243,28 +274,28 @@
     transform 160ms ease;
 }
 
-.titlebar-release-button:hover {
+.launch-release-button:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--surface) 72%, transparent);
   transform: translateY(-1px);
 }
 
-.titlebar-release-button.accent {
+.launch-release-button.accent {
   color: var(--text);
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
 
-.titlebar-release-button:disabled {
+.launch-release-button:disabled {
   cursor: default;
   opacity: 0.72;
   transform: none;
 }
 
-.titlebar-release-button.static-disabled:disabled {
+.launch-release-button.static-disabled:disabled {
   opacity: 0.86;
 }
 
-.titlebar-release-button .service-action-icon {
+.launch-release-button .service-action-icon {
   width: 13px;
   height: 13px;
   flex: 0 0 auto;
@@ -302,15 +333,23 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-.launch-deck {
+.launch-layout {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.42fr) minmax(240px, 0.72fr);
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.48fr);
   gap: 10px;
 }
 
-.launch-deck > .control-card {
+.launch-layout > .control-card,
+.launch-side,
+.launch-side > .control-card {
   min-height: 0;
+}
+
+.launch-side {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
 }
 
 .eyebrow,
@@ -846,9 +885,10 @@
 }
 
 .launch-button {
-  min-width: 168px;
-  min-height: 38px;
-  padding: 9px 14px;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 10px 18px;
   border: 1px solid color-mix(in srgb, var(--accent) 74%, transparent);
   border-radius: 14px;
   background:
@@ -858,7 +898,7 @@
       var(--accent)
     );
   color: #f9faf8;
-  font-size: 0.92rem;
+  font-size: 0.94rem;
   font-weight: 700;
   justify-self: end;
   align-self: end;
@@ -870,21 +910,19 @@
 }
 
 .launch-button-bottom {
-  min-width: 168px;
+  min-width: 0;
   justify-self: end;
 }
 
 .launch-dock {
-  position: absolute;
-  right: 0;
-  bottom: 0;
+  min-height: 40px;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  pointer-events: none;
+  padding-top: 0;
 }
 
 .launch-dock .launch-button {
-  pointer-events: auto;
   box-shadow:
     0 1px 2px color-mix(in srgb, var(--text) 10%, transparent),
     0 18px 38px -22px color-mix(in srgb, var(--accent) 80%, transparent);
@@ -1042,12 +1080,6 @@
   border: 0;
 }
 
-@media (max-width: 880px) {
-  .launch-deck {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.95fr);
-  }
-}
-
 @media (max-width: 640px) {
   .loading-shell,
   .studio-shell {
@@ -1055,41 +1087,44 @@
   }
 
   .studio-shell {
-    padding: 10px;
+    padding: 38px 10px 10px;
   }
 
   .launch-board {
     width: 100%;
     height: auto;
     grid-template-rows: auto auto;
-    padding-bottom: 10px;
   }
 
-  .launch-bar {
+  .tauri-titlebar {
+    padding-right: 10px;
+    padding-left: 72px;
+  }
+
+  .tauri-titlebar-wordmark {
+    display: none;
+  }
+
+  .launch-meta-row {
     flex-wrap: wrap;
   }
 
-  .launch-bar-controls {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .titlebar-status {
-    justify-content: flex-start;
-  }
-
-  .titlebar-release {
+  .launch-release-group {
     width: 100%;
     border-radius: 14px;
   }
 
-  .titlebar-release-status {
+  .launch-release-status {
     flex: 1 1 auto;
     max-width: none;
   }
 
-  .launch-deck {
+  .launch-layout {
     grid-template-columns: 1fr;
+  }
+
+  .launch-side {
+    grid-template-rows: auto auto;
   }
 
   .launch-button {
@@ -1099,9 +1134,8 @@
   }
 
   .launch-dock {
-    position: static;
     width: 100%;
-    margin-top: 8px;
+    min-height: 48px;
   }
 
   .service-server-row {
