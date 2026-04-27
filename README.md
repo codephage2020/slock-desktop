@@ -1,49 +1,60 @@
-# Slock Desktop
+<h1 align="center">Slock Desktop</h1>
+
+<p align="center">Slock workspace client for macOS.</p>
+
+<p align="center">
+  <a href="#english"><kbd>English</kbd></a>
+  <a href="#中文"><kbd>中文</kbd></a>
+</p>
+
+<p align="center">
+  <a href="https://discord.gg/JY747zGc">Discord</a>
+  ·
+  <a href="https://github.com/codephage2020/slock-desktop/releases">Releases</a>
+</p>
+
+<h2 id="english">English</h2>
 
 > [!TIP]
-> Unsigned app unlock / 未签名应用解除隔离: `sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app`
+> Unsigned app unlock: `sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app`
 
 Slock Desktop is the macOS client for the Slock workspace at `https://app.slock.ai`. It adds desktop controls for themes, language, updates, and local Slock services.
 
-Slock Desktop 是 Slock 工作区的 macOS 桌面客户端，内置主题、语言、更新和本地服务管理。
+| Item | Value |
+| --- | --- |
+| Version | `0.0.5` |
+| Community | [Discord](https://discord.gg/JY747zGc) |
 
-- Version / 版本: `0.0.5`
-- Discord / 社区: [discord.gg/JY747zGc](https://discord.gg/JY747zGc)
-
-## Requirements / 环境
+### Requirements
 
 macOS, Node.js with `pnpm`, Rust with Cargo, Tauri macOS dependencies, and a Slock account.
 
-需要 macOS、Node.js 和 `pnpm`、Rust 和 Cargo、Tauri macOS 依赖，以及 Slock 账号。
+### Commands
 
-## Commands / 命令
-
-| Task / 任务 | Command / 命令 |
+| Task | Command |
 | --- | --- |
-| Install / 安装依赖 | `pnpm install` |
-| Desktop dev / 桌面开发 | `pnpm tauri:dev` |
-| Frontend dev / 前端开发 | `pnpm dev` |
-| Checks / 项目检查 | `pnpm test` |
-| Rust tests / Rust 测试 | `cargo test --manifest-path src-tauri/Cargo.toml` |
-| Build app / 构建应用 | `pnpm build && pnpm tauri build --bundles app` |
+| Install dependencies | `pnpm install` |
+| Desktop development | `pnpm tauri:dev` |
+| Frontend development | `pnpm dev` |
+| Project checks | `pnpm test` |
+| Rust tests | `cargo test --manifest-path src-tauri/Cargo.toml` |
+| Build app | `pnpm build && pnpm tauri build --bundles app` |
 
-Build output / 构建产物:
+Build output:
 
 ```text
 src-tauri/target/release/bundle/macos/Slock Desktop.app
 ```
 
-## Release / 发布
+### Release
 
-- Builds / 发布包: [GitHub Releases](https://github.com/codephage2020/slock-desktop/releases)
-- Version files / 版本文件: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
-- Updater manifest / 更新清单: `https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json`
+- Builds: [GitHub Releases](https://github.com/codephage2020/slock-desktop/releases)
+- Version files: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
+- Updater manifest: `https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json`
 
 For signed updater builds, generate a key with `pnpm tauri signer generate -w ~/.tauri/slock-desktop.key`, set `SLOCK_DESKTOP_UPDATER_PUBKEY` and `TAURI_SIGNING_PRIVATE_KEY`, then run checks and build.
 
-签名更新包需要先生成 Tauri updater key，设置 `SLOCK_DESKTOP_UPDATER_PUBKEY` 和 `TAURI_SIGNING_PRIVATE_KEY`，再运行检查和构建。
-
-## Project / 项目
+### Project Layout
 
 ```text
 src/                 React desktop launcher
@@ -53,8 +64,61 @@ src-tauri/src/       Desktop state, service, theme, and workspace logic
 src-tauri/icons/     App icons
 ```
 
-## Security / 安全
+### Security
 
 Store API keys, local tokens, and signed-in session data outside git. The desktop app stores local settings in the app config directory.
+
+<h2 id="中文">中文</h2>
+
+> [!TIP]
+> 未签名应用解除隔离：`sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app`
+
+Slock Desktop 是 Slock 工作区的 macOS 桌面客户端，内置主题、语言、更新和本地服务管理。
+
+| 项目 | 内容 |
+| --- | --- |
+| 版本 | `0.0.5` |
+| 社区 | [Discord](https://discord.gg/JY747zGc) |
+
+### 环境
+
+需要 macOS、Node.js 和 `pnpm`、Rust 和 Cargo、Tauri macOS 依赖，以及 Slock 账号。
+
+### 命令
+
+| 任务 | 命令 |
+| --- | --- |
+| 安装依赖 | `pnpm install` |
+| 桌面开发 | `pnpm tauri:dev` |
+| 前端开发 | `pnpm dev` |
+| 项目检查 | `pnpm test` |
+| Rust 测试 | `cargo test --manifest-path src-tauri/Cargo.toml` |
+| 构建应用 | `pnpm build && pnpm tauri build --bundles app` |
+
+构建产物：
+
+```text
+src-tauri/target/release/bundle/macos/Slock Desktop.app
+```
+
+### 发布
+
+- 发布包：[GitHub Releases](https://github.com/codephage2020/slock-desktop/releases)
+- 版本文件：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`
+- 更新清单：`https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json`
+
+签名更新包需要先生成 Tauri updater key，设置 `SLOCK_DESKTOP_UPDATER_PUBKEY` 和 `TAURI_SIGNING_PRIVATE_KEY`，再运行检查和构建。
+
+### 项目结构
+
+```text
+src/                 React 桌面启动器
+src/lib/desktop.ts   Tauri 命令桥接
+src-tauri/           Rust Tauri 应用
+src-tauri/src/       桌面状态、服务、主题和工作区逻辑
+src-tauri/icons/     应用图标
+```
+
+### 安全
 
 API key、本地 token 和登录会话数据放在 git 之外。桌面应用把本地设置保存在 app 配置目录中。
