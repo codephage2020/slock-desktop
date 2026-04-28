@@ -978,7 +978,7 @@ function App() {
             {snapshot.workspaceOpen ? (
               <span className="status-pill live">{copy.workspaceActive}</span>
             ) : null}
-            <span className={`status-pill${snapshot.service.running ? ' live' : ''}`}>
+            <span className={`status-pill${selectedServiceRunning ? ' live' : ''}`}>
               {serviceStatusLabel}
             </span>
           </div>
@@ -2035,10 +2035,7 @@ function getServiceStatusLabel(
   copy: UiCopy,
 ) {
   const selectedSlug = selectedServer?.slug ?? service.selectedServerSlug
-  const selectedRunning =
-    service.running &&
-    Boolean(selectedSlug) &&
-    (!service.activeServerSlug || service.activeServerSlug === selectedSlug)
+  const selectedRunning = isServiceServerRunning(service, selectedSlug)
 
   if (selectedRunning) {
     return copy.serviceRunning
@@ -2080,14 +2077,13 @@ function getServiceServerStatusLabel(
   server: BootstrapPayload['service']['servers'][number],
   service: BootstrapPayload['service'],
   copy: UiCopy,
-  activeServerSlug = service.selectedServerSlug,
+  selectedServerSlug = service.selectedServerSlug,
 ) {
-  const runningServerSlug = service.activeServerSlug || activeServerSlug
-  if (service.running && server.slug === runningServerSlug) {
+  if (isServiceServerRunning(service, server.slug)) {
     return copy.serviceRunning
   }
 
-  if (server.slug === activeServerSlug || server.selected) {
+  if (server.slug === selectedServerSlug || server.selected) {
     return service.configured ? copy.serviceIdle : copy.serviceNotLinked
   }
 
@@ -2098,10 +2094,20 @@ function isSelectedServiceRunning(
   service: BootstrapPayload['service'],
   selectedServerSlug: string,
 ) {
+  return isServiceServerRunning(service, selectedServerSlug)
+}
+
+function isServiceServerRunning(
+  service: BootstrapPayload['service'],
+  serverSlug: string,
+) {
+  const activeServerSlug = service.activeServerSlug.trim()
+  const selectedServerSlug = serverSlug.trim()
   return Boolean(
     service.running &&
+      activeServerSlug &&
       selectedServerSlug &&
-      (!service.activeServerSlug || service.activeServerSlug === selectedServerSlug),
+      activeServerSlug === selectedServerSlug,
   )
 }
 

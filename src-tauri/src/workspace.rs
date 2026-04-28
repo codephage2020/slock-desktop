@@ -478,15 +478,17 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       null
     );
   };
+  const serviceServerIsRunning = (service, serverSlug) => {
+    const activeSlug = String(service?.activeServerSlug || "").trim();
+    const selectedSlug = String(serverSlug || "").trim();
+    return !!(service?.running && activeSlug && selectedSlug && activeSlug === selectedSlug);
+  };
   const serviceStatusText = () => {
     const service = serviceSnapshot;
     if (!service) return t("loadingService");
     const selected = selectedServiceServer();
     const selectedServerSlug = selected?.slug || service.selectedServerSlug || "";
-    const selectedRunning =
-      service.running &&
-      selectedServerSlug &&
-      (!service.activeServerSlug || service.activeServerSlug === selectedServerSlug);
+    const selectedRunning = serviceServerIsRunning(service, selectedServerSlug);
     if (selectedRunning) return t("serviceRunning");
     if (!service.authenticated) return t("serviceSignInRequired");
     if (selected) return service.configured ? t("serviceIdle") : t("serviceNotLinked");
@@ -3325,11 +3327,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const service = serviceSnapshot;
     const selected = selectedServiceServer();
     const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
-    return !!(
-      service?.running &&
-      selectedSlug &&
-      (!service.activeServerSlug || service.activeServerSlug === selectedSlug)
-    );
+    return serviceServerIsRunning(service, selectedSlug);
   };
   const releaseUpdateAvailable = () =>
     !!(releaseState.latest?.available ?? releaseState.latest?.updateAvailable);
@@ -3814,7 +3812,41 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
   const getCurrentServerSlug = () => {
     const match = window.location.pathname.match(/^\/s\/([^/?#]+)/);
-    return match?.[1] || null;
+    if (!match?.[1]) return null;
+    try {
+      return decodeURIComponent(match[1]);
+    } catch (_error) {
+      return match[1];
+    }
+  };
+
+  let routeServerSyncTimer = null;
+  let routeServerSyncInFlight = false;
+  const currentRouteServerIsKnown = (slug) =>
+    !serviceSnapshot?.servers?.length || serviceSnapshot.servers.some((server) => server.slug === slug);
+  const scheduleRouteServerSync = () => {
+    window.clearTimeout(routeServerSyncTimer);
+    routeServerSyncTimer = window.setTimeout(() => {
+      void syncServiceServerFromRoute();
+    }, 100);
+  };
+  const syncServiceServerFromRoute = async () => {
+    const slug = getCurrentServerSlug();
+    if (!slug || routeServerSyncInFlight || serviceSnapshot?.selectedServerSlug === slug) return;
+    if (!currentRouteServerIsKnown(slug)) return;
+
+    routeServerSyncInFlight = true;
+    try {
+      await loadServiceSnapshot("select_service_server", { selectedServerSlug: slug }, "service-status");
+    } finally {
+      routeServerSyncInFlight = false;
+      if (getCurrentServerSlug() && serviceSnapshot?.selectedServerSlug !== getCurrentServerSlug()) {
+        scheduleRouteServerSync();
+      }
+    }
+  };
+  const emitSlockRouteChanged = () => {
+    window.dispatchEvent(new Event("slock-desktop-route-changed"));
   };
 
   const normalizeActionText = (value) =>
@@ -3893,15 +3925,34 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     window.__slockDesktopSessionSyncTimer = window.setInterval(syncSessionTokens, 4000);
   }
 
-  if (!window.__slockDesktopUpdateBridgeBound) {
-    window.__slockDesktopUpdateBridgeBound = true;
-    document.addEventListener("click", (event) => {
-      void handleDaemonUpdateClick(event);
-    }, true);
-  }
+	  if (!window.__slockDesktopUpdateBridgeBound) {
+	    window.__slockDesktopUpdateBridgeBound = true;
+	    document.addEventListener("click", (event) => {
+	      void handleDaemonUpdateClick(event);
+	    }, true);
+	  }
 
-  function closeTransientTitlebarPanels() {
-    if (!titlebarThemeMenuOpen && !releaseNotesOpen) return false;
+  if (!window.__slockDesktopRouteSyncBound) {
+    window.__slockDesktopRouteSyncBound = true;
+    const originalPushState = window.history.pushState;
+    const originalReplaceState = window.history.replaceState;
+    window.history.pushState = function pushState(...args) {
+      const result = originalPushState.apply(this, args);
+      emitSlockRouteChanged();
+      return result;
+    };
+    window.history.replaceState = function replaceState(...args) {
+      const result = originalReplaceState.apply(this, args);
+      emitSlockRouteChanged();
+      return result;
+    };
+    window.addEventListener("popstate", emitSlockRouteChanged);
+    window.addEventListener("slock-desktop-route-changed", scheduleRouteServerSync);
+  }
+  scheduleRouteServerSync();
+
+	  function closeTransientTitlebarPanels() {
+	    if (!titlebarThemeMenuOpen && !releaseNotesOpen) return false;
     if (titlebarThemeMenuOpen) {
       newThemeDraft = null;
       titlebarThemeWheelOpen = false;
@@ -3993,6 +4044,18 @@ mod tests {
         assert!(!script.contains("machineStatusCountsAsStarted"));
         assert!(!script.contains("runtimeRunning"));
         assert!(script.contains("const selectedRunning ="));
+        assert!(script.contains("const serviceServerIsRunning = (service, serverSlug) =>"));
+        assert!(script.contains("activeSlug === selectedSlug"));
+        assert!(script.contains("const syncServiceServerFromRoute = async () =>"));
+        assert!(script.contains(
+            "await loadServiceSnapshot(\"select_service_server\", { selectedServerSlug: slug }, \"service-status\")"
+        ));
+        assert!(script.contains("window.history.pushState = function pushState(...args)"));
+        assert!(!script.contains(
+            "!service.activeServerSlug || service.activeServerSlug === selectedServerSlug"
+        ));
+        assert!(!script
+            .contains("!service.activeServerSlug || service.activeServerSlug === selectedSlug"));
         assert!(script.contains("if (!selectedSlug)"));
         assert!(script.contains("data-titlebar-service"));
         assert!(!script.contains("data-service-action=\"toggle\""));

@@ -567,7 +567,7 @@ fn select_service_server(
     selected_server_slug: String,
 ) -> Result<BootstrapPayload, String> {
     persist_service_target_slug(&app, &state, Some(selected_server_slug), false)?;
-    build_bootstrap(&app, &state, false)
+    build_bootstrap_with_service_options(&app, &state, false, true)
 }
 
 #[tauri::command]
@@ -2113,7 +2113,12 @@ fn collect_service_snapshot(
         server.selected = server.slug == settings.selected_server_slug;
     }
 
-    if detect_service_process && !running {
+    if should_detect_selected_service_process(
+        detect_service_process,
+        &settings.selected_server_slug,
+        &active_server_slug,
+        running,
+    ) {
         if let Ok(Some(process)) = selected_service_daemon_process_from_servers(settings, &servers)
         {
             running = true;
@@ -2150,6 +2155,18 @@ fn collect_service_snapshot(
 
 fn should_refresh_service_servers(refresh_service: bool, _cached_servers_empty: bool) -> bool {
     refresh_service
+}
+
+fn should_detect_selected_service_process(
+    detect_service_process: bool,
+    selected_server_slug: &str,
+    active_server_slug: &str,
+    running: bool,
+) -> bool {
+    let selected_server_slug = selected_server_slug.trim();
+    detect_service_process
+        && !selected_server_slug.is_empty()
+        && (!running || active_server_slug.trim() != selected_server_slug)
 }
 
 fn maybe_start_service(
@@ -2851,6 +2868,8 @@ fn mark_service_daemon_process_running(
     runtime.last_error = None;
     runtime.active_server_slug = Some(process.server_slug.clone());
     runtime.active_machine_id = process.machine_id.clone();
+    runtime.active_pid = Some(process.pid);
+    runtime.child = None;
     Ok(())
 }
 
@@ -4755,12 +4774,13 @@ mod tests {
         selected_service_daemon_process_from_server_snapshots,
         service_daemon_process_from_resolved_target, service_machine_fetch_concurrency,
         service_server_machine_fields, should_attempt_workspace_service_start,
-        should_refresh_service_servers, should_resolve_remote_daemon_after_local_stop,
-        should_start_service_for_workspace, take_app_close_service_stop_completed,
-        terminate_daemon_process, untagged_daemon_pids_from_ps_output,
-        workspace_session_clear_script, workspace_session_seed_script, ApiMachine, AppCloseRuntime,
-        CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine,
-        ServiceRuntime, ServiceServerSnapshot, WorkspaceLaunchMetrics, WorkspaceSessionSeed,
+        should_detect_selected_service_process, should_refresh_service_servers,
+        should_resolve_remote_daemon_after_local_stop, should_start_service_for_workspace,
+        take_app_close_service_stop_completed, terminate_daemon_process,
+        untagged_daemon_pids_from_ps_output, workspace_session_clear_script,
+        workspace_session_seed_script, ApiMachine, AppCloseRuntime, CloseAppPromptCopy,
+        CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine, ServiceRuntime,
+        ServiceServerSnapshot, WorkspaceLaunchMetrics, WorkspaceSessionSeed,
     };
     use crate::config::{AppSettings, ServiceMachineBinding, ServiceSettings};
     #[cfg(unix)]
@@ -5332,6 +5352,34 @@ mod tests {
         assert!(!should_refresh_service_servers(false, true));
         assert!(!should_refresh_service_servers(false, false));
         assert!(should_refresh_service_servers(true, true));
+    }
+
+    #[test]
+    fn switching_service_server_detects_selected_daemon_process() {
+        assert!(should_detect_selected_service_process(
+            true,
+            "open-have",
+            "",
+            false
+        ));
+        assert!(should_detect_selected_service_process(
+            true,
+            "tyan-dyun",
+            "open-have",
+            true
+        ));
+        assert!(!should_detect_selected_service_process(
+            true,
+            "open-have",
+            "open-have",
+            true
+        ));
+        assert!(!should_detect_selected_service_process(
+            false,
+            "tyan-dyun",
+            "open-have",
+            true
+        ));
     }
 
     #[test]
