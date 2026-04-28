@@ -14,7 +14,11 @@
 </p>
 
 > [!TIP]
-> 未签名应用解除隔离：`sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app`
+> 未签名应用解除隔离：
+>
+> ```bash
+> sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app
+> ```
 
 Slock Desktop 是 Slock 工作区的 macOS 桌面客户端，内置主题、语言、更新和本地服务管理。
 

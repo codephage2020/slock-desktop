@@ -14,7 +14,11 @@
 </p>
 
 > [!TIP]
-> Unsigned app unlock: `sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app`
+> Unsigned app unlock:
+>
+> ```bash
+> sudo xattr -rd com.apple.quarantine /Applications/Slock\ Desktop.app
+> ```
 
 Slock Desktop is the macOS client for the Slock workspace at `https://app.slock.ai`. It adds desktop controls for themes, language, updates, and local Slock services.
 
