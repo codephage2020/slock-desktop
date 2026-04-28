@@ -1,4 +1,11 @@
-import { type CSSProperties, startTransition, useEffect, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  startTransition,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import './App.css'
 import './Settings.css'
 import {
@@ -17,6 +24,8 @@ import {
   refreshServiceServers,
   renameCustomTheme,
   selectServiceServer,
+  startService,
+  stopService,
   updateCustomThemeAccent,
   updateLanguage,
   updateTheme,
@@ -39,6 +48,15 @@ const INITIAL_RELEASE_STATE: ReleaseState = {
 
 const ORIGINAL_SWATCH = '#ffd701'
 const DEFAULT_NEW_THEME_ACCENT = '#10a37f'
+const THEME_ACCENT_PRESETS = [
+  '#ff3b30',
+  '#ff9500',
+  '#ffcc00',
+  '#34c759',
+  '#32ade6',
+  '#007aff',
+  '#af52de',
+] as const
 
 const THEME_MODES = [
   { id: 'light', icon: 'sun', labelKey: 'modeLight' },
@@ -235,7 +253,15 @@ type ServiceRefreshPhase = 'catalog' | 'status' | null
 interface NewThemeDraft {
   name: string
   accent: string
+  hexInput: string
+  rgbInput: {
+    r: string
+    g: string
+    b: string
+  }
 }
+
+type RgbChannel = keyof NewThemeDraft['rgbInput']
 
 function App() {
   const [snapshot, setSnapshot] = useState<BootstrapPayload | null>(null)
@@ -249,11 +275,15 @@ function App() {
   const [renamingThemeId, setRenamingThemeId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [newThemeDraft, setNewThemeDraft] = useState<NewThemeDraft | null>(null)
+  const [newThemeWheelOpen, setNewThemeWheelOpen] = useState(false)
+  const themeCardRef = useRef<HTMLElement | null>(null)
+  const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
   const autoReleaseCheckRef = useRef(false)
   const savedServiceSlugRef = useRef('')
+  const launchButtonAccentRef = useRef<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -328,6 +358,31 @@ function App() {
     if (newThemeDraft && newNameInputRef.current) {
       newNameInputRef.current.focus()
     }
+  }, [newThemeDraft])
+
+  useEffect(() => {
+    if (!newThemeDraft) {
+      setNewThemeWheelOpen(false)
+      return
+    }
+
+    const closeDraftOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (themeCardRef.current?.contains(target)) {
+        return
+      }
+      if (themeDraftRef.current?.contains(target)) {
+        return
+      }
+      setNewThemeDraft(null)
+      setNewThemeWheelOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeDraftOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeDraftOnOutsidePointer)
   }, [newThemeDraft])
 
   useEffect(() => {
@@ -419,11 +474,65 @@ function App() {
   }
 
   function startNewTheme() {
-    setNewThemeDraft({ name: '', accent: DEFAULT_NEW_THEME_ACCENT })
+    setNewThemeDraft(createNewThemeDraft())
+    setNewThemeWheelOpen(true)
   }
 
   function cancelNewTheme() {
     setNewThemeDraft(null)
+    setNewThemeWheelOpen(false)
+  }
+
+  function updateNewThemeAccent(accent: string) {
+    setNewThemeDraft((current) =>
+      current ? syncNewThemeDraftAccent(current, accent) : current,
+    )
+  }
+
+  function handleNewThemeHexChange(value: string) {
+    setNewThemeDraft((current) => {
+      if (!current) {
+        return current
+      }
+      const normalized = normalizeHexColor(value)
+      if (!normalized) {
+        return { ...current, hexInput: value.toUpperCase() }
+      }
+      return syncNewThemeDraftAccent({ ...current, hexInput: value.toUpperCase() }, normalized)
+    })
+  }
+
+  function handleNewThemeRgbChange(channel: RgbChannel, value: string) {
+    const nextValue = sanitizeRgbInput(value)
+    setNewThemeDraft((current) => {
+      if (!current) {
+        return current
+      }
+
+      const rgbInput = { ...current.rgbInput, [channel]: nextValue }
+      const rgb = parseRgbInput(rgbInput)
+      if (!rgb) {
+        return { ...current, rgbInput }
+      }
+
+      return syncNewThemeDraftAccent(
+        { ...current, rgbInput },
+        rgbToHex(rgb.r, rgb.g, rgb.b),
+      )
+    })
+  }
+
+  function handleNewThemeWheelPointer(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    updateNewThemeAccent(getAccentFromWheelPointer(event.clientX, event.clientY, event.currentTarget))
+  }
+
+  function handleNewThemeWheelMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.buttons !== 1) {
+      return
+    }
+    updateNewThemeAccent(getAccentFromWheelPointer(event.clientX, event.clientY, event.currentTarget))
   }
 
   async function handleCreateTheme() {
@@ -439,6 +548,7 @@ function App() {
       })
       startTransition(() => setSnapshot(next))
       setNewThemeDraft(null)
+      setNewThemeWheelOpen(false)
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
     } finally {
@@ -575,6 +685,42 @@ function App() {
     }
   }
 
+  async function handleSelectedServiceToggle() {
+    if (!snapshot) {
+      return
+    }
+
+    const selected =
+      snapshot.service.servers.find(
+        (server) => server.slug === snapshot.service.selectedServerSlug,
+      ) ??
+      snapshot.service.servers.find((server) => server.selected) ??
+      snapshot.service.servers[0] ??
+      null
+    const selectedServerSlug = selected?.slug ?? snapshot.service.selectedServerSlug
+
+    if (!selectedServerSlug) {
+      setErrorMessage(copy.selectedServerPlaceholder)
+      return
+    }
+
+    const running = isSelectedServiceRunning(snapshot.service, selectedServerSlug)
+
+    try {
+      setBusyAction(running ? 'stop-service' : 'start-service')
+      setErrorMessage(null)
+      await waitForNextPaint()
+      const next = running
+        ? await stopService(selectedServerSlug)
+        : await startService(selectedServerSlug)
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   async function handleReleaseCheck() {
     if (!snapshot) {
       return
@@ -649,7 +795,9 @@ function App() {
     snapshot.themes.find((theme) => theme.id === snapshot.colorScheme) ??
     snapshot.themes[0]
   const copy = getCopy(snapshot.language, snapshot.resolvedLanguage)
-  const shellStyle = buildShellStyle(activeTheme)
+  const selectedThemeAccent =
+    snapshot.customThemes.find((theme) => theme.id === snapshot.colorScheme)?.accent ??
+    activeTheme.accent
   const stackButtonLabel = snapshot.workspaceOpen ? copy.focusSlock : copy.openSlock
   const selectedServiceServer =
     snapshot.service.servers.find(
@@ -674,6 +822,10 @@ function App() {
     selectedServiceServer,
     copy,
   )
+  const selectedServiceRunning = isSelectedServiceRunning(
+    snapshot.service,
+    selectedServiceSlug,
+  )
   const serviceRefreshing = Boolean(serviceRefreshPhase) || busyAction === 'refresh-service'
   const serviceBusyMessage = getServiceBusyMessage(
     busyAction,
@@ -688,11 +840,28 @@ function App() {
     workspaceLaunchActive ||
     Boolean(workspaceLaunchTarget) ||
     Boolean(busyAction?.startsWith('select-service:'))
+  const serviceToggleBusy = busyAction === 'start-service' || busyAction === 'stop-service'
+  const serviceToggleLabel =
+    busyAction === 'start-service'
+      ? copy.startingService
+      : busyAction === 'stop-service'
+        ? copy.closingServer
+        : selectedServiceRunning
+          ? copy.closeServer
+          : copy.startService
   const workspaceLaunching =
     busyAction === 'workspace' ||
     workspaceLaunchActive ||
     Boolean(workspaceLaunchTarget) ||
     snapshot.workspaceOpen
+  const launchButtonAccent =
+    workspaceLaunching || busyAction === 'workspace'
+      ? (launchButtonAccentRef.current ?? selectedThemeAccent)
+      : selectedThemeAccent
+  const shellStyle = {
+    ...buildShellStyle(activeTheme),
+    '--launch-accent': launchButtonAccent,
+  } as CSSProperties
   const activeIsOriginal = snapshot.colorScheme === 'original' || !snapshot.colorScheme
   const releaseIsCurrent =
     Boolean(releaseState.latest) && !releaseState.latest?.available
@@ -860,6 +1029,19 @@ function App() {
                     : `${snapshot.service.servers.length}`}
                 </span>
                 <button
+                  className={`service-toggle-button${selectedServiceRunning ? ' running' : ''}`}
+                  type="button"
+                  onClick={handleSelectedServiceToggle}
+                  disabled={!selectedServiceSlug || serviceActionBusy}
+                  title={serviceToggleLabel}
+                  aria-label={serviceToggleLabel}
+                >
+                  <ServiceActionIcon
+                    type={selectedServiceRunning ? 'stop' : 'start'}
+                    busy={serviceToggleBusy}
+                  />
+                </button>
+                <button
                   className="icon-action-button"
                   onClick={handleServiceRefresh}
                   disabled={serviceRefreshing}
@@ -962,7 +1144,11 @@ function App() {
           </section>
 
           <div className="launch-side">
-            <section className="control-card theme-card" aria-label={copy.appearance}>
+            <section
+              className="control-card theme-card"
+              aria-label={copy.appearance}
+              ref={themeCardRef}
+            >
               <div className="control-card-head">
                 <p className="eyebrow">{copy.appearance}</p>
                 <button
@@ -1027,71 +1213,138 @@ function App() {
                     <p className="inline-note">{copy.themeEmptyHint}</p>
                   </li>
                 ) : null}
-                {newThemeDraft ? (
-                  <li className="theme-draft-row">
-                    <label
-                      className="accent-wheel"
-                      style={{ '--custom-accent': newThemeDraft.accent } as CSSProperties}
-                    >
-                      <span className="sr-only">{copy.customThemeAccentAria}</span>
-                      <input
-                        type="color"
-                        value={newThemeDraft.accent}
-                        onChange={(event) =>
-                          setNewThemeDraft((current) =>
-                            current ? { ...current, accent: event.target.value } : current,
-                          )
-                        }
-                        aria-label={copy.customThemeAccentAria}
-                      />
-                    </label>
-                    <input
-                      ref={newNameInputRef}
-                      className="theme-name-input"
-                      value={newThemeDraft.name}
-                      onChange={(event) =>
-                        setNewThemeDraft((current) =>
-                          current ? { ...current, name: event.target.value } : current,
-                        )
-                      }
-                      placeholder={copy.customThemeNamePlaceholder}
-                      aria-label={copy.themeNewTitle}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          void handleCreateTheme()
-                        } else if (event.key === 'Escape') {
-                          event.preventDefault()
-                          cancelNewTheme()
-                        }
-                      }}
-                    />
-                    <div className="theme-row-actions">
-                      <button
-                        className="theme-button accent-save-button"
-                        type="button"
-                        onClick={handleCreateTheme}
-                        disabled={busyAction === 'create-theme'}
-                      >
-                        {busyAction === 'create-theme' ? copy.creatingTheme : copy.themeCreate}
-                      </button>
-                      <button
-                        className="theme-button muted-button"
-                        type="button"
-                        onClick={cancelNewTheme}
-                      >
-                        {copy.themeRenameCancel}
-                      </button>
-                    </div>
-                  </li>
-                ) : null}
               </ul>
             </section>
 
+            {newThemeDraft ? (
+              <div
+                ref={themeDraftRef}
+                className="theme-draft-row theme-draft-floating"
+                role="dialog"
+                aria-label={copy.themeNewTitle}
+              >
+                <div
+                  className="theme-draft-accent"
+                  style={{ '--custom-accent': newThemeDraft.accent } as CSSProperties}
+                >
+                  <button
+                    className={`accent-wheel${newThemeWheelOpen ? ' expanded' : ''}`}
+                    type="button"
+                    onClick={() => setNewThemeWheelOpen((open) => !open)}
+                    aria-label={copy.customThemeAccentAria}
+                    aria-expanded={newThemeWheelOpen}
+                  >
+                    <span aria-hidden="true" />
+                  </button>
+                  {newThemeWheelOpen ? (
+                    <div className="accent-wheel-popover">
+                      <div
+                        className="accent-wheel-large"
+                        role="slider"
+                        tabIndex={0}
+                        aria-label={copy.customThemeAccentAria}
+                        aria-valuetext={newThemeDraft.hexInput}
+                        style={getAccentWheelMarkerStyle(newThemeDraft.accent)}
+                        onPointerDown={handleNewThemeWheelPointer}
+                        onPointerMove={handleNewThemeWheelMove}
+                      >
+                        <span className="accent-wheel-marker" aria-hidden="true" />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="theme-draft-fields">
+                  <div className="theme-color-picker-label">{copy.customThemeAccent}</div>
+                  <div className="theme-preset-row" aria-label={copy.customThemeAccentAria}>
+                    {THEME_ACCENT_PRESETS.map((accent) => {
+                      const selected = normalizeHexColor(accent) === newThemeDraft.accent
+                      return (
+                        <button
+                          key={accent}
+                          className={`theme-preset-swatch${selected ? ' selected' : ''}`}
+                          type="button"
+                          style={{ '--preset-accent': accent } as CSSProperties}
+                          onClick={() => updateNewThemeAccent(accent)}
+                          aria-label={accent.toUpperCase()}
+                          title={accent.toUpperCase()}
+                        />
+                      )
+                    })}
+                  </div>
+                  <input
+                    ref={newNameInputRef}
+                    className="theme-name-input"
+                    value={newThemeDraft.name}
+                    onChange={(event) =>
+                      setNewThemeDraft((current) =>
+                        current ? { ...current, name: event.target.value } : current,
+                      )
+                    }
+                    placeholder={copy.customThemeNamePlaceholder}
+                    aria-label={copy.themeNewTitle}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        void handleCreateTheme()
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        cancelNewTheme()
+                      }
+                    }}
+                  />
+                  <div className="theme-color-inputs">
+                    <label className="theme-hex-input">
+                      <span>HEX</span>
+                      <input
+                        value={newThemeDraft.hexInput}
+                        onChange={(event) => handleNewThemeHexChange(event.target.value)}
+                        inputMode="text"
+                        spellCheck={false}
+                        aria-label="HEX"
+                      />
+                    </label>
+                    {(['r', 'g', 'b'] as const).map((channel) => (
+                      <label key={channel} className="theme-rgb-input">
+                        <span>{channel.toUpperCase()}</span>
+                        <input
+                          value={newThemeDraft.rgbInput[channel]}
+                          onChange={(event) =>
+                            handleNewThemeRgbChange(channel, event.target.value)
+                          }
+                          inputMode="numeric"
+                          aria-label={channel.toUpperCase()}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="theme-draft-actions">
+                  <button
+                    className="theme-button accent-save-button"
+                    type="button"
+                    onClick={handleCreateTheme}
+                    disabled={busyAction === 'create-theme'}
+                  >
+                    {busyAction === 'create-theme' ? copy.creatingTheme : copy.themeCreate}
+                  </button>
+                  <button
+                    className="theme-button muted-button"
+                    type="button"
+                    onClick={cancelNewTheme}
+                  >
+                    {copy.themeRenameCancel}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="launch-dock">
               <button
-                className="launch-button launch-button-bottom"
-                onClick={() => handleWorkspaceOpen(selectedServiceSlug || undefined)}
+                className={`launch-button launch-button-bottom${workspaceLaunching ? ' launching' : ''}`}
+                onClick={() => {
+                  launchButtonAccentRef.current = selectedThemeAccent
+                  void handleWorkspaceOpen(selectedServiceSlug || undefined)
+                }}
                 disabled={serviceActionBusy}
               >
                 {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
@@ -1246,7 +1499,7 @@ function ThemeRow(props: ThemeRowProps) {
             aria-label={deleteLabel}
             title={deleteLabel}
           >
-            {deleting ? <SpinnerIcon /> : <TrashIcon />}
+            {deleting ? <SpinnerIcon /> : <XIcon />}
           </button>
         </div>
       ) : null}
@@ -1300,7 +1553,7 @@ function OptionIcon({ type }: { type: OptionIconType }) {
   if (type === 'han') {
     return (
       <svg
-        className="option-icon"
+        className="option-icon han-icon"
         aria-hidden="true"
         viewBox="0 0 1024 1024"
         fill="currentColor"
@@ -1444,7 +1697,7 @@ function PencilIcon() {
   )
 }
 
-function TrashIcon() {
+function XIcon() {
   return (
     <svg
       className="service-action-icon"
@@ -1456,11 +1709,8 @@ function TrashIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M3 6h18" />
-      <path d="M8 6V4h8v2" />
-      <path d="M10 11v6" />
-      <path d="M14 11v6" />
-      <path d="M6 6l1 15h10l1-15" />
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
     </svg>
   )
 }
@@ -1606,6 +1856,169 @@ function getResolvedLanguage(
   return systemLanguage.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
 }
 
+function createNewThemeDraft(accent = DEFAULT_NEW_THEME_ACCENT): NewThemeDraft {
+  const normalized = normalizeHexColor(accent) ?? DEFAULT_NEW_THEME_ACCENT
+  const rgb = hexToRgb(normalized)
+  return {
+    name: '',
+    accent: normalized,
+    hexInput: normalized.toUpperCase(),
+    rgbInput: {
+      r: String(rgb.r),
+      g: String(rgb.g),
+      b: String(rgb.b),
+    },
+  }
+}
+
+function syncNewThemeDraftAccent(
+  draft: NewThemeDraft,
+  accent: string,
+): NewThemeDraft {
+  const normalized = normalizeHexColor(accent) ?? draft.accent
+  const rgb = hexToRgb(normalized)
+  return {
+    ...draft,
+    accent: normalized,
+    hexInput: normalized.toUpperCase(),
+    rgbInput: {
+      r: String(rgb.r),
+      g: String(rgb.g),
+      b: String(rgb.b),
+    },
+  }
+}
+
+function normalizeHexColor(value: string) {
+  const compact = value.trim().replace(/^#/, '')
+  if (/^[0-9a-fA-F]{3}$/.test(compact)) {
+    return `#${compact
+      .split('')
+      .map((part) => `${part}${part}`)
+      .join('')}`.toLowerCase()
+  }
+
+  if (/^[0-9a-fA-F]{6}$/.test(compact)) {
+    return `#${compact}`.toLowerCase()
+  }
+
+  return null
+}
+
+function hexToRgb(hex: string) {
+  const normalized = normalizeHexColor(hex) ?? DEFAULT_NEW_THEME_ACCENT
+  const value = normalized.slice(1)
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  }
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return `#${[r, g, b]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+function hsvToHex(hue: number, saturation: number, value: number) {
+  const chroma = value * saturation
+  const huePrime = (((hue % 360) + 360) % 360) / 60
+  const x = chroma * (1 - Math.abs((huePrime % 2) - 1))
+  const match = value - chroma
+  const [r1, g1, b1] =
+    huePrime < 1
+      ? [chroma, x, 0]
+      : huePrime < 2
+        ? [x, chroma, 0]
+        : huePrime < 3
+          ? [0, chroma, x]
+          : huePrime < 4
+            ? [0, x, chroma]
+            : huePrime < 5
+              ? [x, 0, chroma]
+              : [chroma, 0, x]
+
+  return rgbToHex(
+    Math.round((r1 + match) * 255),
+    Math.round((g1 + match) * 255),
+    Math.round((b1 + match) * 255),
+  )
+}
+
+function rgbToHsv(r: number, g: number, b: number) {
+  const red = r / 255
+  const green = g / 255
+  const blue = b / 255
+  const max = Math.max(red, green, blue)
+  const min = Math.min(red, green, blue)
+  const delta = max - min
+  const saturation = max === 0 ? 0 : delta / max
+  let hue = 0
+
+  if (delta !== 0) {
+    if (max === red) {
+      hue = 60 * (((green - blue) / delta) % 6)
+    } else if (max === green) {
+      hue = 60 * ((blue - red) / delta + 2)
+    } else {
+      hue = 60 * ((red - green) / delta + 4)
+    }
+  }
+
+  return {
+    h: (hue + 360) % 360,
+    s: saturation,
+    v: max,
+  }
+}
+
+function getAccentFromWheelPointer(clientX: number, clientY: number, target: HTMLElement) {
+  const rect = target.getBoundingClientRect()
+  const radius = Math.min(rect.width, rect.height) / 2
+  const dx = clientX - (rect.left + rect.width / 2)
+  const dy = clientY - (rect.top + rect.height / 2)
+  const distance = Math.min(radius, Math.hypot(dx, dy))
+  const saturation = radius === 0 ? 0 : distance / radius
+  const hue = (Math.atan2(dy, dx) * 180) / Math.PI + 180
+  return hsvToHex(hue, saturation, 0.96)
+}
+
+function getAccentWheelMarkerStyle(accent: string): CSSProperties {
+  const rgb = hexToRgb(accent)
+  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
+  const angle = (hsv.h - 180) * (Math.PI / 180)
+  const radius = Math.max(0.08, Math.min(1, hsv.s)) * 46
+  const x = 50 + Math.cos(angle) * radius
+  const y = 50 + Math.sin(angle) * radius
+
+  return {
+    '--wheel-x': `${x}%`,
+    '--wheel-y': `${y}%`,
+    '--custom-accent': accent,
+  } as CSSProperties
+}
+
+function sanitizeRgbInput(value: string) {
+  return value.replace(/\D/g, '').slice(0, 3)
+}
+
+function parseRgbInput(input: NewThemeDraft['rgbInput']) {
+  const r = Number(input.r)
+  const g = Number(input.g)
+  const b = Number(input.b)
+  if (
+    !input.r ||
+    !input.g ||
+    !input.b ||
+    [r, g, b].some((value) => !Number.isInteger(value) || value < 0 || value > 255)
+  ) {
+    return null
+  }
+
+  return { r, g, b }
+}
+
 function getServiceStatusLabel(
   service: BootstrapPayload['service'],
   selectedServer: BootstrapPayload['service']['servers'][number] | null,
@@ -1669,6 +2082,17 @@ function getServiceServerStatusLabel(
   }
 
   return getMachineStatusLabel(server.machineStatus, copy)
+}
+
+function isSelectedServiceRunning(
+  service: BootstrapPayload['service'],
+  selectedServerSlug: string,
+) {
+  return Boolean(
+    service.running &&
+      selectedServerSlug &&
+      (!service.activeServerSlug || service.activeServerSlug === selectedServerSlug),
+  )
 }
 
 function getServiceBusyMessage(
