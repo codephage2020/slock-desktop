@@ -33,11 +33,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   const initialMode = __SLOCK_DESKTOP_ACTIVE_MODE__;
   const initialLanguage = __SLOCK_DESKTOP_ACTIVE_LANGUAGE__;
   const initialResolvedLanguage = __SLOCK_DESKTOP_RESOLVED_LANGUAGE__;
-  let activeSection = window.__slockDesktopSettingsSection || "appearance";
   let serviceSnapshot = window.__slockDesktopServiceSnapshot || null;
   let themeCatalog = window.__slockDesktopThemeCatalog || themes;
   let updateSnapshot = window.__slockDesktopUpdateSnapshot || null;
-  let serviceQuery = window.__slockDesktopServiceQuery || "";
   let releaseState = window.__slockDesktopReleaseState || {
     loading: false,
     installing: false,
@@ -62,13 +60,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   hydrateReleaseStateFromUpdateSnapshot();
   let releaseCheckInFlight = false;
   let newThemeDraft = null;
-  let renamingThemeId = null;
-  let renameDraft = "";
   let serviceBusyAction = null;
   let serviceError = null;
   let appearanceBusyAction = null;
   let updateBusyAction = null;
   let titlebarThemeMenuOpen = false;
+  let titlebarThemeWheelOpen = false;
   let releaseNotesOpen = false;
   const modes = [
     { id: "light", icon: "sun", key: "modeLight" },
@@ -80,9 +77,18 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     { id: "zh-CN", icon: "han", key: "languageChinese" },
     { id: "system", icon: "globe", key: "languageSystem" },
   ];
+  const themeAccentPresets = [
+    '#ff3b30',
+    '#ff9500',
+    '#ffcc00',
+    '#34c759',
+    '#32ade6',
+    '#007aff',
+    '#af52de',
+  ];
   const optionIcon = (type, className = "option-icon") => {
     if (type === "han") {
-      return `<svg class="${className}" aria-hidden="true" viewBox="0 0 1024 1024" fill="currentColor"><path d="M555.231787 330.203429v-107.997284h-68.202727v108.038827H263.433935v273.457531H487.02906v210.976899h68.202727V603.70431h224.21827V330.203429H555.231787z m-68.202727 209.074952h-157.337694v-144.605675h157.335888v144.605675z m226.131053 0H555.195662v-144.605675h157.962645v144.605675z"></path></svg>`;
+      return `<svg class="${className} han-icon" aria-hidden="true" viewBox="0 0 1024 1024" fill="currentColor"><path d="M555.231787 330.203429v-107.997284h-68.202727v108.038827H263.433935v273.457531H487.02906v210.976899h68.202727V603.70431h224.21827V330.203429H555.231787z m-68.202727 209.074952h-157.337694v-144.605675h157.335888v144.605675z m226.131053 0H555.195662v-144.605675h157.962645v144.605675z"></path></svg>`;
     }
     if (type === "latin") {
       return `<svg class="${className}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18 12 6l5 12"></path><path d="M9.2 14h5.6"></path></svg>`;
@@ -102,6 +108,131 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     `<svg class="titlebar-theme-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle><path d="M12 22a10 10 0 1 1 10-10 4 4 0 0 1-4 4h-1.5a2.5 2.5 0 0 0 0 5H12Z"></path></svg>`;
   const shellIcon = () =>
     `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 8 4 4-4 4"></path><path d="M10 16h10"></path><rect width="20" height="16" x="2" y="4" rx="2"></rect></svg>`;
+  const plusIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>`;
+  const editIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"></path></svg>`;
+  const closeIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>`;
+  const checkIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4 10-10"></path></svg>`;
+  const searchIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`;
+  const normalizeHexColor = (value) => {
+    const compact = String(value || "").trim().replace(/^#/, "");
+    if (/^[0-9a-fA-F]{3}$/.test(compact)) {
+      return `#${compact.split("").map((part) => `${part}${part}`).join("")}`.toLowerCase();
+    }
+    if (/^[0-9a-fA-F]{6}$/.test(compact)) {
+      return `#${compact}`.toLowerCase();
+    }
+    return null;
+  };
+  const hexToRgb = (hex) => {
+    const normalized = normalizeHexColor(hex) || '#10a37f';
+    return {
+      r: parseInt(normalized.slice(1, 3), 16),
+      g: parseInt(normalized.slice(3, 5), 16),
+      b: parseInt(normalized.slice(5, 7), 16),
+    };
+  };
+  const rgbToHex = (r, g, b) =>
+    `#${[r, g, b].map((value) => Number(value).toString(16).padStart(2, "0")).join("")}`;
+  const hsvToHex = (hue, saturation, value) => {
+    const chroma = value * saturation;
+    const huePrime = ((((hue % 360) + 360) % 360) / 60);
+    const x = chroma * (1 - Math.abs((huePrime % 2) - 1));
+    const match = value - chroma;
+    const [r1, g1, b1] =
+      huePrime < 1
+        ? [chroma, x, 0]
+        : huePrime < 2
+          ? [x, chroma, 0]
+          : huePrime < 3
+            ? [0, chroma, x]
+            : huePrime < 4
+              ? [0, x, chroma]
+              : huePrime < 5
+                ? [x, 0, chroma]
+                : [chroma, 0, x];
+    return rgbToHex(
+      Math.round((r1 + match) * 255),
+      Math.round((g1 + match) * 255),
+      Math.round((b1 + match) * 255),
+    );
+  };
+  const rgbToHsv = (r, g, b) => {
+    const red = r / 255;
+    const green = g / 255;
+    const blue = b / 255;
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    const delta = max - min;
+    const saturation = max === 0 ? 0 : delta / max;
+    let hue = 0;
+    if (delta !== 0) {
+      if (max === red) hue = 60 * (((green - blue) / delta) % 6);
+      else if (max === green) hue = 60 * ((blue - red) / delta + 2);
+      else hue = 60 * ((red - green) / delta + 4);
+    }
+    return { h: (hue + 360) % 360, s: saturation, v: max };
+  };
+  const accentFromWheelPointer = (event, target) => {
+    const rect = target.getBoundingClientRect();
+    const radius = Math.min(rect.width, rect.height) / 2;
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+    const distance = Math.min(radius, Math.hypot(dx, dy));
+    const saturation = radius === 0 ? 0 : distance / radius;
+    const hue = (Math.atan2(dy, dx) * 180) / Math.PI + 180;
+    return hsvToHex(hue, saturation, 0.96);
+  };
+  const accentWheelMarkerStyle = (accent) => {
+    const rgb = hexToRgb(accent);
+    const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    const angle = (hsv.h - 180) * (Math.PI / 180);
+    const radius = Math.max(0.08, Math.min(1, hsv.s)) * 46;
+    const x = 50 + Math.cos(angle) * radius;
+    const y = 50 + Math.sin(angle) * radius;
+    return `--wheel-x:${x}%;--wheel-y:${y}%;--custom-accent:${escapeHtml(accent)}`;
+  };
+  const makeThemeDraft = (accent = '#10a37f', name = "") => {
+    const normalized = normalizeHexColor(accent) || '#10a37f';
+    const rgb = hexToRgb(normalized);
+    return {
+      name,
+      accent: normalized,
+      hexInput: normalized.toUpperCase(),
+      rgbInput: {
+        r: String(rgb.r),
+        g: String(rgb.g),
+        b: String(rgb.b),
+      },
+    };
+  };
+  const syncThemeDraftAccent = (draft, accent) => {
+    const normalized = normalizeHexColor(accent) || draft.accent || '#10a37f';
+    const rgb = hexToRgb(normalized);
+    return {
+      ...draft,
+      accent: normalized,
+      hexInput: normalized.toUpperCase(),
+      rgbInput: {
+        r: String(rgb.r),
+        g: String(rgb.g),
+        b: String(rgb.b),
+      },
+    };
+  };
+  const sanitizeRgbInput = (value) => String(value || "").replace(/\D/g, "").slice(0, 3);
+  const parseRgbInput = (input) => {
+    const r = Number(input.r);
+    const g = Number(input.g);
+    const b = Number(input.b);
+    if (!input.r || !input.g || !input.b) return null;
+    if ([r, g, b].some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return null;
+    return { r, g, b };
+  };
   const copy = {
     "en-US": {
       eyebrow: "Slock Desktop",
@@ -282,7 +413,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   }
 
   const shadow = host.shadowRoot || host.attachShadow({ mode: "open" });
-  let open = window.__slockDesktopSettingsOpen === true;
   let activeThemeId = initialThemeId;
   let activeMode = initialMode;
   let activeLanguage = initialLanguage;
@@ -484,44 +614,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     try {
       const payload = await invokeDesktop("create_custom_theme", { name, accent });
       newThemeDraft = null;
+      titlebarThemeWheelOpen = false;
       syncAppearancePayload(payload);
     } catch (error) {
       console.warn("[Slock Desktop] custom theme create failed", error);
-    } finally {
-      appearanceBusyAction = null;
-      render();
-    }
-  };
-  const renameCustomTheme = async (id, name) => {
-    const trimmed = String(name || "").trim();
-    if (!trimmed) {
-      renamingThemeId = null;
-      renameDraft = "";
-      render();
-      return;
-    }
-    appearanceBusyAction = `theme-rename:${id}`;
-    render();
-    try {
-      const payload = await invokeDesktop("rename_custom_theme", { id, name: trimmed });
-      renamingThemeId = null;
-      renameDraft = "";
-      syncAppearancePayload(payload);
-    } catch (error) {
-      console.warn("[Slock Desktop] custom theme rename failed", error);
-    } finally {
-      appearanceBusyAction = null;
-      render();
-    }
-  };
-  const updateCustomThemeAccent = async (id, accent) => {
-    appearanceBusyAction = `theme-accent:${id}`;
-    render();
-    try {
-      const payload = await invokeDesktop("update_custom_theme_accent", { id, accent });
-      syncAppearancePayload(payload);
-    } catch (error) {
-      console.warn("[Slock Desktop] custom theme accent update failed", error);
     } finally {
       appearanceBusyAction = null;
       render();
@@ -1676,6 +1772,18 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       box-sizing: border-box;
     }
 
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     .dock {
       position: fixed;
       left: 0;
@@ -1757,6 +1865,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       display: block;
     }
 
+    .option-icon.han-icon {
+      width: 16px;
+      height: 16px;
+    }
+
     .titlebar-theme-wrap {
       position: relative;
       display: inline-grid;
@@ -1811,14 +1924,28 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       top: 32px;
       right: 0;
       z-index: 4;
-      display: grid;
-      grid-template-columns: repeat(6, 24px);
-      gap: 5px;
-      padding: 6px;
+      width: min(360px, calc(100vw - 20px));
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 8px;
       border: 1px solid var(--desktop-line);
       border-radius: var(--desktop-radius-md);
       background: var(--desktop-surface);
       box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+    }
+
+    .titlebar-theme-menu:has(.titlebar-accent-wheel-popover) {
+      width: min(520px, calc(100vw - 20px));
+    }
+
+    .titlebar-theme-option-wrap {
+      position: relative;
+      width: 24px;
+      height: 24px;
+      display: inline-grid;
+      place-items: center;
     }
 
     .titlebar-theme-option {
@@ -1834,7 +1961,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--desktop-surface) 58%, transparent);
     }
 
-    .titlebar-theme-option.active {
+    .titlebar-theme-option-wrap.active .titlebar-theme-option {
       border-color: color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 55%, var(--desktop-line));
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 18%, transparent);
     }
@@ -1847,11 +1974,339 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .titlebar-theme-option.add {
+      flex: 0 0 24px;
       background: var(--desktop-surface-secondary);
       box-shadow: none;
       font-size: 16px;
       font-weight: 700;
       line-height: 1;
+    }
+
+    .titlebar-theme-delete {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 16px;
+      height: 16px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid color-mix(in srgb, #c24141 38%, var(--desktop-line));
+      border-radius: var(--desktop-radius-pill);
+      background: var(--desktop-surface);
+      color: color-mix(in srgb, #c24141 86%, var(--desktop-text));
+      opacity: 0;
+      pointer-events: none;
+      transition:
+        opacity 150ms ease,
+        transform 150ms ease;
+    }
+
+    .titlebar-theme-delete svg {
+      width: 10px;
+      height: 10px;
+    }
+
+    .titlebar-theme-option-wrap:hover .titlebar-theme-delete,
+    .titlebar-theme-option-wrap:focus-within .titlebar-theme-delete {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .titlebar-theme-draft {
+      position: relative;
+      flex: 1 0 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 30px;
+      grid-template-areas:
+        "fields accent"
+        "actions actions";
+      align-items: start;
+      gap: 8px 9px;
+      margin-top: 2px;
+      padding-top: 8px;
+      border-top: 1px solid var(--desktop-line);
+    }
+
+    .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) {
+      z-index: 3;
+      min-height: 196px;
+      grid-template-columns: minmax(0, 1fr) 174px;
+      grid-template-areas:
+        "fields accent"
+        "actions accent";
+      align-items: center;
+      gap: 12px 16px;
+      padding-top: 14px;
+    }
+
+    .titlebar-theme-draft-accent {
+      grid-area: accent;
+      justify-self: end;
+      margin-top: 1px;
+      position: relative;
+      z-index: 4;
+    }
+
+    .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) .titlebar-theme-draft-accent {
+      width: 160px;
+      height: 160px;
+      align-self: center;
+      margin-top: 0;
+    }
+
+    .titlebar-theme-draft .theme-draft-fields {
+      grid-area: fields;
+    }
+
+    .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) .theme-draft-fields {
+      display: grid;
+      gap: 10px;
+    }
+
+    .theme-color-picker-label {
+      color: var(--desktop-muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .theme-preset-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .theme-preset-swatch {
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      border: 1px solid color-mix(in srgb, var(--desktop-surface) 82%, transparent);
+      border-radius: var(--desktop-radius-pill);
+      background: var(--preset-accent);
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
+        0 7px 14px -12px rgba(0, 0, 0, 0.48);
+      cursor: pointer;
+      transition:
+        transform 160ms ease,
+        box-shadow 160ms ease;
+    }
+
+    .theme-preset-swatch:hover,
+    .theme-preset-swatch:focus-visible {
+      transform: translateY(-1px);
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
+        0 0 0 3px color-mix(in srgb, var(--preset-accent) 20%, transparent);
+    }
+
+    .theme-preset-swatch.selected {
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
+        0 0 0 3px color-mix(in srgb, var(--preset-accent) 24%, transparent);
+    }
+
+    .titlebar-theme-draft .theme-color-inputs {
+      grid-template-columns: minmax(104px, 1fr) repeat(3, minmax(50px, 0.42fr));
+      gap: 6px;
+    }
+
+    .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) .theme-color-inputs {
+      grid-template-columns: minmax(112px, 1fr) repeat(3, minmax(44px, 0.34fr));
+      gap: 6px;
+    }
+
+    .titlebar-theme-draft-actions {
+      grid-area: actions;
+      display: inline-flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .titlebar-theme-draft .tiny-button {
+      min-height: 28px;
+      min-width: 46px;
+      padding-inline: 10px;
+    }
+
+    .titlebar-accent-wheel {
+      appearance: none;
+      position: relative;
+      z-index: 2;
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: var(--desktop-radius-pill);
+      overflow: hidden;
+      background: conic-gradient(
+        from 180deg,
+        #ff3b30,
+        #ff9500,
+        #ffcc00,
+        #34c759,
+        #32ade6,
+        #007aff,
+        #af52de,
+        #ff2d55,
+        #ff3b30
+      );
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
+        0 0 0 4px color-mix(in srgb, var(--custom-accent) 14%, transparent);
+      cursor: pointer;
+      transition:
+        transform 180ms ease,
+        box-shadow 180ms ease;
+    }
+
+    .titlebar-accent-wheel::before,
+    .titlebar-accent-wheel-large::before {
+      content: '';
+      position: absolute;
+      z-index: 1;
+      border-radius: inherit;
+      pointer-events: none;
+      background:
+        radial-gradient(
+          circle at 50% 32%,
+          #ffffff 0,
+          rgba(255, 255, 255, 0.78) 24%,
+          rgba(255, 255, 255, 0) 58%
+        ),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0) 42%, rgba(0, 0, 0, 0.62) 100%),
+        conic-gradient(
+          from 180deg,
+          #ff3b30,
+          #ff9500,
+          #ffcc00,
+          #34c759,
+          #32ade6,
+          #007aff,
+          #af52de,
+          #ff2d55,
+          #ff3b30
+        );
+    }
+
+    .titlebar-accent-wheel::before {
+      inset: 6px;
+    }
+
+    .titlebar-accent-wheel:hover {
+      transform: scale(1.06);
+    }
+
+    .titlebar-accent-wheel.expanded {
+      display: none;
+    }
+
+    .titlebar-accent-wheel span {
+      display: none;
+    }
+
+    .titlebar-accent-wheel-popover {
+      position: absolute;
+      z-index: 1;
+      top: 0;
+      right: 0;
+      margin: 0;
+      width: 160px;
+      height: 160px;
+      padding: 0;
+      border: 0;
+      border-radius: var(--desktop-radius-pill);
+      background: transparent;
+      box-shadow: none;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+      animation: accent-wheel-pop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .titlebar-accent-wheel-large {
+      position: relative;
+      width: 160px;
+      height: 160px;
+      border-radius: var(--desktop-radius-pill);
+      overflow: hidden;
+      background: conic-gradient(
+        from 180deg,
+        #ff3b30,
+        #ff9500,
+        #ffcc00,
+        #34c759,
+        #32ade6,
+        #007aff,
+        #af52de,
+        #ff2d55,
+        #ff3b30
+      );
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
+        0 16px 32px -22px rgba(0, 0, 0, 0.32);
+      cursor: pointer;
+      touch-action: none;
+      outline: none;
+    }
+
+    .titlebar-accent-wheel-large::before {
+      inset: 30px;
+    }
+
+    .titlebar-accent-wheel-marker {
+      position: absolute;
+      z-index: 2;
+      left: var(--wheel-x);
+      top: var(--wheel-y);
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--desktop-surface);
+      border-radius: var(--desktop-radius-pill);
+      background: var(--custom-accent);
+      box-shadow: 0 1px 5px rgba(0, 0, 0, 0.22);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    @keyframes accent-wheel-pop {
+      0% {
+        opacity: 0;
+        transform: scale(0.96) rotate(-8deg);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+      }
+    }
+
+    @keyframes accent-wheel-origin-flyout {
+      0% {
+        opacity: 1;
+        transform: translate3d(405px, -50%, 0) scale(1) rotate(0deg);
+      }
+      52% {
+        opacity: 0.9;
+        transform: translate3d(185px, -50%, 0) scale(2.55) rotate(-116deg);
+      }
+      100% {
+        opacity: 0;
+        transform: translate3d(-51px, -50%, 0) scale(4.4) rotate(-236deg);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .titlebar-accent-wheel.expanded {
+        opacity: 0;
+        animation: none;
+        transform: none;
+      }
+
+      .titlebar-accent-wheel-popover {
+        animation: none;
+      }
     }
 
     .titlebar-version {
@@ -1961,6 +2416,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       .service-open-button,
       .titlebar-button,
       .titlebar-theme-button,
+      .titlebar-theme-delete,
       .titlebar-theme-option,
       .titlebar-version {
 	      pointer-events: auto;
@@ -2158,12 +2614,67 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       display: inline-flex;
       align-items: center;
       gap: 5px;
+      opacity: 0;
+      transition: opacity 150ms ease;
+    }
+
+    .theme-row:hover .theme-actions,
+    .theme-row:focus-within .theme-actions {
+      opacity: 1;
     }
 
     .theme-draft {
       grid-template-columns: 30px minmax(0, 1fr) auto auto;
       border-style: dashed;
       background: var(--desktop-surface-secondary);
+    }
+
+    .theme-draft-fields {
+      min-width: 0;
+      display: grid;
+      gap: 6px;
+    }
+
+    .theme-color-inputs {
+      display: grid;
+      grid-template-columns: minmax(88px, 1fr) repeat(3, minmax(42px, 0.42fr));
+      gap: 5px;
+    }
+
+    .theme-hex-input,
+    .theme-rgb-input {
+      min-width: 0;
+      min-height: 26px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 4px;
+      padding: 3px 6px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 72%, transparent);
+      border-radius: var(--desktop-radius-sm);
+      background: var(--desktop-surface);
+      color: var(--desktop-muted);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .theme-hex-input input,
+    .theme-rgb-input input {
+      width: 100%;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--desktop-text);
+      font: inherit;
+      letter-spacing: 0;
+    }
+
+    .theme-hex-input:focus-within,
+    .theme-rgb-input:focus-within {
+      border-color: color-mix(in srgb, var(--desktop-accent) 34%, var(--desktop-line));
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--desktop-accent) 12%, transparent);
     }
 
     .theme-name-input {
@@ -2404,9 +2915,34 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
 	    .service-actions {
 	      display: inline-flex;
+        align-items: center;
 	      gap: 6px;
 	      flex: 0 0 auto;
 	    }
+
+      .service-toggle-button {
+        width: 32px;
+        height: 32px;
+        display: inline-grid;
+        place-items: center;
+        padding: 0;
+        border: 1px solid color-mix(in srgb, var(--desktop-accent) 42%, var(--desktop-line));
+        border-radius: var(--desktop-radius-pill);
+        background: var(--desktop-accent);
+        color: #ffffff;
+      }
+
+      .service-toggle-button.running {
+        color: var(--desktop-accent);
+        background: var(--desktop-selection);
+        border-color: color-mix(in srgb, var(--desktop-accent) 34%, var(--desktop-line));
+      }
+
+      .service-toggle-button svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
 
       .service-count {
         min-height: 28px;
@@ -2459,6 +2995,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 		    }
 
 	    .settings-icon-button:disabled,
+      .service-toggle-button:disabled,
 	    .service-open-button:disabled,
 	    .service-row:disabled {
 	      cursor: default;
@@ -2662,6 +3199,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
       .titlebar-button:hover,
       .titlebar-theme-button:hover,
+      .titlebar-theme-delete:hover,
       .titlebar-theme-option:hover,
       .titlebar-version:hover {
         color: var(--desktop-text);
@@ -2670,9 +3208,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         transform: translateY(-1px);
       }
 
+        .service-toggle-button:hover,
 	      .service-open-button:hover {
 	        background: var(--desktop-accent-hover);
 	      }
+
+        .service-toggle-button.running:hover {
+          background: color-mix(in srgb, var(--desktop-accent) 16%, var(--desktop-surface-secondary));
+        }
 	    }
 
 	    .language-option:active,
@@ -2680,6 +3223,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	    .theme-option:active,
 	    .nav-item:active,
 		    .settings-icon-button:active,
+        .service-toggle-button:active,
         .theme-row:active,
         .theme-select:active,
         .service-row-wrap:active,
@@ -2687,6 +3231,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         .service-open-button:active,
         .titlebar-button:active,
         .titlebar-theme-button:active,
+        .titlebar-theme-delete:active,
         .titlebar-theme-option:active,
         .titlebar-version:active {
 		      transform: scale(0.97);
@@ -2752,6 +3297,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         .titlebar-button,
         .titlebar-version,
         .titlebar-theme-button,
+        .titlebar-theme-delete,
         .titlebar-theme-option,
 	      .panel {
         transition-duration: 1ms;
@@ -2759,208 +3305,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	    }
 	  `;
 
-  const navItem = (section, label) =>
-    `<button class="nav-item${activeSection === section ? " active" : ""}" type="button" data-section="${section}">${label}</button>`;
-
   const isCustomTheme = (theme) => theme.id !== "original";
-  const appearanceContent = () => {
-    const themeRows = themeCatalog
-      .map((theme) => {
-        const selected = theme.id === activeThemeId || (theme.id === "original" && !activeThemeId);
-        const display = themeDisplay(theme);
-        const custom = isCustomTheme(theme);
-        const renaming = renamingThemeId === theme.id;
-        const deleting = appearanceBusyAction === `theme-delete:${theme.id}`;
-        const swatchStyle = [
-          `--theme-canvas:${escapeHtml(theme.canvas)}`,
-          `--theme-surface:${escapeHtml(theme.surface)}`,
-          `--theme-strong:${escapeHtml(theme.surfaceStrong)}`,
-          `--theme-line:${escapeHtml(theme.line)}`,
-          `--theme-accent:${escapeHtml(theme.accent)}`,
-        ].join(";");
-        return `
-          <div class="theme-row${selected ? " active" : ""}${custom ? "" : " locked"}" data-theme-id="${escapeHtml(theme.id)}">
-            <button
-              class="theme-select"
-              type="button"
-              role="radio"
-              aria-checked="${selected}"
-              data-theme-select="${escapeHtml(theme.id)}"
-              ${appearanceBusyAction ? "disabled" : ""}
-            >
-              <span class="swatch" style="${swatchStyle}" aria-hidden="true"><span></span><span></span><span></span></span>
-              <span class="theme-copy">
-                ${
-                  renaming
-                    ? `<input class="theme-name-input" data-theme-rename-input="${escapeHtml(theme.id)}" value="${escapeHtml(renameDraft)}" aria-label="${t("themeRename")}">`
-                    : `<span class="theme-name">${escapeHtml(display.name)}</span><span class="theme-summary">${escapeHtml(custom ? theme.accent : display.summary)}</span>`
-                }
-              </span>
-              <span class="check" aria-hidden="true">${selected ? "✓" : ""}</span>
-            </button>
-            ${
-              custom
-                ? `<div class="theme-actions">
-                    <label class="accent-dot" style="--custom-accent:${escapeHtml(theme.accent)}" title="${t("themeAccent")}">
-                      <span class="sr-only">${t("themeAccent")}</span>
-                      <input type="color" value="${escapeHtml(theme.accent)}" data-theme-accent="${escapeHtml(theme.id)}" ${appearanceBusyAction ? "disabled" : ""}>
-                    </label>
-                    ${
-                      renaming
-                        ? `<button class="tiny-button" type="button" data-theme-rename-save="${escapeHtml(theme.id)}">${t("themeRenameSave")}</button>
-                           <button class="tiny-button muted" type="button" data-theme-rename-cancel>${t("themeRenameCancel")}</button>`
-                        : `<button class="settings-icon-button compact" type="button" data-theme-rename="${escapeHtml(theme.id)}" title="${t("themeRename")}" aria-label="${t("themeRename")}" ${appearanceBusyAction ? "disabled" : ""}>✎</button>
-                           <button class="settings-icon-button danger compact" type="button" data-theme-delete="${escapeHtml(theme.id)}" title="${t("themeDelete")}" aria-label="${t("themeDelete")}" ${deleting ? "disabled" : ""}>${deleting ? actionIcon("refresh", true) : "×"}</button>`
-                    }
-                  </div>`
-                : ""
-            }
-          </div>
-        `;
-      })
-      .join("");
-    const draft = newThemeDraft
-      ? `<div class="theme-draft">
-          <label class="accent-dot large" style="--custom-accent:${escapeHtml(newThemeDraft.accent)}" title="${t("themeAccent")}">
-            <span class="sr-only">${t("themeAccent")}</span>
-            <input type="color" value="${escapeHtml(newThemeDraft.accent)}" data-theme-draft-accent>
-          </label>
-          <input class="theme-name-input" data-theme-draft-name value="${escapeHtml(newThemeDraft.name)}" placeholder="${t("themeNamePlaceholder")}" aria-label="${t("themeNewLabel")}">
-          <button class="tiny-button accent" type="button" data-theme-create ${appearanceBusyAction === "theme-create" ? "disabled" : ""}>${appearanceBusyAction === "theme-create" ? t("creatingTheme") : t("themeCreate")}</button>
-          <button class="tiny-button muted" type="button" data-theme-draft-cancel>${t("themeRenameCancel")}</button>
-        </div>`
-      : "";
-
-    return `
-      <div class="content-head">
-        <p class="setting-title">${t("theme")}</p>
-        <button class="settings-icon-button positive" type="button" data-theme-new title="${t("themeNewLabel")}" aria-label="${t("themeNewLabel")}" ${newThemeDraft || appearanceBusyAction ? "disabled" : ""}>+</button>
-      </div>
-      <div class="theme-list" role="radiogroup" aria-label="${t("theme")}">
-        ${themeRows || `<p class="service-empty">${t("themeEmptyHint")}</p>`}
-        ${draft}
-      </div>
-      <div class="status">
-        <span>${t("saved")}</span>
-        <span>${themeCatalog.length} ${t("themes")}</span>
-      </div>
-    `;
-  };
-
-  const serviceContent = () => {
-    const service = serviceSnapshot;
-    const selected = selectedServiceServer();
-    const busy = serviceBusyAction;
-    const busyRefresh = busy === "service-refresh" || busy === "service-status" || busy === "service-load";
-    const busyStart = busy === "service-start";
-    const busyClose = busy === "service-stop";
-    const busyOpen = busy === "service-open";
-    const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
-    const serviceNote =
-      serviceError ||
-      service?.syncError ||
-      service?.lastError ||
-      (!service
-        ? t("loadingService")
-        : !service.authenticated
-          ? t("serviceSignInHint")
-          : service.servers.length === 0
-            ? t("noServers")
-            : t("serverSettingsDescription"));
-    const servers = service?.servers || [];
-    const normalizedQuery = serviceQuery.trim().toLowerCase();
-    const visibleServers = normalizedQuery
-      ? servers.filter((server) =>
-          `${server.name} ${server.slug} ${server.machineName || ""}`.toLowerCase().includes(normalizedQuery),
-        )
-      : servers;
-    const serverRows = servers
-      .filter((server) => visibleServers.includes(server))
-      .map((server) => {
-        const selectedRow = server.slug === selectedSlug;
-        const running = service?.running && server.slug === service.activeServerSlug;
-        const status = running
-          ? t("serviceRunning")
-          : selectedRow
-            ? service?.configured
-              ? t("serviceIdle")
-              : t("serviceNotLinked")
-            : machineStatusLabel(server.machineStatus);
-        const busySelect = busy === `service-select:${server.slug}`;
-        const machineMeta = server.machineName
-          ? `${t("machineStatus")}: ${escapeHtml(server.machineName)}`
-          : `${t("machineStatus")}: ${escapeHtml(status)}`;
-        return `
-          <div class="service-row-wrap${selectedRow ? " active" : ""}${running ? " running" : ""}">
-            <button
-              class="service-row"
-              type="button"
-              data-service-action="select"
-              data-server-slug="${escapeHtml(server.slug)}"
-              aria-pressed="${selectedRow}"
-              ${busy ? "disabled" : ""}
-            >
-              <span class="service-row-copy">
-                <span class="service-row-name">${escapeHtml(server.name)}</span>
-                <span class="service-row-meta">${escapeHtml(server.slug)} · ${machineMeta}</span>
-              </span>
-              <span class="service-chip${running ? " live" : ""}">${busySelect ? t("saving") : escapeHtml(status)}</span>
-            </button>
-            <button class="settings-icon-button compact service-log-button" type="button" data-service-action="log" data-server-slug="${escapeHtml(server.slug)}" title="${t("openServerLog")}" aria-label="${t("openServerLog")}: ${escapeHtml(server.name)}">${shellIcon()}</button>
-          </div>
-        `;
-      })
-      .join("");
-    const emptyRows = servers.length > 0 && visibleServers.length === 0
-      ? `<p class="service-empty">${t("noMatchingServers")}</p>`
-      : `<p class="service-empty">${escapeHtml(serviceNote)}</p>`;
-
-    return `
-      <div class="service-panel">
-        <div class="service-panel-head">
-          <div>
-            <p class="setting-title">${t("serverSettings")}</p>
-            <p class="service-description">${escapeHtml(serviceNote)}</p>
-          </div>
-          <span class="service-count">${normalizedQuery ? `${visibleServers.length}/${servers.length}` : servers.length}</span>
-          <div class="service-actions">
-            <button class="settings-icon-button positive" type="button" data-service-action="start" title="${t("startService")}" aria-label="${t("startService")}" ${!selectedSlug || busy ? "disabled" : ""}>
-              ${actionIcon("start", busyStart)}
-            </button>
-            <button class="settings-icon-button danger" type="button" data-service-action="stop" title="${t("closeServer")}" aria-label="${t("closeServer")}" ${busy ? "disabled" : ""}>
-              ${actionIcon("stop", busyClose)}
-            </button>
-            <button class="settings-icon-button" type="button" data-service-action="refresh" title="${t("refreshServers")}" aria-label="${t("refreshServers")}" ${busy ? "disabled" : ""}>
-              ${actionIcon("refresh", busyRefresh)}
-            </button>
-          </div>
-        </div>
-        <div class="service-facts">
-          <span>${t("serverUrl")}</span>
-          <strong>${escapeHtml(service?.serverUrl || "https://api.slock.ai")}</strong>
-          <span>${t("serviceStatus")}</span>
-          <strong>${escapeHtml(serviceStatusText())}</strong>
-          <span>${t("selectedServer")}</span>
-          <strong>${escapeHtml(selected?.name || selectedSlug || t("selectedServerPlaceholder"))}</strong>
-        </div>
-        ${
-          servers.length > 0
-            ? `<label class="server-search">
-                <span aria-hidden="true">⌕</span>
-                <span class="sr-only">${t("serverSearch")}</span>
-                <input data-service-search value="${escapeHtml(serviceQuery)}" placeholder="${t("serverSearch")}" aria-label="${t("serverSearch")}">
-              </label>`
-            : ""
-        }
-        <div class="service-list" role="list" aria-label="${t("selectedServer")}">
-          ${serverRows || emptyRows}
-        </div>
-        <button class="service-open-button" type="button" data-service-action="open" ${!selectedSlug || busy ? "disabled" : ""}>
-          ${busyOpen ? t("openingServer") : t("openSelectedServer")}
-        </button>
-      </div>
-    `;
-  };
   const currentModeOption = () =>
     modes.find((mode) => mode.id === activeMode) || modes.find((mode) => mode.id === "system") || modes[0];
   const nextModeId = () => {
@@ -3020,18 +3365,60 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       .map((theme) => {
         const selected = theme.id === (activeThemeId || "original");
         const swatch = titlebarThemeSwatch(theme);
+        const custom = isCustomTheme(theme);
+        const deleting = appearanceBusyAction === `theme-delete:${theme.id}`;
+        const label = titlebarThemeLabel(theme);
         return `
-          <button
-            class="titlebar-theme-option${selected ? " active" : ""}"
-            type="button"
-            data-titlebar-theme-option="${escapeHtml(theme.id)}"
-            title="${escapeHtml(titlebarThemeLabel(theme))}"
-            aria-label="${escapeHtml(titlebarThemeLabel(theme))}"
-            style="--theme-accent:${escapeHtml(swatch)}"
-          ><span class="titlebar-theme-option-swatch" aria-hidden="true"></span></button>
+          <span class="titlebar-theme-option-wrap${selected ? " active" : ""}" style="--theme-accent:${escapeHtml(swatch)}">
+            <button
+              class="titlebar-theme-option"
+              type="button"
+              data-titlebar-theme-option="${escapeHtml(theme.id)}"
+              title="${escapeHtml(label)}"
+              aria-label="${escapeHtml(label)}"
+              ${appearanceBusyAction ? "disabled" : ""}
+            ><span class="titlebar-theme-option-swatch" aria-hidden="true"></span></button>
+            ${
+              custom
+                ? `<button class="titlebar-theme-delete" type="button" data-titlebar-theme-delete="${escapeHtml(theme.id)}" title="${t("themeDelete")}" aria-label="${t("themeDelete")}: ${escapeHtml(label)}" ${deleting ? "disabled" : ""}>${deleting ? actionIcon("refresh", true) : closeIcon()}</button>`
+                : ""
+            }
+          </span>
         `;
       })
       .join("");
+    const draftRgb = newThemeDraft ? hexToRgb(newThemeDraft.accent) : null;
+    const themePresetOptions = newThemeDraft
+      ? themeAccentPresets
+          .map((accent) => {
+            const selected = normalizeHexColor(accent) === newThemeDraft.accent;
+            return `<button class="theme-preset-swatch${selected ? " selected" : ""}" type="button" data-titlebar-theme-preset="${accent}" style="--preset-accent:${accent}" title="${accent.toUpperCase()}" aria-label="${accent.toUpperCase()}"></button>`;
+          })
+          .join("")
+      : "";
+    const themeDraft = newThemeDraft
+      ? `<div class="titlebar-theme-draft">
+          <div class="titlebar-theme-draft-accent" style="--custom-accent:${escapeHtml(newThemeDraft.accent)}">
+            <button class="titlebar-accent-wheel${titlebarThemeWheelOpen ? " expanded" : ""}" type="button" data-titlebar-theme-wheel-toggle aria-label="${t("themeAccent")}" aria-expanded="${titlebarThemeWheelOpen}"><span aria-hidden="true"></span></button>
+            ${titlebarThemeWheelOpen ? `<div class="titlebar-accent-wheel-popover"><div class="titlebar-accent-wheel-large" role="slider" tabindex="0" data-titlebar-theme-wheel aria-label="${t("themeAccent")}" aria-valuetext="${escapeHtml(newThemeDraft.hexInput)}" style="${accentWheelMarkerStyle(newThemeDraft.accent)}"><span class="titlebar-accent-wheel-marker" aria-hidden="true"></span></div></div>` : ""}
+          </div>
+          <div class="theme-draft-fields">
+            <div class="theme-color-picker-label">${t("themeAccent")}</div>
+            <div class="theme-preset-row" aria-label="${t("themeAccent")}">${themePresetOptions}</div>
+            <input class="theme-name-input" data-titlebar-theme-draft-name value="${escapeHtml(newThemeDraft.name)}" placeholder="${t("themeNamePlaceholder")}" aria-label="${t("themeNewLabel")}">
+            <div class="theme-color-inputs">
+              <label class="theme-hex-input"><span>HEX</span><input data-titlebar-theme-draft-hex value="${escapeHtml(newThemeDraft.hexInput || newThemeDraft.accent.toUpperCase())}" spellcheck="false" aria-label="HEX"></label>
+              <label class="theme-rgb-input"><span>R</span><input data-titlebar-theme-draft-rgb="r" value="${escapeHtml(newThemeDraft.rgbInput?.r || String(draftRgb.r))}" inputmode="numeric" aria-label="R"></label>
+              <label class="theme-rgb-input"><span>G</span><input data-titlebar-theme-draft-rgb="g" value="${escapeHtml(newThemeDraft.rgbInput?.g || String(draftRgb.g))}" inputmode="numeric" aria-label="G"></label>
+              <label class="theme-rgb-input"><span>B</span><input data-titlebar-theme-draft-rgb="b" value="${escapeHtml(newThemeDraft.rgbInput?.b || String(draftRgb.b))}" inputmode="numeric" aria-label="B"></label>
+            </div>
+          </div>
+          <div class="titlebar-theme-draft-actions">
+            <button class="tiny-button accent" type="button" data-titlebar-theme-create ${appearanceBusyAction === "theme-create" ? "disabled" : ""}>${appearanceBusyAction === "theme-create" ? t("creatingTheme") : t("themeCreate")}</button>
+            <button class="tiny-button muted" type="button" data-titlebar-theme-draft-cancel>${t("themeRenameCancel")}</button>
+          </div>
+        </div>`
+      : "";
     const releaseNote = escapeHtml(releaseNotesText());
     const releaseVersion = latestReleaseVersion();
 
@@ -3063,7 +3450,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           </button>
           ${titlebarThemeMenuOpen ? `<div class="titlebar-theme-menu" role="menu" aria-label="${t("theme")}" data-titlebar-theme-menu>
             ${themeOptions}
-            <button class="titlebar-theme-option add" type="button" data-titlebar-theme-new title="${t("themeNewLabel")}" aria-label="${t("themeNewLabel")}">+</button>
+            <button class="titlebar-theme-option add" type="button" data-titlebar-theme-new title="${t("themeNewLabel")}" aria-label="${t("themeNewLabel")}">${plusIcon()}</button>
+            ${themeDraft}
           </div>` : ""}
         </div>
         <button
@@ -3095,7 +3483,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
                 <strong>${t("releaseNotes")}</strong>
                 <span>${escapeHtml(releaseVersion ? `v${releaseVersion}` : t("updateAvailable"))}</span>
               </span>
-              <button class="settings-icon-button compact" type="button" data-titlebar-release-close aria-label="${t("close")}">×</button>
+              <button class="settings-icon-button compact" type="button" data-titlebar-release-close aria-label="${t("close")}">${closeIcon()}</button>
             </div>
             <div class="titlebar-release-body">${releaseNote}</div>
             <div class="titlebar-release-actions">
@@ -3112,9 +3500,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
     if (!selectedSlug) {
       serviceError = t("selectedServerPlaceholder");
-      activeSection = "service";
-      open = true;
-      window.__slockDesktopSettingsOpen = open;
       render();
       return;
     }
@@ -3128,9 +3513,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
     if (!selectedSlug) {
       serviceError = t("selectedServerPlaceholder");
-      activeSection = "service";
-      open = true;
-      window.__slockDesktopSettingsOpen = open;
       render();
       return;
     }
@@ -3140,49 +3522,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       serviceError = error?.message || String(error);
       render();
     }
-  };
-  const updatesContent = () => {
-    const currentVersion = updateSnapshot?.currentVersion || "";
-    const latest = releaseState.latest;
-    const updateAvailable = !!(latest?.available ?? latest?.updateAvailable);
-    const latestVersion = latest?.version || latest?.tagName || "";
-    const status = releaseState.error
-      ? releaseState.error
-      : latest
-        ? updateAvailable
-          ? t("updateAvailable")
-          : t("upToDate")
-        : t("notChecked");
-    const checking = releaseState.loading || updateBusyAction === "release-check";
-    const installing = releaseState.installing || updateBusyAction === "release-install";
-    return `
-      <div class="updates-panel">
-        <div class="content-head">
-          <p class="setting-title">${t("updatesTitle")}</p>
-          <span class="service-chip${updateAvailable ? " live" : ""}">${escapeHtml(status)}</span>
-        </div>
-        <div class="service-facts">
-          <span>${t("currentVersion")}</span>
-          <strong>${escapeHtml(currentVersion || t("notChecked"))}</strong>
-          ${
-            latest
-              ? `<span>${t("updateAvailable")}</span><strong>${escapeHtml(latestVersion || t("notChecked"))}</strong>`
-              : `<span>${t("updateAvailable")}</span><strong>${t("notChecked")}</strong>`
-          }
-        </div>
-        <div class="updates-actions">
-          <button class="service-open-button secondary" type="button" data-update-action="check" ${checking || installing ? "disabled" : ""}>
-            ${checking ? t("checkingUpdates") : t("checkUpdates")}
-          </button>
-          ${
-            updateAvailable
-              ? `<button class="service-open-button" type="button" data-update-action="install" ${installing || checking ? "disabled" : ""}>${installing ? t("installingUpdate") : t("installUpdate")}</button>`
-              : ""
-          }
-        </div>
-        <p class="service-description">${escapeHtml(latest?.body || latest?.name || releaseState.error || t("noReleaseNotes"))}</p>
-      </div>
-    `;
   };
 
   const render = () => {
@@ -3195,266 +3534,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     const dock = document.createElement("div");
     dock.className = "dock";
-    dock.dataset.open = String(open);
-
-    const panel = document.createElement("section");
-    panel.className = "panel";
-    panel.hidden = !open;
-    panel.setAttribute("role", "dialog");
-    panel.setAttribute("aria-label", t("title"));
-
-    const inner = document.createElement("div");
-    inner.className = "panel-inner";
-    inner.innerHTML = `
-      <div class="panel-head">
-        <p class="eyebrow">${t("eyebrow")}</p>
-        <h2>${t("title")}</h2>
-        <p class="description">${t("description")}</p>
-      </div>
-      ${
-        activeSection === "appearance"
-          ? `<div class="quick-controls">
-              <div class="mode-list" role="radiogroup" aria-label="${t("mode")}"></div>
-              <div class="language-list" role="radiogroup" aria-label="${t("language")}"></div>
-            </div>`
-          : ""
-      }
-      <div class="settings-grid">
-        <nav class="nav" aria-label="${t("settingsSections")}">
-          ${navItem("appearance", t("appearance"))}
-          ${navItem("service", t("service"))}
-          ${navItem("updates", t("updates"))}
-        </nav>
-        <div class="content">${
-          activeSection === "service"
-            ? serviceContent()
-            : activeSection === "updates"
-              ? updatesContent()
-              : appearanceContent()
-        }</div>
-      </div>
-    `;
-
-    const modeList = inner.querySelector(".mode-list");
-    const languageList = inner.querySelector(".language-list");
-
-    inner.querySelectorAll("[data-section]").forEach((item) => {
-      item.addEventListener("click", () => {
-        activeSection = item.dataset.section || "appearance";
-        window.__slockDesktopSettingsSection = activeSection;
-        render();
-      });
-    });
-
-    modes.forEach((mode) => {
-      if (!modeList) return;
-      const selected = mode.id === activeMode;
-      const option = document.createElement("button");
-      option.className = `mode-option${selected ? " active" : ""}`;
-      option.type = "button";
-      option.setAttribute("role", "radio");
-      option.setAttribute("aria-checked", String(selected));
-      option.title = t(mode.key);
-      option.innerHTML = `${optionIcon(mode.icon)}<span class="sr-only">${t(mode.key)}</span>`;
-      option.addEventListener("click", () => setMode(mode.id));
-      modeList.appendChild(option);
-    });
-
-    languages.forEach((language) => {
-      if (!languageList) return;
-      const selected = language.id === activeLanguage;
-      const option = document.createElement("button");
-      option.className = `language-option${selected ? " active" : ""}`;
-      option.type = "button";
-      option.setAttribute("role", "radio");
-      option.setAttribute("aria-checked", String(selected));
-      option.title = t(language.key);
-      option.dataset.languageId = language.id;
-      option.innerHTML = `${optionIcon(language.icon)}<span class="sr-only">${t(language.key)}</span>`;
-      option.addEventListener("click", () => setLanguage(language.id));
-      languageList.appendChild(option);
-    });
-
-    inner.querySelectorAll("[data-theme-select]").forEach((action) => {
-      action.addEventListener("click", (event) => {
-        if (event.target instanceof Element && event.target.closest("input")) return;
-        const themeId = action.getAttribute("data-theme-select");
-        if (themeId && renamingThemeId !== themeId) setTheme(themeId);
-      });
-    });
-    inner.querySelector("[data-theme-new]")?.addEventListener("click", () => {
-      newThemeDraft = { name: "", accent: '#10a37f' };
-      render();
-      queueMicrotask(() => shadow.querySelector("[data-theme-draft-name]")?.focus());
-    });
-    inner.querySelector("[data-theme-draft-accent]")?.addEventListener("change", (event) => {
-      newThemeDraft = {
-        ...(newThemeDraft || { name: "", accent: '#10a37f' }),
-        accent: event.target.value,
-      };
-      render();
-    });
-    inner.querySelector("[data-theme-draft-name]")?.addEventListener("input", (event) => {
-      newThemeDraft = {
-        ...(newThemeDraft || { name: "", accent: '#10a37f' }),
-        name: event.target.value,
-      };
-    });
-    inner.querySelector("[data-theme-draft-name]")?.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        if (newThemeDraft) createCustomTheme(newThemeDraft.name, newThemeDraft.accent);
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        newThemeDraft = null;
-        render();
-      }
-    });
-    inner.querySelector("[data-theme-create]")?.addEventListener("click", () => {
-      if (newThemeDraft) createCustomTheme(newThemeDraft.name, newThemeDraft.accent);
-    });
-    inner.querySelector("[data-theme-draft-cancel]")?.addEventListener("click", () => {
-      newThemeDraft = null;
-      render();
-    });
-    inner.querySelectorAll("[data-theme-accent]").forEach((input) => {
-      input.addEventListener("change", (event) => {
-        const themeId = input.getAttribute("data-theme-accent");
-        if (themeId) updateCustomThemeAccent(themeId, event.target.value);
-      });
-    });
-    inner.querySelectorAll("[data-theme-rename]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const themeId = button.getAttribute("data-theme-rename");
-        const theme = themeCatalog.find((item) => item.id === themeId);
-        if (!theme) return;
-        renamingThemeId = theme.id;
-        renameDraft = theme.name || "";
-        render();
-        queueMicrotask(() => shadow.querySelector("[data-theme-rename-input]")?.focus());
-      });
-    });
-    inner.querySelectorAll("[data-theme-rename-input]").forEach((input) => {
-      input.addEventListener("input", (event) => {
-        renameDraft = event.target.value;
-      });
-      input.addEventListener("keydown", (event) => {
-        const themeId = input.getAttribute("data-theme-rename-input");
-        if (event.key === "Enter" && themeId) {
-          event.preventDefault();
-          renameCustomTheme(themeId, renameDraft);
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          renamingThemeId = null;
-          renameDraft = "";
-          render();
-        }
-      });
-    });
-    inner.querySelectorAll("[data-theme-rename-save]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const themeId = button.getAttribute("data-theme-rename-save");
-        if (themeId) renameCustomTheme(themeId, renameDraft);
-      });
-    });
-    inner.querySelector("[data-theme-rename-cancel]")?.addEventListener("click", () => {
-      renamingThemeId = null;
-      renameDraft = "";
-      render();
-    });
-    inner.querySelectorAll("[data-theme-delete]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const themeId = button.getAttribute("data-theme-delete");
-        if (themeId) deleteCustomTheme(themeId);
-      });
-    });
-
-    inner.querySelectorAll("[data-service-action]").forEach((action) => {
-      action.addEventListener("click", () => {
-        const serviceAction = action.dataset.serviceAction;
-        const serverSlug = action.dataset.serverSlug;
-        if (serviceAction === "refresh") {
-          refreshServiceSnapshot();
-        } else if (serviceAction === "start") {
-          const selected = selectedServiceServer();
-          const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug || "";
-          if (!selectedServerSlug) {
-            serviceError = t("selectedServerPlaceholder");
-            render();
-            return;
-          }
-          loadServiceSnapshot("start_service", { selectedServerSlug }, "service-start");
-        } else if (serviceAction === "stop") {
-          const selected = selectedServiceServer();
-          const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug || "";
-          if (!selectedServerSlug) {
-            serviceError = t("serviceNotRunning");
-            render();
-            return;
-          }
-          loadServiceSnapshot("stop_service", { selectedServerSlug }, "service-stop");
-        } else if (serviceAction === "select" && serverSlug) {
-          loadServiceSnapshot(
-            "select_service_server",
-            { selectedServerSlug: serverSlug },
-            `service-select:${serverSlug}`,
-          );
-        } else if (serviceAction === "open") {
-          const selected = selectedServiceServer();
-          const selectedServerSlug = selected?.slug || serviceSnapshot?.selectedServerSlug;
-          if (selectedServerSlug) {
-            loadServiceSnapshot("open_workspace", { selectedServerSlug }, "service-open");
-          }
-        } else if (serviceAction === "log" && serverSlug) {
-          invokeDesktop("open_service_log", { serverSlug }).catch((error) => {
-            serviceError = error?.message || String(error);
-            render();
-          });
-        }
-      });
-    });
-    inner.querySelector("[data-service-search]")?.addEventListener("input", (event) => {
-      serviceQuery = event.target.value;
-      window.__slockDesktopServiceQuery = serviceQuery;
-      render();
-      queueMicrotask(() => {
-        const input = shadow.querySelector("[data-service-search]");
-        if (input) {
-          input.focus();
-          input.setSelectionRange?.(serviceQuery.length, serviceQuery.length);
-        }
-      });
-    });
-    inner.querySelectorAll("[data-update-action]").forEach((action) => {
-      action.addEventListener("click", () => {
-        const updateAction = action.getAttribute("data-update-action");
-        if (updateAction === "check") {
-          checkDesktopRelease();
-        } else if (updateAction === "install") {
-          installDesktopRelease();
-        }
-      });
-    });
-
-    if (activeSection === "service" && !serviceSnapshot && !serviceBusyAction) {
-      queueMicrotask(async () => {
-        await loadServiceSnapshot("bootstrap", { refresh: false });
-        if (serviceBusyAction) return;
-        refreshServiceSnapshot();
-      });
-    }
-    if (activeSection === "updates" && !updateSnapshot && !updateBusyAction) {
-      updateBusyAction = "updates-load";
-      queueMicrotask(async () => {
-        await loadServiceSnapshot("bootstrap", { refresh: false }, null);
-        updateBusyAction = null;
-        render();
-      });
-    }
-
-    panel.appendChild(inner);
 
     const toolbar = document.createElement("div");
     toolbar.className = "titlebar-tools";
@@ -3471,7 +3550,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       void openSelectedServiceLog();
     });
     toolbar.querySelector("[data-titlebar-theme-toggle]")?.addEventListener("click", () => {
-      titlebarThemeMenuOpen = !titlebarThemeMenuOpen;
+      const nextOpen = !titlebarThemeMenuOpen;
+      titlebarThemeMenuOpen = nextOpen;
+      if (!nextOpen) {
+        newThemeDraft = null;
+        titlebarThemeWheelOpen = false;
+      }
       releaseNotesOpen = false;
       render();
     });
@@ -3479,26 +3563,136 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       button.addEventListener("click", () => {
         const themeId = button.getAttribute("data-titlebar-theme-option");
         titlebarThemeMenuOpen = false;
+        newThemeDraft = null;
+        titlebarThemeWheelOpen = false;
         if (themeId) setTheme(themeId);
       });
     });
     toolbar.querySelector("[data-titlebar-theme-new]")?.addEventListener("click", () => {
-      titlebarThemeMenuOpen = false;
-      activeSection = "appearance";
-      window.__slockDesktopSettingsSection = activeSection;
-      newThemeDraft = { name: "", accent: '#10a37f' };
-      open = true;
-      window.__slockDesktopSettingsOpen = open;
+      titlebarThemeMenuOpen = true;
+      titlebarThemeWheelOpen = true;
+      releaseNotesOpen = false;
+      newThemeDraft = makeThemeDraft();
       render();
-      queueMicrotask(() => shadow.querySelector("[data-theme-draft-name]")?.focus());
+      queueMicrotask(() => shadow.querySelector("[data-titlebar-theme-draft-name]")?.focus());
+    });
+    toolbar.querySelectorAll("[data-titlebar-theme-delete]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const themeId = button.getAttribute("data-titlebar-theme-delete");
+        if (themeId) deleteCustomTheme(themeId);
+      });
+    });
+    toolbar.querySelector("[data-titlebar-theme-wheel-toggle]")?.addEventListener("click", () => {
+      titlebarThemeWheelOpen = !titlebarThemeWheelOpen;
+      render();
+    });
+    toolbar.querySelectorAll("[data-titlebar-theme-preset]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const accent = button.getAttribute("data-titlebar-theme-preset");
+        if (!accent) return;
+        newThemeDraft = syncThemeDraftAccent(newThemeDraft || makeThemeDraft(), accent);
+        titlebarThemeWheelOpen = true;
+        render();
+      });
+    });
+    toolbar.querySelector("[data-titlebar-theme-wheel]")?.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      newThemeDraft = syncThemeDraftAccent(
+        newThemeDraft || makeThemeDraft(),
+        accentFromWheelPointer(event, event.currentTarget),
+      );
+      render();
+    });
+    toolbar.querySelector("[data-titlebar-theme-wheel]")?.addEventListener("pointermove", (event) => {
+      if (event.buttons !== 1) return;
+      newThemeDraft = syncThemeDraftAccent(
+        newThemeDraft || makeThemeDraft(),
+        accentFromWheelPointer(event, event.currentTarget),
+      );
+      render();
+    });
+    toolbar.querySelector("[data-titlebar-theme-draft-hex]")?.addEventListener("input", (event) => {
+      const value = String(event.target.value || "").toUpperCase();
+      const normalized = normalizeHexColor(value);
+      newThemeDraft = {
+        ...(newThemeDraft || makeThemeDraft()),
+        hexInput: value,
+      };
+      if (normalized) {
+        newThemeDraft = syncThemeDraftAccent(newThemeDraft, normalized);
+      }
+      render();
+      queueMicrotask(() => {
+        const input = shadow.querySelector("[data-titlebar-theme-draft-hex]");
+        if (input) {
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
+      });
+    });
+    toolbar.querySelectorAll("[data-titlebar-theme-draft-rgb]").forEach((input) => {
+      input.addEventListener("input", (event) => {
+        const channel = input.getAttribute("data-titlebar-theme-draft-rgb");
+        const value = sanitizeRgbInput(event.target.value);
+        const draft = newThemeDraft || makeThemeDraft();
+        const rgbInput = {
+          ...draft.rgbInput,
+          [channel]: value,
+        };
+        newThemeDraft = { ...draft, rgbInput };
+        const rgb = parseRgbInput(rgbInput);
+        if (rgb) {
+          newThemeDraft = syncThemeDraftAccent(newThemeDraft, rgbToHex(rgb.r, rgb.g, rgb.b));
+        }
+        render();
+        queueMicrotask(() => {
+          const nextInput = shadow.querySelector(`[data-titlebar-theme-draft-rgb="${channel}"]`);
+          if (nextInput) {
+            nextInput.focus();
+            nextInput.setSelectionRange(nextInput.value.length, nextInput.value.length);
+          }
+        });
+      });
+    });
+    toolbar.querySelector("[data-titlebar-theme-draft-name]")?.addEventListener("input", (event) => {
+      newThemeDraft = {
+        ...(newThemeDraft || makeThemeDraft()),
+        name: event.target.value,
+      };
+    });
+    toolbar.querySelector("[data-titlebar-theme-draft-name]")?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (newThemeDraft) createCustomTheme(newThemeDraft.name, newThemeDraft.accent);
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        newThemeDraft = null;
+        titlebarThemeWheelOpen = false;
+        render();
+      }
+    });
+    toolbar.querySelector("[data-titlebar-theme-create]")?.addEventListener("click", () => {
+      if (newThemeDraft) createCustomTheme(newThemeDraft.name, newThemeDraft.accent);
+    });
+    toolbar.querySelector("[data-titlebar-theme-draft-cancel]")?.addEventListener("click", () => {
+      newThemeDraft = null;
+      titlebarThemeWheelOpen = false;
+      render();
     });
     toolbar.querySelector("[data-titlebar-mode]")?.addEventListener("click", () => {
       titlebarThemeMenuOpen = false;
+      newThemeDraft = null;
+      titlebarThemeWheelOpen = false;
       releaseNotesOpen = false;
       setMode(nextModeId());
     });
     toolbar.querySelector("[data-titlebar-language]")?.addEventListener("click", () => {
       titlebarThemeMenuOpen = false;
+      newThemeDraft = null;
+      titlebarThemeWheelOpen = false;
       releaseNotesOpen = false;
       setLanguage(nextLanguageId());
     });
@@ -3513,15 +3707,20 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     toolbar.querySelector("[data-titlebar-update]")?.addEventListener("click", () => {
       if (releaseUpdateAvailable()) {
         titlebarThemeMenuOpen = false;
+        newThemeDraft = null;
+        titlebarThemeWheelOpen = false;
         releaseNotesOpen = !releaseNotesOpen;
         render();
       } else {
+        titlebarThemeMenuOpen = false;
+        newThemeDraft = null;
+        titlebarThemeWheelOpen = false;
         releaseNotesOpen = false;
         checkDesktopRelease();
       }
     });
 
-    dock.append(panel, toolbar);
+    dock.append(toolbar);
     shadow.appendChild(dock);
   };
 
@@ -3588,11 +3787,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       if (wasUnauthenticated) {
         const payload = await invoke("bootstrap", { refresh: false });
         syncDesktopPayload(payload);
-        if (activeSection === "service") {
-          refreshServiceSnapshot();
-        } else {
-          render();
-        }
+        refreshServiceSnapshot();
       }
     } catch (error) {
       console.warn("[Slock Desktop] session sync failed", error);
@@ -3671,19 +3866,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
   };
 
-  window.__slockDesktopSettingsClosePanel = closePanel;
   window.__slockDesktopCloseTransientTitlebarPanels = closeTransientTitlebarPanels;
   syncSessionTokens();
 
   if (!window.__slockDesktopSettingsEscapeBound) {
     window.__slockDesktopSettingsEscapeBound = true;
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && window.__slockDesktopCloseTransientTitlebarPanels?.()) {
-        return;
-      }
-      if (event.key === "Escape" && window.__slockDesktopSettingsOpen) {
-        window.__slockDesktopSettingsClosePanel?.();
-      }
+      if (event.key === "Escape") window.__slockDesktopCloseTransientTitlebarPanels?.();
     });
   }
 
@@ -3694,9 +3883,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       const path = event.composedPath ? event.composedPath() : [];
       const insideDesktopHost = activeHost && path.includes(activeHost);
       if (!insideDesktopHost) window.__slockDesktopCloseTransientTitlebarPanels?.();
-      if (!window.__slockDesktopSettingsOpen) return;
-      if (insideDesktopHost) return;
-      window.__slockDesktopSettingsClosePanel?.();
     });
   }
 
@@ -3711,20 +3897,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }, true);
   }
 
-  function closePanel() {
-    open = false;
-    window.__slockDesktopSettingsOpen = false;
-    const activeHost = document.getElementById(hostId);
-    if (activeHost) {
-      const activeDock = activeHost.shadowRoot?.querySelector(".dock");
-      const activePanel = activeHost.shadowRoot?.querySelector(".panel");
-      if (activeDock) activeDock.dataset.open = "false";
-      if (activePanel) activePanel.hidden = true;
-    }
-  }
-
   function closeTransientTitlebarPanels() {
     if (!titlebarThemeMenuOpen && !releaseNotesOpen) return false;
+    if (titlebarThemeMenuOpen) {
+      newThemeDraft = null;
+      titlebarThemeWheelOpen = false;
+    }
     titlebarThemeMenuOpen = false;
     releaseNotesOpen = false;
     render();
@@ -3812,13 +3990,17 @@ mod tests {
         assert!(!script.contains("machineStatusCountsAsStarted"));
         assert!(!script.contains("runtimeRunning"));
         assert!(script.contains("const selectedRunning ="));
-        assert!(script.contains("if (!selectedServerSlug)"));
-        assert!(script.contains("data-service-action=\"start\""));
+        assert!(script.contains("if (!selectedSlug)"));
+        assert!(script.contains("data-titlebar-service"));
+        assert!(!script.contains("data-service-action=\"toggle\""));
+        assert!(!script.contains("data-service-action=\"start\""));
+        assert!(!script.contains("data-service-action=\"stop\""));
         assert!(script.contains(
-            "loadServiceSnapshot(\"start_service\", { selectedServerSlug }, \"service-start\")"
+            "const command = selectedServiceRunning() ? \"stop_service\" : \"start_service\""
         ));
-        assert!(script.contains("selectedRow"));
-        assert!(script.contains("service?.configured"));
+        assert!(script.contains(
+            "const busy = selectedServiceRunning() ? \"service-stop\" : \"service-start\""
+        ));
         assert!(
             script.contains("service.configured ? t(\"serviceIdle\") : t(\"serviceNotLinked\")")
         );
@@ -3857,11 +4039,24 @@ mod tests {
         assert!(
             script.contains("transform: translate3d(0, var(--slock-desktop-titlebar-height), 0)")
         );
-        assert!(script.contains("data-theme-new"));
+        assert!(script.contains("data-titlebar-theme-wheel-toggle"));
+        assert!(script.contains("data-titlebar-theme-wheel"));
+        assert!(script.contains("accentFromWheelPointer"));
+        assert!(script.contains("titlebar-accent-wheel-large"));
+        assert!(script.contains("data-titlebar-theme-draft-hex"));
+        assert!(script.contains("data-titlebar-theme-draft-rgb"));
+        assert!(script.contains("data-titlebar-theme-create"));
+        assert!(script.contains("data-titlebar-theme-delete"));
         assert!(script.contains("create_custom_theme"));
-        assert!(script.contains("data-service-search"));
+        assert!(script.contains("delete_custom_theme"));
+        assert!(script.contains("newThemeDraft = makeThemeDraft();"));
+        assert!(!script.contains("data-theme-new"));
+        assert!(!script.contains("data-service-search"));
+        assert!(!script.contains("data-update-action=\"check\""));
+        assert!(!script.contains("__slockDesktopSettingsOpen"));
+        assert!(!script.contains("className = \"panel\""));
+        assert!(!script.contains("dock.append(panel, toolbar)"));
         assert!(script.contains("open_service_log"));
-        assert!(script.contains("data-update-action=\"check\""));
         assert!(script.contains("check_desktop_update"));
         assert!(script.contains("hydrateReleaseStateFromUpdateSnapshot"));
         assert!(script.contains("updateSnapshot?.latest"));

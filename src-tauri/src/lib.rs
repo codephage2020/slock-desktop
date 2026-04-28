@@ -81,6 +81,7 @@ struct ServiceRuntime {
     last_error: Option<String>,
     active_server_slug: Option<String>,
     active_machine_id: Option<String>,
+    active_pid: Option<u32>,
     cached_servers: Vec<ServiceServerSnapshot>,
     cached_sync_error: Option<String>,
 }
@@ -600,7 +601,7 @@ fn start_service(
     };
 
     force_start_service(&app, &state, &service_settings)?;
-    build_bootstrap(&app, &state, true)
+    build_bootstrap(&app, &state, false)
 }
 
 #[tauri::command]
@@ -623,7 +624,7 @@ fn stop_service(
         Some(&service_settings),
         selected_server_slug.as_deref(),
     )?;
-    build_bootstrap(&app, &state, true)
+    build_bootstrap(&app, &state, false)
 }
 
 #[tauri::command]
@@ -1951,14 +1952,31 @@ fn collect_service_snapshot(
             Ok(Some(status)) => {
                 runtime.last_error = Some(format!("Service exited with status {status}"));
                 runtime.child = None;
+                runtime.active_pid = None;
             }
             Ok(None) => {
                 running = true;
                 pid = Some(child.id());
+                runtime.active_pid = pid;
             }
             Err(err) => {
                 runtime.last_error = Some(format!("Service state check failed: {err}"));
                 runtime.child = None;
+                runtime.active_pid = None;
+            }
+        }
+    } else if let Some(active_pid) = runtime.active_pid {
+        match process_is_alive(active_pid) {
+            Ok(true) => {
+                running = true;
+                pid = Some(active_pid);
+            }
+            Ok(false) => {
+                runtime.active_pid = None;
+            }
+            Err(err) => {
+                runtime.last_error = Some(format!("Service state check failed: {err}"));
+                runtime.active_pid = None;
             }
         }
     }
@@ -2095,11 +2113,84 @@ fn should_start_service_for_workspace(
         && (force_for_workspace || settings.auto_start_with_workspace)
 }
 
+fn cached_service_start_target(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+) -> Result<Option<ServiceStartTarget>, String> {
+    let selected_slug = settings.selected_server_slug.trim();
+    if selected_slug.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(binding) = find_service_binding(settings, "", selected_slug) else {
+        return Ok(None);
+    };
+    if binding.server_id.trim().is_empty() || binding.machine_id.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let api_key = rotate_machine_api_key(
+        app,
+        state,
+        &settings.server_url,
+        &binding.server_id,
+        &binding.machine_id,
+    )?;
+    let machine_status = state
+        .service
+        .lock()
+        .ok()
+        .and_then(|runtime| {
+            runtime
+                .cached_servers
+                .iter()
+                .find(|server| server.slug == selected_slug || server.id == binding.server_id)
+                .map(|server| server.machine_status.clone())
+        })
+        .unwrap_or_else(|| "offline".to_string());
+
+    Ok(Some(ServiceStartTarget {
+        binding,
+        api_key,
+        api_key_prefix: None,
+        machine_status,
+    }))
+}
+
 fn force_start_service(
     app: &AppHandle,
     state: &DesktopState,
     settings: &ServiceSettings,
 ) -> Result<(), String> {
+    let cached_target = match cached_service_start_target(app, state, settings) {
+        Ok(target) => target,
+        Err(err) => {
+            log::warn!("cached service start target failed, falling back to full resolution: {err}");
+            None
+        }
+    };
+    if let Some(target) = cached_target {
+        if prepare_runtime_for_service_target(
+            state,
+            &target.binding.server_slug,
+            Some(target.binding.machine_id.as_str()),
+            true,
+        )? {
+            return Ok(());
+        }
+
+        if let Some(process) = service_daemon_process_for_start_target(settings, &target)? {
+            adopt_service_daemon_process(state, &process)?;
+            return Ok(());
+        }
+
+        let api_key = target.api_key.trim();
+        if !api_key.is_empty() {
+            return spawn_service_daemon(app, state, settings, target);
+        }
+    }
+
     let selected_server = resolve_selected_server(app, state, settings)?;
 
     if let Some(target) = resolve_existing_service_machine(app, state, settings, &selected_server)?
@@ -2154,6 +2245,21 @@ fn force_start_service(
         return Err("Selected server did not return a daemon API key.".to_string());
     }
 
+    spawn_service_daemon(app, state, settings, target)
+}
+
+fn spawn_service_daemon(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+    target: ServiceStartTarget,
+) -> Result<(), String> {
+    let binding = target.binding;
+    let api_key = target.api_key.trim();
+    if api_key.is_empty() {
+        return Err("Selected server did not return a daemon API key.".to_string());
+    }
+
     let service_command = resolve_service_command()?;
     let mut log_file = open_service_log_file(app, &binding.server_slug)?;
     writeln!(
@@ -2197,8 +2303,9 @@ fn force_start_service(
         .lock()
         .map_err(|_| "Unable to lock service runtime".to_string())?;
     runtime.last_error = None;
-    runtime.active_server_slug = Some(selected_server.slug);
+    runtime.active_server_slug = Some(binding.server_slug);
     runtime.active_machine_id = Some(binding.machine_id);
+    runtime.active_pid = Some(child.id());
     runtime.child = Some(child);
     Ok(())
 }
@@ -2529,6 +2636,7 @@ fn prepare_runtime_for_service_target(
         runtime.last_error = None;
         runtime.active_server_slug = Some(server_slug.to_string());
         runtime.active_machine_id = target_machine_id.map(str::to_string);
+        runtime.active_pid = runtime.child.as_ref().map(|child| child.id());
     }
 
     Ok(matching_child_running)
@@ -2552,6 +2660,7 @@ fn adopt_service_daemon_process(
     runtime.last_error = None;
     runtime.active_server_slug = Some(process.server_slug.clone());
     runtime.active_machine_id = process.machine_id.clone();
+    runtime.active_pid = Some(process.pid);
     runtime.child = None;
     Ok(())
 }
@@ -2675,7 +2784,7 @@ fn mark_service_daemon_process_running(
 }
 
 fn stop_service_process(
-    app: &AppHandle,
+    _app: &AppHandle,
     state: &DesktopState,
     service_settings: Option<&ServiceSettings>,
     target_server_slug: Option<&str>,
@@ -2739,27 +2848,12 @@ fn stop_service_process(
             .is_none();
         if !still_running {
             runtime.child = None;
+            runtime.active_pid = None;
         }
     }
 
-    let resolved_target = if stopped_daemon_process {
-        None
-    } else {
-        match (service_settings, target_slug) {
-            (Some(settings), Some(slug)) => {
-                resolve_service_machine_for_slug(app, state, settings, slug)?
-            }
-            _ => None,
-        }
-    };
-    let target_binding = resolved_target
-        .as_ref()
-        .map(|target| target.binding.clone())
-        .or_else(|| {
-            service_settings.and_then(|settings| {
-                target_slug.and_then(|slug| find_service_binding(settings, "", slug))
-            })
-        });
+    let target_binding = service_settings
+        .and_then(|settings| target_slug.and_then(|slug| find_service_binding(settings, "", slug)));
     daemon_pids = if stopped_daemon_process {
         Vec::new()
     } else {
@@ -2770,9 +2864,7 @@ fn stop_service_process(
                 .as_ref()
                 .map(|binding| binding.machine_id.as_str())
                 .filter(|machine_id| !machine_id.trim().is_empty()),
-            resolved_target
-                .as_ref()
-                .and_then(|target| target.api_key_prefix.as_deref()),
+            None,
             target_binding
                 .as_ref()
                 .map(|binding| binding.api_key.as_str())
@@ -2780,14 +2872,6 @@ fn stop_service_process(
             false,
         )?
     };
-    if daemon_pids.is_empty()
-        && resolved_target
-            .as_ref()
-            .map(|target| machine_counts_as_started(&target.machine_status))
-            .unwrap_or(false)
-    {
-        daemon_pids = unique_untagged_daemon_process_ids(target_server_url)?;
-    }
     stopped_daemon_process = stopped_daemon_process || !daemon_pids.is_empty();
     terminate_daemon_processes(daemon_pids)?;
 
@@ -2800,6 +2884,7 @@ fn stop_service_process(
             runtime.last_error = Some("Selected server service is not running.".to_string());
             runtime.active_server_slug = None;
             runtime.active_machine_id = None;
+            runtime.active_pid = None;
         }
         return Err("Selected server service is not running.".to_string());
     }
@@ -2808,6 +2893,7 @@ fn stop_service_process(
         runtime.last_error = None;
         runtime.active_server_slug = None;
         runtime.active_machine_id = None;
+        runtime.active_pid = None;
     }
     Ok(())
 }
@@ -3942,16 +4028,6 @@ fn resolve_service_server(
     Err("Pick a server in the launcher before starting Slock.".to_string())
 }
 
-fn resolve_service_machine_for_slug(
-    app: &AppHandle,
-    state: &DesktopState,
-    settings: &ServiceSettings,
-    server_slug: &str,
-) -> Result<Option<ResolvedServiceMachine>, String> {
-    let server = resolve_service_server(app, state, settings, server_slug)?;
-    resolve_existing_service_machine(app, state, settings, &server)
-}
-
 fn resolve_existing_service_machine(
     app: &AppHandle,
     state: &DesktopState,
@@ -4343,6 +4419,7 @@ pub fn run() {
                 last_error: None,
                 active_server_slug: None,
                 active_machine_id: None,
+                active_pid: None,
                 cached_servers: Vec::new(),
                 cached_sync_error: None,
             }),
@@ -4639,6 +4716,7 @@ mod tests {
             last_error: None,
             active_server_slug: Some("open-have".to_string()),
             active_machine_id: Some("machine-open".to_string()),
+            active_pid: None,
             cached_servers: vec![ServiceServerSnapshot {
                 id: "server-open".to_string(),
                 name: "Open".to_string(),
@@ -4980,6 +5058,7 @@ mod tests {
                 last_error: None,
                 active_server_slug: Some("tyan-dyun".to_string()),
                 active_machine_id: Some("machine-tyan".to_string()),
+                active_pid: Some(pid),
                 cached_servers: Vec::new(),
                 cached_sync_error: None,
             }),
