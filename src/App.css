@@ -8,7 +8,16 @@
 body:has(.loading-shell),
 #root:has(.loading-shell),
 .loading-shell {
-  background: transparent;
+  background: #f7f7f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:has(.loading-shell),
+  body:has(.loading-shell),
+  #root:has(.loading-shell),
+  .loading-shell {
+    background: #1f1f1c;
+  }
 }
 
 :where(button:disabled, input:disabled, textarea:disabled, select:disabled, [aria-disabled='true']) {
@@ -30,7 +39,7 @@ body:has(.loading-shell),
 }
 
 .loading-shell .loading-mark {
-  color: var(--text);
+  color: var(--accent);
   width: 44px;
   height: 42px;
   margin: 0 auto;
@@ -172,11 +181,19 @@ body:has(.loading-shell),
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
+  gap: 6px;
   max-width: 180px;
   min-width: 0;
   padding: 0;
   color: var(--text);
   pointer-events: none;
+}
+
+.tauri-titlebar-mark {
+  width: 15px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--accent);
 }
 
 .tauri-titlebar-drag {
@@ -1146,10 +1163,15 @@ body:has(.loading-shell),
   .tauri-titlebar {
     padding-right: 10px;
     padding-left: 72px;
+    gap: 6px;
   }
 
   .tauri-titlebar-wordmark {
     display: none;
+  }
+
+  .titlebar-settings {
+    gap: 4px;
   }
 
   .launch-meta-row {

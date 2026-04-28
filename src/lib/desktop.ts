@@ -50,6 +50,7 @@ export interface ServiceServerSnapshot {
 
 export interface UpdateSnapshot {
   currentVersion: string
+  latest: DesktopUpdateCheck | null
 }
 
 export interface DesktopUpdateCheck {

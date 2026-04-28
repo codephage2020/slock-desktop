@@ -7,6 +7,7 @@
   --muted: #6b6f67;
   --accent: #10a37f;
   --accent-soft: #e7f5f1;
+  color-scheme: light dark;
   font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
@@ -17,6 +18,19 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #1f1f1c;
+    --surface: #252623;
+    --surface-strong: #2f302c;
+    --line: #3e413a;
+    --text: #f4f4ef;
+    --muted: #b7bbae;
+    --accent: #19c99b;
+    --accent-soft: color-mix(in srgb, #19c99b 22%, #1f1f1c);
+  }
 }
 
 * {

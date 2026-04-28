@@ -44,6 +44,23 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     error: null,
     latest: null,
   };
+  const hydrateReleaseStateFromUpdateSnapshot = () => {
+    const latest = updateSnapshot?.latest;
+    if (!latest) return;
+    releaseState = {
+      ...releaseState,
+      loading: false,
+      error: null,
+      latest,
+    };
+    window.__slockDesktopReleaseState = releaseState;
+  };
+  if (releaseState.loading) {
+    releaseState = { ...releaseState, loading: false };
+    window.__slockDesktopReleaseState = releaseState;
+  }
+  hydrateReleaseStateFromUpdateSnapshot();
+  let releaseCheckInFlight = false;
   let newThemeDraft = null;
   let renamingThemeId = null;
   let renameDraft = "";
@@ -51,21 +68,42 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   let serviceError = null;
   let appearanceBusyAction = null;
   let updateBusyAction = null;
+  let titlebarThemeMenuOpen = false;
+  let releaseNotesOpen = false;
   const modes = [
-    { id: "light", icon: "☼", key: "modeLight" },
-    { id: "dark", icon: "◐", key: "modeDark" },
-    { id: "system", icon: "◌", key: "modeSystem" },
+    { id: "light", icon: "sun", key: "modeLight" },
+    { id: "dark", icon: "moon", key: "modeDark" },
+    { id: "system", icon: "display", key: "modeSystem" },
   ];
   const languages = [
-    { id: "en-US", shortKey: "languageEnglishShort", key: "languageEnglish" },
-    { id: "zh-CN", shortKey: "languageChineseShort", key: "languageChinese" },
-    { id: "system", shortKey: "languageSystemShort", key: "languageSystem" },
+    { id: "en-US", icon: "latin", key: "languageEnglish" },
+    { id: "zh-CN", icon: "han", key: "languageChinese" },
+    { id: "system", icon: "globe", key: "languageSystem" },
   ];
-  const chineseLanguageIcon = () =>
-    `<svg class="language-icon" aria-hidden="true" viewBox="0 0 1024 1024" fill="currentColor"><path d="M555.231787 330.203429v-107.997284h-68.202727v108.038827H263.433935v273.457531H487.02906v210.976899h68.202727V603.70431h224.21827V330.203429H555.231787z m-68.202727 209.074952h-157.337694v-144.605675h157.335888v144.605675z m226.131053 0H555.195662v-144.605675h157.962645v144.605675z"></path></svg>`;
+  const optionIcon = (type, className = "option-icon") => {
+    if (type === "han") {
+      return `<svg class="${className}" aria-hidden="true" viewBox="0 0 1024 1024" fill="currentColor"><path d="M555.231787 330.203429v-107.997284h-68.202727v108.038827H263.433935v273.457531H487.02906v210.976899h68.202727V603.70431h224.21827V330.203429H555.231787z m-68.202727 209.074952h-157.337694v-144.605675h157.335888v144.605675z m226.131053 0H555.195662v-144.605675h157.962645v144.605675z"></path></svg>`;
+    }
+    if (type === "latin") {
+      return `<svg class="${className}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18 12 6l5 12"></path><path d="M9.2 14h5.6"></path></svg>`;
+    }
+    if (type === "sun") {
+      return `<svg class="${className}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.9 4.9 1.4 1.4"></path><path d="m17.7 17.7 1.4 1.4"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m4.9 19.1 1.4-1.4"></path><path d="m17.7 6.3 1.4-1.4"></path></svg>`;
+    }
+    if (type === "moon") {
+      return `<svg class="${className}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.4 14.5A7.7 7.7 0 0 1 9.5 3.6 8.7 8.7 0 1 0 20.4 14.5Z"></path></svg>`;
+    }
+    if (type === "display") {
+      return `<svg class="${className}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="11" x="4" y="5" rx="2"></rect><path d="M12 16v3"></path><path d="M8 19h8"></path></svg>`;
+    }
+    return `<svg class="${className}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a14 14 0 0 1 0 18"></path><path d="M12 3a14 14 0 0 0 0 18"></path></svg>`;
+  };
+  const paletteIcon = () =>
+    `<svg class="titlebar-theme-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle><path d="M12 22a10 10 0 1 1 10-10 4 4 0 0 1-4 4h-1.5a2.5 2.5 0 0 0 0 5H12Z"></path></svg>`;
+  const shellIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 8 4 4-4 4"></path><path d="M10 16h10"></path><rect width="20" height="16" x="2" y="4" rx="2"></rect></svg>`;
   const copy = {
     "en-US": {
-      launcher: "Desktop Settings",
       eyebrow: "Slock Desktop",
       title: "Desktop Settings",
       settingsSections: "Desktop settings sections",
@@ -110,9 +148,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       languageEnglish: "English",
       languageChinese: "Chinese",
       languageSystem: "System",
-      languageEnglishShort: "EN",
-      languageChineseShort: "中",
-      languageSystemShort: "System",
       saved: "Saved in desktop config",
       themes: "themes",
       themeNewLabel: "New theme",
@@ -137,7 +172,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       installingUpdate: "Updating...",
       updateCheckFailed: "Update check failed.",
       noReleaseNotes: "No release notes were provided.",
-      dragHint: "Drag to move",
+      releaseNotes: "Release notes",
+      close: "Close",
       themeNames: {
         original: "Original",
       },
@@ -146,7 +182,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       },
     },
     "zh-CN": {
-      launcher: "桌面设置",
       eyebrow: "Slock 桌面端",
       title: "桌面设置",
       settingsSections: "桌面设置分区",
@@ -191,9 +226,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       languageEnglish: "英文",
       languageChinese: "中文",
       languageSystem: "系统",
-      languageEnglishShort: "EN",
-      languageChineseShort: "中",
-      languageSystemShort: "跟随系统",
       saved: "已保存到桌面配置",
       themes: "个主题",
       themeNewLabel: "新建主题",
@@ -218,7 +250,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       installingUpdate: "更新中...",
       updateCheckFailed: "更新检查失败。",
       noReleaseNotes: "此版本没有提供发布说明。",
-      dragHint: "拖动移动",
+      releaseNotes: "发布说明",
+      close: "关闭",
       themeNames: {
         original: "原主题",
         default: "默认",
@@ -241,6 +274,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   };
   const existing = document.getElementById(hostId);
   const host = existing || document.createElement("div");
+  const chromeSafeAreaStyleId = "slock-desktop-titlebar-safe-area";
 
   if (!existing) {
     host.id = hostId;
@@ -274,6 +308,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       throw new Error("Tauri invoke API is unavailable");
     }
     return invoke(command, args);
+  };
+  const startWindowDrag = async () => {
+    try {
+      await invokeDesktop("start_window_drag", {});
+    } catch (error) {
+      console.warn("[Slock Desktop] window drag failed", error);
+    }
   };
   const normalizeStatus = (status) => String(status || "").trim().toLowerCase();
 	  const machineStatusLabel = (status) => {
@@ -332,6 +373,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     if (payload.updates) {
       updateSnapshot = payload.updates;
       window.__slockDesktopUpdateSnapshot = updateSnapshot;
+      hydrateReleaseStateFromUpdateSnapshot();
     }
     if (payload.colorScheme) activeThemeId = payload.colorScheme;
     if (payload.appearanceMode) activeMode = payload.appearanceMode;
@@ -370,64 +412,50 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       render();
     }
   };
-  const normalizeVersion = (value) =>
-    String(value || "")
-      .trim()
-      .replace(/^v/i, "")
-      .split("-")[0];
-  const compareVersions = (left, right) => {
-    const leftParts = normalizeVersion(left).split(".").map((part) => Number.parseInt(part, 10) || 0);
-    const rightParts = normalizeVersion(right).split(".").map((part) => Number.parseInt(part, 10) || 0);
-    const max = Math.max(leftParts.length, rightParts.length);
-    for (let index = 0; index < max; index += 1) {
-      const l = leftParts[index] || 0;
-      const r = rightParts[index] || 0;
-      if (l > r) return 1;
-      if (l < r) return -1;
-    }
-    return 0;
-  };
-  const mapReleasePayload = (payload, currentVersion) => {
-    const tagName = payload?.tag_name || "unknown";
-    return {
-      tagName,
-      name: payload?.name || "",
-      publishedAt: payload?.published_at || "",
-      body: payload?.body || "",
-      prerelease: !!payload?.prerelease,
-      updateAvailable: compareVersions(tagName, currentVersion) > 0,
-    };
-  };
-  const checkDesktopRelease = async () => {
-    if (!updateSnapshot?.latestReleaseApiUrl) {
-      const payload = await invokeDesktop("bootstrap", { refresh: false });
-      syncDesktopPayload(payload);
-    }
-    releaseState = { ...releaseState, loading: true, error: null };
+  const checkDesktopRelease = async ({ silent = false } = {}) => {
+    if (releaseCheckInFlight) return;
+    releaseCheckInFlight = true;
+    releaseState = { ...releaseState, loading: !silent, error: silent ? releaseState.error : null };
     window.__slockDesktopReleaseState = releaseState;
-    render();
+    if (!silent) render();
     try {
-      const response = await fetch(updateSnapshot.latestReleaseApiUrl, {
-        headers: { Accept: "application/vnd.github+json" },
-      });
-      if (!response.ok) throw new Error(`${t("updateCheckFailed")} ${response.status}`);
-      const payload = await response.json();
-      releaseState = {
-        loading: false,
-        installing: false,
-        error: null,
-        latest: mapReleasePayload(payload, updateSnapshot.currentVersion),
-      };
+      if (!updateSnapshot?.currentVersion) {
+        const payload = await invokeDesktop("bootstrap", { refresh: false });
+        syncDesktopPayload(payload);
+      }
+      const latest = await invokeDesktop("check_desktop_update", {});
+      syncDesktopUpdateCheck(latest, false);
     } catch (error) {
       releaseState = {
         loading: false,
         installing: false,
-        error: error?.message || String(error || t("updateCheckFailed")),
-        latest: null,
+        error: silent ? releaseState.error : error?.message || String(error || t("updateCheckFailed")),
+        latest: silent ? releaseState.latest : null,
       };
+      if (silent) console.warn("[Slock Desktop] automatic update check failed", error);
+    } finally {
+      releaseCheckInFlight = false;
     }
     window.__slockDesktopReleaseState = releaseState;
     render();
+  };
+  const syncDesktopUpdateCheck = (latest, shouldRender = true) => {
+    if (!latest) return;
+    updateSnapshot = {
+      ...(updateSnapshot || { currentVersion: latest.currentVersion || "" }),
+      currentVersion: latest.currentVersion || updateSnapshot?.currentVersion || "",
+      latest,
+    };
+    window.__slockDesktopUpdateSnapshot = updateSnapshot;
+    releaseState = {
+      ...releaseState,
+      loading: false,
+      installing: false,
+      error: null,
+      latest,
+    };
+    window.__slockDesktopReleaseState = releaseState;
+    if (shouldRender) render();
   };
   const installDesktopRelease = async () => {
     releaseState = { ...releaseState, installing: true, error: null };
@@ -1079,6 +1107,20 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       summary: dictionary.themeSummaries?.[theme.id] || theme.summary,
     };
   };
+  const titlebarThemeLabel = (theme) => {
+    const display = themeDisplay(theme).name || "";
+    const trimmed = display.replace(/主题/g, "").replace(/\btheme\b/ig, "").trim();
+    if (trimmed) return trimmed;
+    return resolveLanguage() === "zh-CN" ? "原始" : "Original";
+  };
+  const titlebarThemeSwatch = (theme) => {
+    if (theme?.id === "original") return '#ffd701';
+    return theme?.accent || "var(--desktop-accent)";
+  };
+  const selectedTheme = () =>
+    themeCatalog.find((theme) => theme.id === activeThemeId) ||
+    themeCatalog.find((theme) => theme.id === "original") ||
+    themeCatalog[0];
   const themeVarNames = [
     "--desktop-canvas",
     "--desktop-surface",
@@ -1088,46 +1130,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     "--desktop-muted",
     "--desktop-selection",
   ];
-  const dockPositionKey = "slock-desktop-settings-position";
-  let suppressLauncherClick = false;
-
-  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
-  const defaultDockPosition = () => ({
-    x: Math.max(12, window.innerWidth - 68),
-    y: Math.max(12, window.innerHeight - 68),
-  });
-  const sanitizeDockPosition = (position) => {
-    const fallback = defaultDockPosition();
-    const x = Number.isFinite(position?.x) ? position.x : fallback.x;
-    const y = Number.isFinite(position?.y) ? position.y : fallback.y;
-    return {
-      x: clamp(x, 12, Math.max(12, window.innerWidth - 56)),
-      y: clamp(y, 12, Math.max(12, window.innerHeight - 56)),
-    };
-  };
-  const loadDockPosition = () => {
-    try {
-      return sanitizeDockPosition(JSON.parse(localStorage.getItem(dockPositionKey) || "null"));
-    } catch {
-      return sanitizeDockPosition(null);
-    }
-  };
-  const saveDockPosition = (position) => {
-    try {
-      localStorage.setItem(dockPositionKey, JSON.stringify(sanitizeDockPosition(position)));
-    } catch {
-      // Local storage can be unavailable in hardened webview contexts.
-    }
-  };
-  const applyDockPosition = (dock, position) => {
-    const next = sanitizeDockPosition(position);
-    dock.style.setProperty("--dock-x", `${next.x}px`);
-    dock.style.setProperty("--dock-y", `${next.y}px`);
-    dock.dataset.align = next.x < window.innerWidth / 2 ? "left" : "right";
-    dock.dataset.vertical = next.y < window.innerHeight / 2 ? "top" : "bottom";
-    return next;
-  };
-
   const translateSlockMenus = () => {
     const language = resolveLanguage();
     const target = slockMenuCopy[language];
@@ -1546,6 +1548,60 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     });
   };
 
+  const syncWorkspaceChromeSafeArea = () => {
+    document.documentElement.dataset.slockDesktopWorkspaceChrome = "true";
+
+    let style = document.getElementById(chromeSafeAreaStyleId);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = chromeSafeAreaStyleId;
+      document.head.appendChild(style);
+    }
+
+    style.textContent = `
+      :root[data-slock-desktop-workspace-chrome="true"] {
+        --slock-desktop-titlebar-height: 34px;
+        scroll-padding-top: var(--slock-desktop-titlebar-height);
+      }
+
+      :root[data-slock-desktop-workspace-chrome="true"] body {
+        box-sizing: border-box !important;
+        min-height: 100dvh !important;
+        overflow: hidden !important;
+      }
+
+      :root[data-slock-desktop-workspace-chrome="true"] body > #root,
+      :root[data-slock-desktop-workspace-chrome="true"] body > [data-reactroot],
+      :root[data-slock-desktop-workspace-chrome="true"] body > div:first-child {
+        transform: translate3d(0, var(--slock-desktop-titlebar-height), 0) !important;
+        transform-origin: top left !important;
+        height: calc(100dvh - var(--slock-desktop-titlebar-height)) !important;
+        min-height: calc(100dvh - var(--slock-desktop-titlebar-height)) !important;
+        max-height: calc(100dvh - var(--slock-desktop-titlebar-height)) !important;
+        overflow: hidden !important;
+        isolation: isolate !important;
+      }
+
+      :root[data-slock-desktop-workspace-chrome="true"] body > #root > [class*="h-screen"],
+      :root[data-slock-desktop-workspace-chrome="true"] body > #root > [class*="min-h-screen"],
+      :root[data-slock-desktop-workspace-chrome="true"] body > #root > [class*="h-dvh"],
+      :root[data-slock-desktop-workspace-chrome="true"] body > #root > [class*="min-h-dvh"],
+      :root[data-slock-desktop-workspace-chrome="true"] body > div:first-child > [class*="h-screen"],
+      :root[data-slock-desktop-workspace-chrome="true"] body > div:first-child > [class*="min-h-screen"],
+      :root[data-slock-desktop-workspace-chrome="true"] body > div:first-child > [class*="h-dvh"],
+      :root[data-slock-desktop-workspace-chrome="true"] body > div:first-child > [class*="min-h-dvh"] {
+        height: calc(100dvh - var(--slock-desktop-titlebar-height)) !important;
+        min-height: calc(100dvh - var(--slock-desktop-titlebar-height)) !important;
+      }
+
+      :root[data-slock-desktop-workspace-chrome="true"] body > #root[class*="fixed"][class*="inset-0"],
+      :root[data-slock-desktop-workspace-chrome="true"] body > div:first-child[class*="fixed"][class*="inset-0"] {
+        top: 0 !important;
+        height: calc(100dvh - var(--slock-desktop-titlebar-height)) !important;
+      }
+    `;
+  };
+
   const syncHostTheme = () => {
     const theme = themes.find((candidate) => candidate.id === activeThemeId) || themes[0];
     if (!theme) return;
@@ -1624,11 +1680,268 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       position: fixed;
       left: 0;
       top: 0;
+      right: 0;
       z-index: 2147483647;
-      width: 44px;
-      height: 44px;
-      transform: translate3d(var(--dock-x, calc(100vw - 68px)), var(--dock-y, calc(100vh - 68px)), 0);
+      height: 34px;
       pointer-events: none;
+    }
+
+    .titlebar-drag-strip {
+      pointer-events: auto;
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      height: 34px;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .titlebar-tools-inner {
+      pointer-events: auto;
+      position: absolute;
+      top: 4px;
+      right: 10px;
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0;
+    }
+
+    .titlebar-button,
+    .titlebar-version {
+      appearance: none;
+      min-height: 26px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 58%, transparent);
+      background: color-mix(in srgb, var(--desktop-surface-secondary) 64%, transparent);
+      color: var(--desktop-muted);
+      font: inherit;
+      cursor: pointer;
+      transition:
+        transform 150ms ease,
+        background 150ms ease,
+        border-color 150ms ease,
+        color 150ms ease;
+    }
+
+    .titlebar-button,
+    .titlebar-version {
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      border-radius: var(--desktop-radius-pill);
+    }
+
+    .titlebar-button {
+      width: 28px;
+      height: 26px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .titlebar-button.language {
+      width: 28px;
+    }
+
+    .titlebar-button.live {
+      color: var(--desktop-accent);
+      border-color: color-mix(in srgb, var(--desktop-accent) 30%, var(--desktop-line));
+      background: var(--desktop-selection);
+    }
+
+    .titlebar-button svg,
+    .titlebar-version svg,
+    .option-icon {
+      width: 14px;
+      height: 14px;
+      display: block;
+    }
+
+    .titlebar-theme-wrap {
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+    }
+
+    .titlebar-theme-button {
+      width: 30px;
+      height: 26px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 58%, transparent);
+      border-radius: var(--desktop-radius-pill);
+      background: color-mix(in srgb, var(--desktop-surface-secondary) 64%, transparent);
+      color: var(--desktop-muted);
+      cursor: pointer;
+      transition:
+        transform 150ms ease,
+        background 150ms ease,
+        border-color 150ms ease,
+        color 150ms ease;
+    }
+
+    .titlebar-theme-trigger {
+      display: inline-grid;
+      place-items: center;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .titlebar-theme-icon {
+      width: 14px;
+      height: 14px;
+      color: var(--theme-accent, var(--desktop-accent));
+    }
+
+    .titlebar-theme-swatch {
+      position: absolute;
+      right: 5px;
+      bottom: 4px;
+      width: 6px;
+      height: 6px;
+      border: 1px solid var(--desktop-surface);
+      border-radius: var(--desktop-radius-pill);
+      background: var(--theme-accent, var(--desktop-accent));
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 34%, transparent);
+    }
+
+    .titlebar-theme-menu {
+      position: absolute;
+      top: 32px;
+      right: 0;
+      z-index: 4;
+      display: grid;
+      grid-template-columns: repeat(6, 24px);
+      gap: 5px;
+      padding: 6px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-md);
+      background: var(--desktop-surface);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+    }
+
+    .titlebar-theme-option {
+      width: 24px;
+      height: 24px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 70%, transparent);
+      border-radius: var(--desktop-radius-pill);
+      background: var(--theme-accent, var(--desktop-accent));
+      color: var(--desktop-text);
+      cursor: pointer;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--desktop-surface) 58%, transparent);
+    }
+
+    .titlebar-theme-option.active {
+      border-color: color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 55%, var(--desktop-line));
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 18%, transparent);
+    }
+
+    .titlebar-theme-option-swatch {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--theme-accent, var(--desktop-accent));
+    }
+
+    .titlebar-theme-option.add {
+      background: var(--desktop-surface-secondary);
+      box-shadow: none;
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .titlebar-version {
+      position: relative;
+      grid-auto-flow: column;
+      gap: 4px;
+      min-width: 58px;
+      padding: 3px 9px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .titlebar-version.has-update {
+      color: var(--desktop-text);
+      border-color: color-mix(in srgb, #d63232 36%, var(--desktop-line));
+    }
+
+    .titlebar-version.has-update::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      right: 5px;
+      width: 7px;
+      height: 7px;
+      border-radius: var(--desktop-radius-pill);
+      background: #d63232;
+      box-shadow: 0 0 0 2px color-mix(in srgb, #d63232 16%, var(--desktop-surface));
+    }
+
+    .titlebar-version.error {
+      border-color: color-mix(in srgb, #c24141 34%, var(--desktop-line));
+    }
+
+    .titlebar-release-popover {
+      position: absolute;
+      top: 32px;
+      right: 0;
+      z-index: 4;
+      width: min(360px, calc(100vw - 20px));
+      max-height: min(420px, calc(100vh - 52px));
+      display: grid;
+      gap: 10px;
+      overflow: auto;
+      padding: 12px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-lg);
+      background: var(--desktop-surface);
+      color: var(--desktop-text);
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.14);
+    }
+
+    .titlebar-release-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .titlebar-release-title {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .titlebar-release-title strong {
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .titlebar-release-title span {
+      color: var(--desktop-muted);
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    .titlebar-release-body {
+      max-height: 240px;
+      overflow: auto;
+      white-space: pre-wrap;
+      color: var(--desktop-muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .titlebar-release-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
     }
 
     button {
@@ -1636,7 +1949,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       touch-action: manipulation;
     }
 
-	    .launcher,
 	    .mode-option,
 	    .theme-option,
       .theme-row,
@@ -1645,8 +1957,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	    .nav-item,
 	    .settings-icon-button,
       .service-row-wrap,
-	    .service-row,
-	    .service-open-button {
+      .service-row,
+      .service-open-button,
+      .titlebar-button,
+      .titlebar-theme-button,
+      .titlebar-theme-option,
+      .titlebar-version {
 	      pointer-events: auto;
 	      appearance: none;
 	      cursor: pointer;
@@ -1657,66 +1973,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         opacity 150ms ease;
     }
 
-    .launcher {
-      width: 44px;
-      height: 44px;
-      min-height: 44px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      border: 1px solid var(--desktop-line);
-      border-radius: var(--desktop-radius-md);
-      background: var(--desktop-surface-secondary);
-      color: var(--desktop-text);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-      font-weight: 600;
-      letter-spacing: -0.01em;
-    }
-
-    .launcher-icon {
-      width: 20px;
-      display: grid;
-      gap: 4px;
-    }
-
-    .launcher-icon span {
-      position: relative;
-      height: 2px;
-      border-radius: var(--desktop-radius-pill);
-      background: currentColor;
-      opacity: 0.82;
-    }
-
-    .launcher-icon span::after {
-      content: "";
-      position: absolute;
-      top: 50%;
-      width: 5px;
-      height: 5px;
-      border-radius: var(--desktop-radius-pill);
-      background: var(--desktop-accent);
-      box-shadow: 0 0 0 2px var(--desktop-selection);
-      transform: translateY(-50%);
-    }
-
-    .launcher-icon span:nth-child(1)::after {
-      left: 3px;
-    }
-
-    .launcher-icon span:nth-child(2)::after {
-      right: 4px;
-    }
-
-    .launcher-icon span:nth-child(3)::after {
-      left: 9px;
-    }
-
     .panel {
       pointer-events: auto;
       position: absolute;
-      right: 0;
-      bottom: 54px;
+      right: 10px;
+      top: 38px;
+      bottom: auto;
       width: min(420px, calc(100vw - 28px));
       max-height: min(620px, calc(100vh - 96px));
       overflow: auto;
@@ -1732,12 +1994,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .dock[data-align="left"] .panel {
-      left: 0;
-      right: auto;
+      left: auto;
+      right: 10px;
     }
 
     .dock[data-vertical="top"] .panel {
-      top: 54px;
+      top: 38px;
       bottom: auto;
     }
 
@@ -1994,6 +2256,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     .mode-option {
       min-width: 34px;
       min-height: 30px;
+      display: inline-grid;
+      place-items: center;
       border: 0;
       border-radius: var(--desktop-radius-sm);
       background: transparent;
@@ -2003,9 +2267,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .language-option {
-      min-width: 72px;
+      min-width: 34px;
       min-height: 30px;
-      padding: 0 10px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
       border: 0;
       border-radius: var(--desktop-radius-sm);
       background: transparent;
@@ -2013,17 +2279,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       font-size: 12px;
       font-weight: 600;
       white-space: nowrap;
-    }
-
-    .language-option[data-language-id="zh-CN"] {
-      min-width: 34px;
-      padding: 0;
-    }
-
-    .language-icon {
-      width: 14px;
-      height: 14px;
-      display: block;
     }
 
     .language-option.active,
@@ -2382,10 +2637,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       }
 
     @media (hover: hover) {
-      .launcher:hover {
-        background: var(--desktop-hover);
-      }
-
       .theme-option:hover {
         background: var(--desktop-hover);
       }
@@ -2409,12 +2660,21 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 		        border-color: color-mix(in srgb, var(--desktop-text) 18%, var(--desktop-line));
 		      }
 
+      .titlebar-button:hover,
+      .titlebar-theme-button:hover,
+      .titlebar-theme-option:hover,
+      .titlebar-version:hover {
+        color: var(--desktop-text);
+        background: color-mix(in srgb, var(--desktop-surface) 76%, transparent);
+        border-color: color-mix(in srgb, var(--desktop-text) 18%, var(--desktop-line));
+        transform: translateY(-1px);
+      }
+
 	      .service-open-button:hover {
 	        background: var(--desktop-accent-hover);
 	      }
 	    }
 
-	    .launcher:active,
 	    .language-option:active,
 	    .mode-option:active,
 	    .theme-option:active,
@@ -2424,7 +2684,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         .theme-select:active,
         .service-row-wrap:active,
 		    .service-row:active,
-		    .service-open-button:active {
+        .service-open-button:active,
+        .titlebar-button:active,
+        .titlebar-theme-button:active,
+        .titlebar-theme-option:active,
+        .titlebar-version:active {
 		      transform: scale(0.97);
 		    }
 
@@ -2439,8 +2703,28 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 		    }
 
     @media (max-width: 520px) {
-      .dock {
-        transform: translate3d(var(--dock-x, calc(100vw - 56px)), var(--dock-y, calc(100vh - 56px)), 0);
+      .titlebar-tools-inner {
+        right: 8px;
+        gap: 4px;
+      }
+
+      .titlebar-button {
+        width: 26px;
+        height: 24px;
+      }
+
+      .titlebar-button.language {
+        width: 26px;
+      }
+
+      .titlebar-theme-button {
+        width: 26px;
+        height: 24px;
+      }
+
+      .titlebar-version {
+        min-width: 52px;
+        padding-inline: 7px;
       }
 
       .settings-grid {
@@ -2454,7 +2738,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
 	    @media (prefers-reduced-motion: reduce) {
-	      .launcher,
 	      .language-option,
 	      .mode-option,
 	      .theme-option,
@@ -2464,8 +2747,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	      .nav-item,
 	      .settings-icon-button,
         .service-row-wrap,
-	      .service-row,
-	      .service-open-button,
+        .service-row,
+        .service-open-button,
+        .titlebar-button,
+        .titlebar-version,
+        .titlebar-theme-button,
+        .titlebar-theme-option,
 	      .panel {
         transition-duration: 1ms;
       }
@@ -2619,7 +2906,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
               </span>
               <span class="service-chip${running ? " live" : ""}">${busySelect ? t("saving") : escapeHtml(status)}</span>
             </button>
-            <button class="settings-icon-button compact service-log-button" type="button" data-service-action="log" data-server-slug="${escapeHtml(server.slug)}" title="${t("openServerLog")}" aria-label="${t("openServerLog")}: ${escapeHtml(server.name)}">⌁</button>
+            <button class="settings-icon-button compact service-log-button" type="button" data-service-action="log" data-server-slug="${escapeHtml(server.slug)}" title="${t("openServerLog")}" aria-label="${t("openServerLog")}: ${escapeHtml(server.name)}">${shellIcon()}</button>
           </div>
         `;
       })
@@ -2674,10 +2961,191 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       </div>
     `;
   };
+  const currentModeOption = () =>
+    modes.find((mode) => mode.id === activeMode) || modes.find((mode) => mode.id === "system") || modes[0];
+  const nextModeId = () => {
+    const index = modes.findIndex((mode) => mode.id === activeMode);
+    return modes[(index + 1) % modes.length]?.id || "system";
+  };
+  const currentLanguageOption = () =>
+    languages.find((language) => language.id === activeLanguage) || languages.find((language) => language.id === "system") || languages[0];
+  const nextLanguageId = () => {
+    const index = languages.findIndex((language) => language.id === activeLanguage);
+    return languages[(index + 1) % languages.length]?.id || "system";
+  };
+  const selectedServiceRunning = () => {
+    const service = serviceSnapshot;
+    const selected = selectedServiceServer();
+    const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
+    return !!(
+      service?.running &&
+      selectedSlug &&
+      (!service.activeServerSlug || service.activeServerSlug === selectedSlug)
+    );
+  };
+  const releaseUpdateAvailable = () =>
+    !!(releaseState.latest?.available ?? releaseState.latest?.updateAvailable);
+  const latestReleaseVersion = () =>
+    releaseState.latest?.version || releaseState.latest?.tagName || "";
+  const releaseStatusTitle = () => {
+    if (releaseState.error) return releaseState.error;
+    if (releaseState.loading) return t("checkingUpdates");
+    if (releaseState.installing) return t("installingUpdate");
+    if (releaseUpdateAvailable()) {
+      const version = latestReleaseVersion();
+      return version ? `${t("updateAvailable")}: ${version}` : t("updateAvailable");
+    }
+    if (releaseState.latest) return t("upToDate");
+    return t("notChecked");
+  };
+  const releaseNotesText = () =>
+    releaseState.latest?.body || releaseState.latest?.name || t("noReleaseNotes");
+  const titlebarToolsContent = () => {
+    const service = serviceSnapshot;
+    const selected = selectedServiceServer();
+    const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
+    const running = selectedServiceRunning();
+    const serviceBusy = ["service-start", "service-stop", "service-load", "service-refresh", "service-status"].includes(serviceBusyAction || "");
+    const mode = currentModeOption();
+    const language = currentLanguageOption();
+    const version = updateSnapshot?.currentVersion || releaseState.latest?.currentVersion || "";
+    const versionText = version ? `v${version}` : "v...";
+    const checking = releaseState.loading || updateBusyAction === "release-check";
+    const installing = releaseState.installing || updateBusyAction === "release-install";
+    const updateReady = releaseUpdateAvailable();
+    const theme = selectedTheme();
+    const themeAccent = titlebarThemeSwatch(theme);
+    const themeLabel = theme ? titlebarThemeLabel(theme) : t("theme");
+    const themeOptions = themeCatalog
+      .map((theme) => {
+        const selected = theme.id === (activeThemeId || "original");
+        const swatch = titlebarThemeSwatch(theme);
+        return `
+          <button
+            class="titlebar-theme-option${selected ? " active" : ""}"
+            type="button"
+            data-titlebar-theme-option="${escapeHtml(theme.id)}"
+            title="${escapeHtml(titlebarThemeLabel(theme))}"
+            aria-label="${escapeHtml(titlebarThemeLabel(theme))}"
+            style="--theme-accent:${escapeHtml(swatch)}"
+          ><span class="titlebar-theme-option-swatch" aria-hidden="true"></span></button>
+        `;
+      })
+      .join("");
+    const releaseNote = escapeHtml(releaseNotesText());
+    const releaseVersion = latestReleaseVersion();
+
+    return `
+      <div class="titlebar-drag-strip" data-titlebar-drag data-tauri-drag-region aria-hidden="true"></div>
+      <div class="titlebar-tools-inner">
+        <button
+          class="titlebar-button${running ? " live" : ""}"
+          type="button"
+          data-titlebar-service
+          title="${running ? t("closeServer") : t("startService")}"
+          aria-label="${running ? t("closeServer") : t("startService")}"
+          ${!selectedSlug || serviceBusy ? "disabled" : ""}
+        >${actionIcon(running ? "stop" : "start", serviceBusy)}</button>
+        <button
+          class="titlebar-button"
+          type="button"
+          data-titlebar-log
+          title="${t("openServerLog")}"
+          aria-label="${t("openServerLog")}"
+          ${!selectedSlug ? "disabled" : ""}
+        >${shellIcon()}</button>
+        <div class="titlebar-theme-wrap" style="--theme-accent:${escapeHtml(themeAccent)}">
+          <button class="titlebar-theme-button" type="button" data-titlebar-theme-toggle title="${escapeHtml(themeLabel)}" aria-label="${t("theme")}">
+          <span class="titlebar-theme-trigger" aria-hidden="true">
+            ${paletteIcon()}
+            <span class="titlebar-theme-swatch"></span>
+          </span>
+          </button>
+          ${titlebarThemeMenuOpen ? `<div class="titlebar-theme-menu" role="menu" aria-label="${t("theme")}" data-titlebar-theme-menu>
+            ${themeOptions}
+            <button class="titlebar-theme-option add" type="button" data-titlebar-theme-new title="${t("themeNewLabel")}" aria-label="${t("themeNewLabel")}">+</button>
+          </div>` : ""}
+        </div>
+        <button
+          class="titlebar-button"
+          type="button"
+          data-titlebar-mode
+          title="${t(mode.key)}"
+          aria-label="${t("mode")}"
+        >${optionIcon(mode.icon)}</button>
+        <button
+          class="titlebar-button language"
+          type="button"
+          data-titlebar-language
+          title="${t(language.key)}"
+          aria-label="${t("language")}"
+        >${optionIcon(language.icon)}</button>
+        <button
+          class="titlebar-version${updateReady ? " has-update" : ""}${releaseState.error ? " error" : ""}"
+          type="button"
+          data-titlebar-update
+          title="${escapeHtml(releaseStatusTitle())}"
+          aria-label="${t("updatesTitle")}: ${escapeHtml(versionText)}"
+          ${checking || installing ? "disabled" : ""}
+        >${checking || installing ? actionIcon("refresh", true) : ""}<span>${escapeHtml(versionText)}</span></button>
+        ${releaseNotesOpen && updateReady ? `
+          <div class="titlebar-release-popover" role="dialog" aria-label="${t("releaseNotes")}">
+            <div class="titlebar-release-head">
+              <span class="titlebar-release-title">
+                <strong>${t("releaseNotes")}</strong>
+                <span>${escapeHtml(releaseVersion ? `v${releaseVersion}` : t("updateAvailable"))}</span>
+              </span>
+              <button class="settings-icon-button compact" type="button" data-titlebar-release-close aria-label="${t("close")}">×</button>
+            </div>
+            <div class="titlebar-release-body">${releaseNote}</div>
+            <div class="titlebar-release-actions">
+              <button class="service-open-button" type="button" data-titlebar-release-install ${installing ? "disabled" : ""}>${installing ? t("installingUpdate") : t("installUpdate")}</button>
+            </div>
+          </div>
+        ` : ""}
+      </div>
+    `;
+  };
+  const toggleSelectedService = async () => {
+    const service = serviceSnapshot;
+    const selected = selectedServiceServer();
+    const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
+    if (!selectedSlug) {
+      serviceError = t("selectedServerPlaceholder");
+      activeSection = "service";
+      open = true;
+      window.__slockDesktopSettingsOpen = open;
+      render();
+      return;
+    }
+    const command = selectedServiceRunning() ? "stop_service" : "start_service";
+    const busy = selectedServiceRunning() ? "service-stop" : "service-start";
+    await loadServiceSnapshot(command, { selectedServerSlug: selectedSlug }, busy);
+  };
+  const openSelectedServiceLog = async () => {
+    const service = serviceSnapshot;
+    const selected = selectedServiceServer();
+    const selectedSlug = selected?.slug || service?.selectedServerSlug || "";
+    if (!selectedSlug) {
+      serviceError = t("selectedServerPlaceholder");
+      activeSection = "service";
+      open = true;
+      window.__slockDesktopSettingsOpen = open;
+      render();
+      return;
+    }
+    try {
+      await invokeDesktop("open_service_log", { serverSlug: selectedSlug });
+    } catch (error) {
+      serviceError = error?.message || String(error);
+      render();
+    }
+  };
   const updatesContent = () => {
     const currentVersion = updateSnapshot?.currentVersion || "";
     const latest = releaseState.latest;
-    const updateAvailable = !!latest?.updateAvailable;
+    const updateAvailable = !!(latest?.available ?? latest?.updateAvailable);
+    const latestVersion = latest?.version || latest?.tagName || "";
     const status = releaseState.error
       ? releaseState.error
       : latest
@@ -2698,7 +3166,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           <strong>${escapeHtml(currentVersion || t("notChecked"))}</strong>
           ${
             latest
-              ? `<span>${t("updateAvailable")}</span><strong>${escapeHtml(latest.tagName)}</strong>`
+              ? `<span>${t("updateAvailable")}</span><strong>${escapeHtml(latestVersion || t("notChecked"))}</strong>`
               : `<span>${t("updateAvailable")}</span><strong>${t("notChecked")}</strong>`
           }
         </div>
@@ -2712,7 +3180,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
               : ""
           }
         </div>
-        <p class="service-description">${escapeHtml(latest?.name || releaseState.error || t("noReleaseNotes"))}</p>
+        <p class="service-description">${escapeHtml(latest?.body || latest?.name || releaseState.error || t("noReleaseNotes"))}</p>
       </div>
     `;
   };
@@ -2728,7 +3196,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const dock = document.createElement("div");
     dock.className = "dock";
     dock.dataset.open = String(open);
-    applyDockPosition(dock, loadDockPosition());
 
     const panel = document.createElement("section");
     panel.className = "panel";
@@ -2788,7 +3255,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       option.setAttribute("role", "radio");
       option.setAttribute("aria-checked", String(selected));
       option.title = t(mode.key);
-      option.textContent = mode.icon;
+      option.innerHTML = `${optionIcon(mode.icon)}<span class="sr-only">${t(mode.key)}</span>`;
       option.addEventListener("click", () => setMode(mode.id));
       modeList.appendChild(option);
     });
@@ -2803,7 +3270,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       option.setAttribute("aria-checked", String(selected));
       option.title = t(language.key);
       option.dataset.languageId = language.id;
-      option.innerHTML = language.id === "zh-CN" ? chineseLanguageIcon() : escapeHtml(t(language.shortKey));
+      option.innerHTML = `${optionIcon(language.icon)}<span class="sr-only">${t(language.key)}</span>`;
       option.addEventListener("click", () => setLanguage(language.id));
       languageList.appendChild(option);
     });
@@ -2989,61 +3456,72 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     panel.appendChild(inner);
 
-    const launcher = document.createElement("button");
-    launcher.className = "launcher";
-    launcher.type = "button";
-    launcher.title = `${t("launcher")} · ${t("dragHint")}`;
-    launcher.setAttribute("aria-label", t("launcher"));
-    launcher.setAttribute("aria-expanded", String(open));
-    launcher.innerHTML = `<span class="launcher-icon" aria-hidden="true"><span></span><span></span><span></span></span>`;
-    launcher.addEventListener("pointerdown", (event) => {
+    const toolbar = document.createElement("div");
+    toolbar.className = "titlebar-tools";
+    toolbar.innerHTML = titlebarToolsContent();
+    toolbar.querySelector("[data-titlebar-drag]")?.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
-      const start = loadDockPosition();
-      let current = start;
-      let moved = false;
-      const startX = event.clientX;
-      const startY = event.clientY;
-      launcher.setPointerCapture?.(event.pointerId);
-
-      const move = (moveEvent) => {
-        const deltaX = moveEvent.clientX - startX;
-        const deltaY = moveEvent.clientY - startY;
-        if (Math.abs(deltaX) + Math.abs(deltaY) > 5) {
-          moved = true;
-        }
-        current = applyDockPosition(dock, {
-          x: start.x + deltaX,
-          y: start.y + deltaY,
-        });
-      };
-
-      const end = () => {
-        launcher.removeEventListener("pointermove", move);
-        launcher.removeEventListener("pointerup", end);
-        launcher.removeEventListener("pointercancel", end);
-        launcher.releasePointerCapture?.(event.pointerId);
-        if (moved) {
-          saveDockPosition(current);
-          suppressLauncherClick = true;
-          setTimeout(() => {
-            suppressLauncherClick = false;
-          }, 0);
-        }
-      };
-
-      launcher.addEventListener("pointermove", move);
-      launcher.addEventListener("pointerup", end);
-      launcher.addEventListener("pointercancel", end);
+      event.preventDefault();
+      void startWindowDrag();
     });
-    launcher.addEventListener("click", () => {
-      if (suppressLauncherClick) return;
-      open = window.__slockDesktopSettingsOpen === true;
-      open = !open;
-      window.__slockDesktopSettingsOpen = open;
+    toolbar.querySelector("[data-titlebar-service]")?.addEventListener("click", () => {
+      void toggleSelectedService();
+    });
+    toolbar.querySelector("[data-titlebar-log]")?.addEventListener("click", () => {
+      void openSelectedServiceLog();
+    });
+    toolbar.querySelector("[data-titlebar-theme-toggle]")?.addEventListener("click", () => {
+      titlebarThemeMenuOpen = !titlebarThemeMenuOpen;
+      releaseNotesOpen = false;
       render();
     });
+    toolbar.querySelectorAll("[data-titlebar-theme-option]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const themeId = button.getAttribute("data-titlebar-theme-option");
+        titlebarThemeMenuOpen = false;
+        if (themeId) setTheme(themeId);
+      });
+    });
+    toolbar.querySelector("[data-titlebar-theme-new]")?.addEventListener("click", () => {
+      titlebarThemeMenuOpen = false;
+      activeSection = "appearance";
+      window.__slockDesktopSettingsSection = activeSection;
+      newThemeDraft = { name: "", accent: '#10a37f' };
+      open = true;
+      window.__slockDesktopSettingsOpen = open;
+      render();
+      queueMicrotask(() => shadow.querySelector("[data-theme-draft-name]")?.focus());
+    });
+    toolbar.querySelector("[data-titlebar-mode]")?.addEventListener("click", () => {
+      titlebarThemeMenuOpen = false;
+      releaseNotesOpen = false;
+      setMode(nextModeId());
+    });
+    toolbar.querySelector("[data-titlebar-language]")?.addEventListener("click", () => {
+      titlebarThemeMenuOpen = false;
+      releaseNotesOpen = false;
+      setLanguage(nextLanguageId());
+    });
+    toolbar.querySelector("[data-titlebar-release-close]")?.addEventListener("click", () => {
+      releaseNotesOpen = false;
+      render();
+    });
+    toolbar.querySelector("[data-titlebar-release-install]")?.addEventListener("click", () => {
+      releaseNotesOpen = false;
+      installDesktopRelease();
+    });
+    toolbar.querySelector("[data-titlebar-update]")?.addEventListener("click", () => {
+      if (releaseUpdateAvailable()) {
+        titlebarThemeMenuOpen = false;
+        releaseNotesOpen = !releaseNotesOpen;
+        render();
+      } else {
+        releaseNotesOpen = false;
+        checkDesktopRelease();
+      }
+    });
 
-    dock.append(panel, launcher);
+    dock.append(panel, toolbar);
     shadow.appendChild(dock);
   };
 
@@ -3169,11 +3647,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   };
 
   window.__slockDesktopSettingsClosePanel = closePanel;
+  window.__slockDesktopCloseTransientTitlebarPanels = closeTransientTitlebarPanels;
   syncSessionTokens();
 
   if (!window.__slockDesktopSettingsEscapeBound) {
     window.__slockDesktopSettingsEscapeBound = true;
     document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && window.__slockDesktopCloseTransientTitlebarPanels?.()) {
+        return;
+      }
       if (event.key === "Escape" && window.__slockDesktopSettingsOpen) {
         window.__slockDesktopSettingsClosePanel?.();
       }
@@ -3183,10 +3665,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   if (!window.__slockDesktopSettingsPointerBound) {
     window.__slockDesktopSettingsPointerBound = true;
     document.addEventListener("pointerdown", (event) => {
-      if (!window.__slockDesktopSettingsOpen) return;
       const activeHost = document.getElementById(hostId);
       const path = event.composedPath ? event.composedPath() : [];
-      if (activeHost && path.includes(activeHost)) return;
+      const insideDesktopHost = activeHost && path.includes(activeHost);
+      if (!insideDesktopHost) window.__slockDesktopCloseTransientTitlebarPanels?.();
+      if (!window.__slockDesktopSettingsOpen) return;
+      if (insideDesktopHost) return;
       window.__slockDesktopSettingsClosePanel?.();
     });
   }
@@ -3209,15 +3693,38 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     if (activeHost) {
       const activeDock = activeHost.shadowRoot?.querySelector(".dock");
       const activePanel = activeHost.shadowRoot?.querySelector(".panel");
-      const activeLauncher = activeHost.shadowRoot?.querySelector(".launcher");
       if (activeDock) activeDock.dataset.open = "false";
       if (activePanel) activePanel.hidden = true;
-      if (activeLauncher) activeLauncher.setAttribute("aria-expanded", "false");
     }
   }
 
+  function closeTransientTitlebarPanels() {
+    if (!titlebarThemeMenuOpen && !releaseNotesOpen) return false;
+    titlebarThemeMenuOpen = false;
+    releaseNotesOpen = false;
+    render();
+    return true;
+  }
+
+  syncWorkspaceChromeSafeArea();
   render();
   bindSlockMenuTranslator();
+
+  const listenForDesktopUpdateChecks = async () => {
+    const listen = window.__TAURI__?.event?.listen;
+    if (typeof listen !== "function" || window.__slockDesktopUpdateCheckListenerReady) return;
+    window.__slockDesktopUpdateCheckListenerReady = true;
+    try {
+      const unlisten = await listen("desktop_update_checked", (event) => {
+        syncDesktopUpdateCheck(event?.payload);
+      });
+      window.__slockDesktopUpdateCheckUnlisten = unlisten;
+    } catch (error) {
+      window.__slockDesktopUpdateCheckListenerReady = false;
+      console.warn("[Slock Desktop] update check listener failed", error);
+    }
+  };
+  void listenForDesktopUpdateChecks();
 
   if (!window.__slockDesktopServicePrefetched) {
     window.__slockDesktopServicePrefetched = true;
@@ -3232,6 +3739,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       })();
     }, 1500);
   }
+
 })();
 "#;
 
@@ -3292,14 +3800,50 @@ mod tests {
     }
 
     #[test]
-    fn settings_overlay_exposes_launcher_settings_controls() {
+    fn settings_overlay_exposes_titlebar_settings_controls() {
         let script = settings_overlay_script("default", "system", "zh-CN", "zh-CN", &[]);
 
+        assert!(script.contains("data-titlebar-service"));
+        assert!(script.contains("data-titlebar-log"));
+        assert!(script.contains("data-titlebar-theme"));
+        assert!(script.contains("data-titlebar-mode"));
+        assert!(script.contains("data-titlebar-language"));
+        assert!(script.contains("data-titlebar-update"));
+        assert!(script.contains("titlebar-theme-button"));
+        assert!(script.contains("titlebar-theme-menu"));
+        assert!(script.contains("titlebar-theme-option"));
+        assert!(script.contains("data-titlebar-theme-new"));
+        assert!(script.contains("titlebarThemeSwatch"));
+        assert!(script.contains("#ffd701"));
+        assert!(script.contains("width: 100%;"));
+        assert!(script.contains("optionIcon(mode.icon)"));
+        assert!(script.contains("optionIcon(language.icon)"));
+        assert!(script.contains("nextLanguageId()"));
+        assert!(script.contains("M10 16h10"));
+        assert!(script.contains("titlebar-release-popover"));
+        assert!(script.contains("data-titlebar-release-install"));
+        assert!(script.contains("releaseNotesOpen = !releaseNotesOpen"));
+        assert!(script.contains("titlebar-drag-strip"));
+        assert!(script.contains("data-titlebar-drag"));
+        assert!(script.contains("data-tauri-drag-region"));
+        assert!(script.contains("start_window_drag"));
+        assert!(script.contains("slock-desktop-titlebar-safe-area"));
+        assert!(script.contains("data-slock-desktop-workspace-chrome"));
+        assert!(
+            script.contains("transform: translate3d(0, var(--slock-desktop-titlebar-height), 0)")
+        );
         assert!(script.contains("data-theme-new"));
         assert!(script.contains("create_custom_theme"));
         assert!(script.contains("data-service-search"));
         assert!(script.contains("open_service_log"));
         assert!(script.contains("data-update-action=\"check\""));
+        assert!(script.contains("check_desktop_update"));
+        assert!(script.contains("hydrateReleaseStateFromUpdateSnapshot"));
+        assert!(script.contains("updateSnapshot?.latest"));
+        assert!(script.contains("desktop_update_checked"));
+        assert!(script.contains("syncDesktopUpdateCheck(event?.payload)"));
+        assert!(!script.contains("__slockDesktopAutoUpdateChecked"));
         assert!(script.contains("install_desktop_update"));
+        assert!(!script.contains("class=\"launcher"));
     }
 }

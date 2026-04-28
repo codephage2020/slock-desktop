@@ -23,7 +23,8 @@ use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
     webview::PageLoadEvent,
     window::Color,
-    AppHandle, LogicalSize, Manager, RunEvent, State, Theme, Url, WindowEvent,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, State, Theme, Url,
+    WindowEvent,
 };
 use tauri_plugin_updater::{Updater, UpdaterExt};
 use theme::{meta_catalog, resolve_theme, sanitize_hex, CustomThemeItem, CustomThemeSet};
@@ -41,11 +42,13 @@ const WORKSPACE_WINDOW_WIDTH: f64 = 1480.0;
 const WORKSPACE_WINDOW_HEIGHT: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_WIDTH: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_HEIGHT: f64 = 760.0;
+const WORKSPACE_WINDOW_MARGIN: f64 = 24.0;
 const DAEMON_SERVER_SLUG_ARG: &str = "--slock-desktop-server-slug";
 const DAEMON_MACHINE_ID_ARG: &str = "--slock-desktop-machine-id";
 const DAEMON_DESKTOP_MANAGED_ARG: &str = "--slock-desktop-managed";
 const DESKTOP_UPDATER_ENDPOINT: &str =
     "https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json";
+const DESKTOP_UPDATE_CHECK_TIMEOUT: u64 = 8;
 #[cfg(debug_assertions)]
 const WORKSPACE_LAUNCH_LOG_PATH: &str = "/tmp/slock-desktop-launch.log";
 
@@ -54,6 +57,7 @@ pub struct DesktopState {
     service: Mutex<ServiceRuntime>,
     app_close: Mutex<AppCloseRuntime>,
     launch_metrics: Mutex<WorkspaceLaunchMetrics>,
+    update_cache: Mutex<Option<DesktopUpdateCheck>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -179,6 +183,7 @@ struct ServiceServerSnapshot {
 #[serde(rename_all = "camelCase")]
 struct UpdateSnapshot {
     current_version: String,
+    latest: Option<DesktopUpdateCheck>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -716,12 +721,24 @@ fn open_service_log(app: AppHandle, server_slug: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn check_desktop_update(app: AppHandle) -> Result<DesktopUpdateCheck, String> {
+fn start_window_drag(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window(MAIN_LABEL)
+        .ok_or_else(|| "Main window is unavailable".to_string())?;
+
+    window.start_dragging().map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn check_desktop_update(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<DesktopUpdateCheck, String> {
     let current_version = app.package_info().version.to_string();
     let updater = desktop_updater(&app)?;
     let update = updater.check().await.map_err(|err| err.to_string())?;
 
-    Ok(match update {
+    let result = match update {
         Some(update) => DesktopUpdateCheck {
             current_version,
             available: true,
@@ -738,7 +755,14 @@ async fn check_desktop_update(app: AppHandle) -> Result<DesktopUpdateCheck, Stri
             date: None,
             download_url: None,
         },
-    })
+    };
+
+    if let Ok(mut cache) = state.update_cache.lock() {
+        *cache = Some(result.clone());
+    }
+    let _ = app.emit("desktop_update_checked", result.clone());
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -759,7 +783,7 @@ async fn install_desktop_update(app: AppHandle) -> Result<(), String> {
 fn desktop_updater(app: &AppHandle) -> Result<Updater, String> {
     let endpoint = Url::parse(DESKTOP_UPDATER_ENDPOINT).map_err(|err| err.to_string())?;
     app.updater_builder()
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(DESKTOP_UPDATE_CHECK_TIMEOUT))
         .endpoints(vec![endpoint])
         .map_err(|err| err.to_string())?
         .build()
@@ -1295,8 +1319,14 @@ fn build_bootstrap(
 
     let service = collect_service_snapshot(app, state, &settings.service, refresh_service)?;
     let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
+    let latest = state
+        .update_cache
+        .lock()
+        .map_err(|_| "Unable to lock desktop update cache".to_string())?
+        .clone();
     let updates = UpdateSnapshot {
         current_version: app.package_info().version.to_string(),
+        latest,
     };
 
     Ok(BootstrapPayload {
@@ -1335,7 +1365,7 @@ fn enter_workspace_in_main_window(
     if window_is_workspace(&window) {
         let _ = window.unminimize();
         let _ = window.show();
-        apply_workspace_window_size(&window);
+        apply_workspace_window_size(&window, false);
         apply_workspace_titlebar_style(&window);
         let _ = window.set_focus();
         apply_window_theme(&window, theme_mode);
@@ -1358,6 +1388,7 @@ fn enter_workspace_in_main_window(
 
     apply_window_language(app, &window, language, true);
     apply_window_theme(&window, theme_mode);
+    apply_workspace_window_size(&window, true);
     apply_workspace_titlebar_style(&window);
     let _ = window.set_focus();
     mark_workspace_launch_navigate_called(state, target_url.as_str());
@@ -1383,7 +1414,7 @@ fn apply_launcher_titlebar_style(window: &tauri::WebviewWindow) {
     }
 }
 
-fn apply_workspace_window_size(window: &tauri::WebviewWindow) {
+fn apply_workspace_window_size(window: &tauri::WebviewWindow, reposition: bool) {
     let _ = window.set_min_size(Some(LogicalSize::new(
         WORKSPACE_WINDOW_MIN_WIDTH,
         WORKSPACE_WINDOW_MIN_HEIGHT,
@@ -1392,17 +1423,19 @@ fn apply_workspace_window_size(window: &tauri::WebviewWindow) {
         WORKSPACE_WINDOW_WIDTH,
         WORKSPACE_WINDOW_HEIGHT,
     ));
-    let _ = window.center();
+    if reposition {
+        place_workspace_webview_window(window);
+    }
 }
 
 fn apply_workspace_titlebar_style(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "macos")]
     {
-        let _ = window.set_title_bar_style(tauri::TitleBarStyle::Visible);
+        let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
     }
 }
 
-fn apply_workspace_window_size_to_window(window: &tauri::Window) {
+fn apply_workspace_window_size_to_window(window: &tauri::Window, reposition: bool) {
     let _ = window.set_min_size(Some(LogicalSize::new(
         WORKSPACE_WINDOW_MIN_WIDTH,
         WORKSPACE_WINDOW_MIN_HEIGHT,
@@ -1411,13 +1444,53 @@ fn apply_workspace_window_size_to_window(window: &tauri::Window) {
         WORKSPACE_WINDOW_WIDTH,
         WORKSPACE_WINDOW_HEIGHT,
     ));
-    let _ = window.center();
+    if reposition {
+        place_workspace_window(window);
+    }
+}
+
+fn place_workspace_webview_window(window: &tauri::WebviewWindow) {
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let _ = window.set_position(workspace_position_from_monitor(&monitor));
+    }
+}
+
+fn place_workspace_window(window: &tauri::Window) {
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let _ = window.set_position(workspace_position_from_monitor(&monitor));
+    }
+}
+
+fn workspace_position_from_monitor(monitor: &tauri::window::Monitor) -> LogicalPosition<f64> {
+    let work_area = monitor.work_area();
+    workspace_window_logical_position(
+        work_area.position.x,
+        work_area.position.y,
+        monitor.scale_factor(),
+    )
+}
+
+fn workspace_window_logical_position(
+    work_area_x: i32,
+    work_area_y: i32,
+    scale_factor: f64,
+) -> LogicalPosition<f64> {
+    let scale = if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    };
+
+    LogicalPosition::new(
+        f64::from(work_area_x) / scale + WORKSPACE_WINDOW_MARGIN,
+        f64::from(work_area_y) / scale + WORKSPACE_WINDOW_MARGIN,
+    )
 }
 
 fn apply_workspace_titlebar_style_to_window(window: &tauri::Window) {
     #[cfg(target_os = "macos")]
     {
-        let _ = window.set_title_bar_style(tauri::TitleBarStyle::Visible);
+        let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
     }
 }
 
@@ -1453,10 +1526,7 @@ fn apply_theme_to_workspace(
 fn apply_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
     apply_native_window_theme(window, theme_mode);
 
-    let normalized_mode = theme::normalize_mode(theme_mode);
-    let effective_dark = normalized_mode == "dark"
-        || (normalized_mode == "system" && matches!(window.theme(), Ok(Theme::Dark)));
-    let background = if effective_dark {
+    let background = if effective_window_dark(window, theme_mode) {
         Color(37, 38, 35, 255)
     } else {
         Color(255, 255, 255, 255)
@@ -1466,7 +1536,18 @@ fn apply_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
 
 fn apply_launcher_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
     apply_native_window_theme(window, theme_mode);
-    let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
+    let background = if effective_window_dark(window, theme_mode) {
+        Color(31, 31, 28, 255)
+    } else {
+        Color(247, 247, 245, 255)
+    };
+    let _ = window.set_background_color(Some(background));
+}
+
+fn effective_window_dark(window: &tauri::WebviewWindow, theme_mode: &str) -> bool {
+    let normalized_mode = theme::normalize_mode(theme_mode);
+    normalized_mode == "dark"
+        || (normalized_mode == "system" && matches!(window.theme(), Ok(Theme::Dark)))
 }
 
 fn apply_native_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
@@ -4172,6 +4253,7 @@ pub fn run() {
             }),
             app_close: Mutex::new(AppCloseRuntime::default()),
             launch_metrics: Mutex::new(WorkspaceLaunchMetrics::default()),
+            update_cache: Mutex::new(None),
         })
         .on_page_load(|webview, payload| {
             if webview.label() != MAIN_LABEL || !is_workspace_url(payload.url()) {
@@ -4185,7 +4267,7 @@ pub fn run() {
                     log::warn!("failed to seed workspace session: {err}");
                 }
                 apply_workspace_titlebar_style_to_window(&webview.window());
-                apply_workspace_window_size_to_window(&webview.window());
+                apply_workspace_window_size_to_window(&webview.window(), false);
                 return;
             }
 
@@ -4292,6 +4374,7 @@ pub fn run() {
             resolve_app_close_request,
             update_service,
             open_service_log,
+            start_window_drag,
             check_desktop_update,
             install_desktop_update
         ])
@@ -4308,6 +4391,24 @@ pub fn run() {
             } if label == MAIN_LABEL => {
                 api.prevent_close();
                 handle_window_close_requested(app, &state);
+            }
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::ThemeChanged(_),
+                ..
+            } if label == MAIN_LABEL => {
+                if let Some(window) = app.get_webview_window(MAIN_LABEL) {
+                    let appearance_mode = state
+                        .settings
+                        .lock()
+                        .map(|settings| settings.appearance_mode.clone())
+                        .unwrap_or_else(|_| "system".to_string());
+                    if window_is_workspace(&window) {
+                        apply_window_theme(&window, &appearance_mode);
+                    } else {
+                        apply_launcher_window_theme(&window, &appearance_mode);
+                    }
+                }
             }
             RunEvent::ExitRequested { api, .. } if !handle_app_exit_requested(app, &state) => {
                 api.prevent_exit();
@@ -4367,7 +4468,7 @@ mod tests {
     }
 
     #[test]
-    fn tauri_config_keeps_startup_window_transparent_on_macos() {
+    fn tauri_config_uses_opaque_startup_window_background() {
         let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
             .expect("tauri config should parse");
         let app = config
@@ -4387,12 +4488,20 @@ mod tests {
         );
         assert_eq!(
             window.get("transparent").and_then(|value| value.as_bool()),
-            Some(true)
+            Some(false)
         );
         assert_eq!(
             window.get("backgroundColor"),
-            Some(&serde_json::json!([0, 0, 0, 0]))
+            Some(&serde_json::json!([247, 247, 245, 255]))
         );
+    }
+
+    #[test]
+    fn workspace_position_uses_monitor_work_area_margin() {
+        let position = super::workspace_window_logical_position(0, 50, 2.0);
+
+        assert_eq!(position.x, 24.0);
+        assert_eq!(position.y, 49.0);
     }
 
     #[test]
@@ -4653,6 +4762,7 @@ mod tests {
             }),
             app_close: Mutex::new(AppCloseRuntime::default()),
             launch_metrics: Mutex::new(WorkspaceLaunchMetrics::default()),
+            update_cache: Mutex::new(None),
         };
 
         let matched =

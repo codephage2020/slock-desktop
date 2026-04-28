@@ -21,8 +21,8 @@
         "minHeight": 420,
         "resizable": true,
         "fullscreen": false,
-        "transparent": true,
-        "backgroundColor": [0, 0, 0, 0],
+        "transparent": false,
+        "backgroundColor": [247, 247, 245, 255],
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "trafficLightPosition": {

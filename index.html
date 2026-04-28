@@ -11,17 +11,24 @@
       #root {
         min-height: 100%;
         margin: 0;
-        background: transparent;
+        background: #f7f7f5;
       }
 
       html {
         color-scheme: light dark;
       }
 
+      @media (prefers-color-scheme: dark) {
+        html,
+        body,
+        #root {
+          background: #1f1f1c;
+        }
+      }
+
       body {
         cursor: default;
-        background: transparent;
-        color: #f7faf7;
+        color: light-dark(#1f1f1c, #f4f4ef);
         font-family:
           -apple-system,
           BlinkMacSystemFont,
@@ -60,7 +67,7 @@
       }
 
       .boot-title {
-        color: #a4aca3;
+        color: light-dark(#6b6f67, #b7bbae);
         font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: 0.14em;
@@ -68,7 +75,7 @@
       }
 
       .boot-detail {
-        color: #dce4dc;
+        color: light-dark(#1f1f1c, #f4f4ef);
         font-size: 0.86rem;
       }
 

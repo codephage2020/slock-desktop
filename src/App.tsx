@@ -17,8 +17,6 @@ import {
   refreshServiceServers,
   renameCustomTheme,
   selectServiceServer,
-  startService,
-  stopService,
   updateCustomThemeAccent,
   updateLanguage,
   updateTheme,
@@ -254,6 +252,7 @@ function App() {
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
+  const autoReleaseCheckRef = useRef(false)
   const savedServiceSlugRef = useRef('')
 
   useEffect(() => {
@@ -330,6 +329,48 @@ function App() {
       newNameInputRef.current.focus()
     }
   }, [newThemeDraft])
+
+  useEffect(() => {
+    if (!snapshot || autoReleaseCheckRef.current) {
+      return
+    }
+
+    if (snapshot.updates.latest) {
+      autoReleaseCheckRef.current = true
+      setReleaseState({
+        loading: false,
+        installing: false,
+        error: null,
+        latest: snapshot.updates.latest,
+      })
+      return
+    }
+
+    autoReleaseCheckRef.current = true
+    let cancelled = false
+    void checkDesktopUpdate()
+      .then((latest) => {
+        if (cancelled) {
+          return
+        }
+        setReleaseState({
+          loading: false,
+          installing: false,
+          error: null,
+          latest,
+        })
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return
+        }
+        console.warn('[Slock Desktop] automatic update check failed', error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [snapshot])
 
   async function handleThemeChange(themeId: string) {
     if (renamingThemeId === themeId) {
@@ -511,70 +552,6 @@ function App() {
     }
   }
 
-  async function handleServiceStop() {
-    if (!snapshot) {
-      return
-    }
-
-    const currentCopy = getCopy(snapshot.language, snapshot.resolvedLanguage)
-    const selectedServer =
-      snapshot.service.servers.find(
-        (server) => server.slug === snapshot.service.selectedServerSlug,
-      ) ??
-      snapshot.service.servers.find((server) => server.selected) ??
-      snapshot.service.servers[0]
-    const selectedSlug = selectedServer?.slug ?? snapshot.service.selectedServerSlug
-
-    if (!selectedSlug) {
-      setErrorMessage(currentCopy.serviceNotRunning)
-      return
-    }
-
-    try {
-      setBusyAction('stop-service')
-      setErrorMessage(null)
-      await waitForNextPaint()
-      const next = await stopService(selectedSlug)
-      startTransition(() => setSnapshot(next))
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  async function handleServiceStart() {
-    if (!snapshot) {
-      return
-    }
-
-    const currentCopy = getCopy(snapshot.language, snapshot.resolvedLanguage)
-    const selectedServer =
-      snapshot.service.servers.find(
-        (server) => server.slug === snapshot.service.selectedServerSlug,
-      ) ??
-      snapshot.service.servers.find((server) => server.selected) ??
-      snapshot.service.servers[0]
-    const selectedSlug = selectedServer?.slug ?? snapshot.service.selectedServerSlug
-
-    if (!selectedSlug) {
-      setErrorMessage(currentCopy.selectedServerPlaceholder)
-      return
-    }
-
-    try {
-      setBusyAction('start-service')
-      setErrorMessage(null)
-      await waitForNextPaint()
-      const next = await startService(selectedSlug)
-      startTransition(() => setSnapshot(next))
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
   async function handleServiceServerSelect(selectedServerSlug: string) {
     try {
       setBusyAction(`select-service:${selectedServerSlug}`)
@@ -603,13 +580,19 @@ function App() {
       return
     }
 
+    await runReleaseCheck(false)
+  }
+
+  async function runReleaseCheck(silent: boolean) {
     try {
-      setReleaseState((current) => ({
-        ...current,
-        loading: true,
-        error: null,
-      }))
-      await waitForNextPaint()
+      if (!silent) {
+        setReleaseState((current) => ({
+          ...current,
+          loading: true,
+          error: null,
+        }))
+        await waitForNextPaint()
+      }
 
       const latest = await checkDesktopUpdate()
       setReleaseState({
@@ -619,12 +602,16 @@ function App() {
         latest,
       })
     } catch (error) {
-      setReleaseState({
+      if (silent) {
+        console.warn('[Slock Desktop] automatic update check failed', error)
+        return
+      }
+      setReleaseState((current) => ({
         loading: false,
         installing: false,
         error: getErrorMessage(error),
-        latest: null,
-      })
+        latest: current.latest,
+      }))
     }
   }
 
@@ -712,11 +699,15 @@ function App() {
   const releaseIsCurrent =
     Boolean(releaseState.latest) && !releaseState.latest?.available
   const releaseUpdateAvailable = Boolean(releaseState.latest?.available)
-  const releaseStatusLabel = releaseState.latest
-    ? releaseState.latest.available
-      ? copy.updateAvailable
-      : copy.current
-    : copy.notChecked
+  const releaseStatusLabel = releaseState.loading
+    ? copy.checkingRelease
+    : releaseState.installing
+      ? copy.installingDesktopUpdate
+      : releaseState.latest
+        ? releaseState.latest.available
+          ? copy.updateAvailable
+          : copy.current
+        : copy.notChecked
   const releaseStatusTitle =
     releaseState.error ??
     (releaseState.latest?.version
@@ -732,6 +723,7 @@ function App() {
     >
       <header className="tauri-titlebar">
         <div className="tauri-titlebar-brand" data-tauri-drag-region>
+          <SlockBrandMark className="tauri-titlebar-mark" />
           <span className="tauri-titlebar-wordmark">slock-desktop</span>
         </div>
 
@@ -869,32 +861,6 @@ function App() {
                     ? `${filteredServiceServers.length}/${snapshot.service.servers.length}`
                     : `${snapshot.service.servers.length}`}
                 </span>
-                <button
-                  className="icon-action-button positive"
-                  onClick={handleServiceStart}
-                  disabled={
-                    serviceActionBusy ||
-                    !snapshot.service.authenticated ||
-                    !selectedServiceServer
-                  }
-                  aria-label={copy.startService}
-                  title={copy.startService}
-                >
-                  <ServiceActionIcon type="start" busy={busyAction === 'start-service'} />
-                </button>
-                <button
-                  className="icon-action-button danger"
-                  onClick={handleServiceStop}
-                  disabled={
-                    serviceActionBusy ||
-                    !snapshot.service.authenticated ||
-                    !selectedServiceServer
-                  }
-                  aria-label={copy.closeServer}
-                  title={copy.closeServer}
-                >
-                  <ServiceActionIcon type="stop" busy={busyAction === 'stop-service'} />
-                </button>
                 <button
                   className="icon-action-button"
                   onClick={handleServiceRefresh}
