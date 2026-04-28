@@ -660,8 +660,6 @@ function App() {
     null
   const savedServiceSlug = snapshot.service.selectedServerSlug.trim()
   const selectedServiceSlug = selectedServiceServer?.slug ?? savedServiceSlug
-  const canOpenWorkspace =
-    snapshot.service.authenticated && Boolean(selectedServiceSlug)
   const normalizedServerQuery = serverQuery.trim().toLowerCase()
   const filteredServiceServers = normalizedServerQuery
     ? snapshot.service.servers.filter((server) => {
@@ -1094,10 +1092,7 @@ function App() {
               <button
                 className="launch-button launch-button-bottom"
                 onClick={() => handleWorkspaceOpen(selectedServiceSlug || undefined)}
-                disabled={
-                  serviceActionBusy ||
-                  !canOpenWorkspace
-                }
+                disabled={serviceActionBusy}
               >
                 {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
               </button>
