@@ -3418,6 +3418,53 @@ fn current_workspace_session_seed(
     }))
 }
 
+fn desktop_session_required_message() -> String {
+    "Open Slock once and sign in, then the desktop launcher can load your server list.".to_string()
+}
+
+fn desktop_session_expired_message() -> String {
+    "Your Slock session expired. Open Slock and sign in again, then Desktop will sync your server list.".to_string()
+}
+
+fn clear_desktop_session(app: &AppHandle, state: &DesktopState) -> Result<(), String> {
+    {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        clear_desktop_session_settings(&mut settings);
+        save_settings(app, &settings)?;
+    }
+
+    {
+        let mut runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        clear_desktop_session_service_cache(&mut runtime);
+    }
+
+    clear_workspace_session_storage(app);
+    Ok(())
+}
+
+fn clear_desktop_session_settings(settings: &mut AppSettings) {
+    settings.session.access_token.clear();
+    settings.session.refresh_token.clear();
+}
+
+fn clear_desktop_session_service_cache(runtime: &mut ServiceRuntime) {
+    runtime.cached_servers.clear();
+    runtime.cached_sync_error = None;
+}
+
+fn clear_workspace_session_storage(app: &AppHandle) {
+    let script = workspace_session_clear_script();
+    for window in app.webview_windows().values() {
+        let _ = window.eval(&script);
+    }
+}
+
 fn workspace_session_seed_script(seed: &WorkspaceSessionSeed) -> String {
     let access_token =
         serde_json::to_string(&seed.access_token).unwrap_or_else(|_| "\"\"".to_string());
@@ -3493,6 +3540,39 @@ fn workspace_session_seed_script(seed: &WorkspaceSessionSeed) -> String {
     )
 }
 
+fn workspace_session_clear_script() -> String {
+    r#"(function() {
+  try {
+    if (window.location.origin !== "https://app.slock.ai") return;
+    localStorage.removeItem("slock_access_token");
+    localStorage.removeItem("slock_refresh_token");
+    sessionStorage.removeItem("slock_desktop_session_seed_reload");
+    delete window.__slockDesktopSessionSignature;
+    try {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "slock_refresh_token",
+          newValue: null,
+          storageArea: localStorage,
+          url: window.location.href,
+        })
+      );
+    } catch (_) {}
+    try {
+      const channel = new BroadcastChannel("slock-auth-tokens");
+      channel.postMessage({
+        type: "tokens-cleared",
+        sourceId: "slock-desktop-session-clear",
+      });
+      window.setTimeout(() => channel.close(), 1000);
+    } catch (_) {}
+  } catch (error) {
+    console.warn("[Slock Desktop] session clear failed", error);
+  }
+})();"#
+        .to_string()
+}
+
 fn api_base_url(server_url: &str) -> String {
     format!("{}/api", sanitize_service_server_url(server_url))
 }
@@ -3534,6 +3614,10 @@ fn refresh_session_tokens(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().unwrap_or_default();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            clear_desktop_session(app, state)?;
+            return Err(desktop_session_expired_message());
+        }
         return Err(format!(
             "Desktop session refresh failed with {status}: {body}"
         ));
@@ -3565,10 +3649,7 @@ fn send_authenticated(
 ) -> Result<reqwest::blocking::Response, String> {
     let client = api_client()?;
     let Some((access_token, refresh_token)) = current_session_tokens(state)? else {
-        return Err(
-            "Open Slock once and sign in, then the desktop launcher can load your server list."
-                .to_string(),
-        );
+        return Err(desktop_session_required_message());
     };
 
     let mut response = request(&client, &access_token)
@@ -4436,18 +4517,19 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        app_close_prompt_script, close_app_behavior_from_action, close_app_behavior_from_id,
+        app_close_prompt_script, clear_desktop_session_service_cache,
+        clear_desktop_session_settings, close_app_behavior_from_action, close_app_behavior_from_id,
         close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
-        prepare_runtime_for_service_target, process_entries_from_ps_output,
-        process_tree_pids_from_entries, resolve_service_command_from_dirs,
-        sanitize_service_settings, select_existing_machine,
+        desktop_session_expired_message, prepare_runtime_for_service_target,
+        process_entries_from_ps_output, process_tree_pids_from_entries,
+        resolve_service_command_from_dirs, sanitize_service_settings, select_existing_machine,
         selected_service_daemon_process_from_server_snapshots,
         service_daemon_process_from_resolved_target, should_attempt_workspace_service_start,
         should_refresh_service_servers, should_start_service_for_workspace,
         terminate_daemon_process, untagged_daemon_pids_from_ps_output,
-        workspace_session_seed_script, ApiMachine, AppCloseRuntime, CloseAppPromptCopy,
-        CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine, ServiceRuntime,
-        ServiceServerSnapshot, WorkspaceLaunchMetrics, WorkspaceSessionSeed,
+        workspace_session_clear_script, workspace_session_seed_script, ApiMachine, AppCloseRuntime,
+        CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine,
+        ServiceRuntime, ServiceServerSnapshot, WorkspaceLaunchMetrics, WorkspaceSessionSeed,
     };
     use crate::config::{AppSettings, ServiceMachineBinding, ServiceSettings};
     #[cfg(unix)]
@@ -4545,6 +4627,43 @@ mod tests {
         assert!(accepted);
         assert_eq!(response.status(), reqwest::StatusCode::OK);
         assert_eq!(response.text().unwrap(), "ok");
+    }
+
+    #[test]
+    fn expired_desktop_session_clears_cached_service_state() {
+        let mut settings = AppSettings::default();
+        settings.session.access_token = "stale-access-token".to_string();
+        settings.session.refresh_token = "stale-refresh-token".to_string();
+        let mut runtime = ServiceRuntime {
+            child: None,
+            last_error: None,
+            active_server_slug: Some("open-have".to_string()),
+            active_machine_id: Some("machine-open".to_string()),
+            cached_servers: vec![ServiceServerSnapshot {
+                id: "server-open".to_string(),
+                name: "Open".to_string(),
+                slug: "open-have".to_string(),
+                selected: true,
+                machine_id: Some("machine-open".to_string()),
+                machine_name: Some("Open machine".to_string()),
+                machine_status: "running".to_string(),
+                api_key_ready: true,
+                api_key_prefix: Some("sk_live".to_string()),
+            }],
+            cached_sync_error: Some("Desktop session refresh failed".to_string()),
+        };
+
+        clear_desktop_session_settings(&mut settings);
+        clear_desktop_session_service_cache(&mut runtime);
+
+        assert!(settings.session.access_token.is_empty());
+        assert!(settings.session.refresh_token.is_empty());
+        assert!(runtime.cached_servers.is_empty());
+        assert_eq!(runtime.cached_sync_error, None);
+        assert_eq!(
+            desktop_session_expired_message(),
+            "Your Slock session expired. Open Slock and sign in again, then Desktop will sync your server list."
+        );
     }
 
     struct EnvGuard {
@@ -5212,5 +5331,16 @@ mod tests {
         assert!(script.contains("slock_desktop_session_seed_reload"));
         assert!(script.contains("window.location.replace(target.href)"));
         assert!(script.contains("\"https://app.slock.ai/s/open-have\""));
+    }
+
+    #[test]
+    fn workspace_session_clear_script_removes_stored_tokens() {
+        let script = workspace_session_clear_script();
+
+        assert!(script.contains("localStorage.removeItem(\"slock_access_token\")"));
+        assert!(script.contains("localStorage.removeItem(\"slock_refresh_token\")"));
+        assert!(script.contains("delete window.__slockDesktopSessionSignature"));
+        assert!(script.contains("slock_desktop_session_seed_reload"));
+        assert!(script.contains("tokens-cleared"));
     }
 }
