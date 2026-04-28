@@ -2071,11 +2071,20 @@ fn maybe_start_service(
     settings: &ServiceSettings,
     force_for_workspace: bool,
 ) -> Result<(), String> {
-    if should_start_service_for_workspace(settings, force_for_workspace) {
+    let authenticated = current_session_tokens(state)?.is_some();
+    if should_attempt_workspace_service_start(settings, force_for_workspace, authenticated) {
         force_start_service(app, state, settings)?;
     }
 
     Ok(())
+}
+
+fn should_attempt_workspace_service_start(
+    settings: &ServiceSettings,
+    force_for_workspace: bool,
+    authenticated: bool,
+) -> bool {
+    authenticated && should_start_service_for_workspace(settings, force_for_workspace)
 }
 
 fn should_start_service_for_workspace(
@@ -4428,12 +4437,12 @@ mod tests {
         process_tree_pids_from_entries, resolve_service_command_from_dirs,
         sanitize_service_settings, select_existing_machine,
         selected_service_daemon_process_from_server_snapshots,
-        service_daemon_process_from_resolved_target, should_refresh_service_servers,
-        should_start_service_for_workspace, terminate_daemon_process,
-        untagged_daemon_pids_from_ps_output, workspace_session_seed_script, ApiMachine,
-        AppCloseRuntime, CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState,
-        ResolvedServiceMachine, ServiceRuntime, ServiceServerSnapshot, WorkspaceLaunchMetrics,
-        WorkspaceSessionSeed,
+        service_daemon_process_from_resolved_target, should_attempt_workspace_service_start,
+        should_refresh_service_servers, should_start_service_for_workspace,
+        terminate_daemon_process, untagged_daemon_pids_from_ps_output,
+        workspace_session_seed_script, ApiMachine, AppCloseRuntime, CloseAppPromptCopy,
+        CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine, ServiceRuntime,
+        ServiceServerSnapshot, WorkspaceLaunchMetrics, WorkspaceSessionSeed,
     };
     use crate::config::{AppSettings, ServiceMachineBinding, ServiceSettings};
     #[cfg(unix)]
@@ -4802,6 +4811,22 @@ mod tests {
         };
 
         assert!(should_start_service_for_workspace(&settings, true));
+        assert!(should_attempt_workspace_service_start(
+            &settings, true, true
+        ));
+    }
+
+    #[test]
+    fn workspace_launch_without_session_skips_service_start() {
+        let settings = ServiceSettings {
+            selected_server_slug: "open-have".to_string(),
+            auto_start_with_workspace: true,
+            ..ServiceSettings::default()
+        };
+
+        assert!(!should_attempt_workspace_service_start(
+            &settings, true, false
+        ));
     }
 
     #[test]

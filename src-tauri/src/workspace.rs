@@ -3579,15 +3579,40 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         throw new Error("Tauri invoke API is unavailable");
       }
 
+      const wasUnauthenticated = serviceSnapshot?.authenticated === false;
       await invoke("save_session_tokens", {
         accessToken,
         refreshToken,
       });
       window.__slockDesktopSessionSignature = nextSignature;
+      if (wasUnauthenticated) {
+        const payload = await invoke("bootstrap", { refresh: false });
+        syncDesktopPayload(payload);
+        if (activeSection === "service") {
+          refreshServiceSnapshot();
+        } else {
+          render();
+        }
+      }
     } catch (error) {
       console.warn("[Slock Desktop] session sync failed", error);
     }
   };
+
+  const scheduleSessionTokenSync = () => {
+    window.clearTimeout(window.__slockDesktopSessionSyncDebounce);
+    window.__slockDesktopSessionSyncDebounce = window.setTimeout(() => {
+      syncSessionTokens();
+    }, 100);
+  };
+
+  if (!window.__slockDesktopSessionSyncBound) {
+    window.__slockDesktopSessionSyncBound = true;
+    window.addEventListener("focus", scheduleSessionTokenSync);
+    window.addEventListener("storage", scheduleSessionTokenSync);
+    window.addEventListener("visibilitychange", scheduleSessionTokenSync);
+    window.__slockDesktopSessionSyncTimer = window.setInterval(scheduleSessionTokenSync, 2000);
+  }
 
   const getCurrentServerSlug = () => {
     const match = window.location.pathname.match(/^\/s\/([^/?#]+)/);
