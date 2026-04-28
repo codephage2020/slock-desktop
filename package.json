@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
+    "tauri:debug:app": "tauri build --debug --bundles app --config src-tauri/tauri.debug.conf.json",
+    "tauri:debug:open": "pnpm tauri:debug:app && open -n \"src-tauri/target/debug/bundle/macos/Slock Desktop.app\"",
     "tauri:build": "tauri build",
     "test": "pnpm lint && pnpm build && cargo check --manifest-path src-tauri/Cargo.toml"
   },

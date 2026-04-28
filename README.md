@@ -39,6 +39,7 @@ macOS, Node.js with `pnpm`, Rust with Cargo, Tauri macOS dependencies, and a Slo
 | --- | --- |
 | Install dependencies | `pnpm install` |
 | Desktop development | `pnpm tauri:dev` |
+| Build and open the current debug app bundle | `pnpm tauri:debug:open` |
 | Frontend development | `pnpm dev` |
 | Project checks | `pnpm test` |
 | Rust tests | `cargo test --manifest-path src-tauri/Cargo.toml` |
