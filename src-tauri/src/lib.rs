@@ -3499,14 +3499,19 @@ fn api_base_url(server_url: &str) -> String {
 
 static API_CLIENT: OnceLock<Client> = OnceLock::new();
 
+fn api_client_builder() -> reqwest::blocking::ClientBuilder {
+    Client::builder()
+        .no_proxy()
+        .user_agent("Slock Desktop")
+        .connect_timeout(Duration::from_secs(3))
+        .timeout(Duration::from_secs(10))
+}
+
 fn api_client() -> Result<Client, String> {
     if let Some(client) = API_CLIENT.get() {
         return Ok(client.clone());
     }
-    let client = Client::builder()
-        .user_agent("Slock Desktop")
-        .connect_timeout(Duration::from_secs(3))
-        .timeout(Duration::from_secs(10))
+    let client = api_client_builder()
         .build()
         .map_err(|err| format!("Unable to create desktop API client: {err}"))?;
     let _ = API_CLIENT.set(client.clone());
@@ -4449,10 +4454,12 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::{
         env, fs,
+        io::{Read, Write},
+        net::TcpListener,
         path::{Path, PathBuf},
         process::Command,
         sync::Mutex,
-        time::{SystemTime, UNIX_EPOCH},
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
     fn make_executable(path: &Path) {
@@ -4474,6 +4481,94 @@ mod tests {
             "slock-desktop-{name}-{}-{suffix}",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn desktop_api_client_ignores_system_proxy_configuration() {
+        let _env_guard = EnvGuard::capture(&[
+            "HTTP_PROXY",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+            "NO_PROXY",
+            "no_proxy",
+        ]);
+        env::set_var("HTTP_PROXY", "http://127.0.0.1:9");
+        env::set_var("http_proxy", "http://127.0.0.1:9");
+        env::set_var("HTTPS_PROXY", "http://127.0.0.1:9");
+        env::set_var("https_proxy", "http://127.0.0.1:9");
+        env::set_var("ALL_PROXY", "http://127.0.0.1:9");
+        env::set_var("all_proxy", "http://127.0.0.1:9");
+        env::remove_var("NO_PROXY");
+        env::remove_var("no_proxy");
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let origin_addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            loop {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let mut buffer = [0; 512];
+                        let _ = stream.read(&mut buffer);
+                        stream
+                            .write_all(
+                                b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                            )
+                            .unwrap();
+                        return true;
+                    }
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        if std::time::Instant::now() >= deadline {
+                            return false;
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(err) => panic!("test server failed: {err}"),
+                }
+            }
+        });
+
+        let client = super::api_client_builder()
+            .resolve("api.slock.ai", origin_addr)
+            .build()
+            .expect("desktop API client should ignore system proxy settings");
+        let response = client
+            .get(format!("http://api.slock.ai:{}/health", origin_addr.port()))
+            .send();
+        let accepted = server.join().unwrap();
+
+        let response = response.expect("desktop API request should bypass system proxy");
+        assert!(accepted);
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert_eq!(response.text().unwrap(), "ok");
+    }
+
+    struct EnvGuard {
+        values: Vec<(&'static str, Option<std::ffi::OsString>)>,
+    }
+
+    impl EnvGuard {
+        fn capture(keys: &[&'static str]) -> Self {
+            Self {
+                values: keys.iter().map(|key| (*key, env::var_os(key))).collect(),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, value) in &self.values {
+                if let Some(value) = value {
+                    env::set_var(key, value);
+                } else {
+                    env::remove_var(key);
+                }
+            }
+        }
     }
 
     #[test]
