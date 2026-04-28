@@ -67,6 +67,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   let titlebarThemeMenuOpen = false;
   let titlebarThemeWheelOpen = false;
   let releaseNotesOpen = false;
+  const waitForNextPaint = () => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
   const modes = [
     { id: "light", icon: "sun", key: "modeLight" },
     { id: "dark", icon: "moon", key: "modeDark" },
@@ -472,7 +475,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     return (
       service.servers?.find((server) => server.slug === service.selectedServerSlug) ||
       service.servers?.find((server) => server.selected) ||
-      service.servers?.[0] ||
       null
     );
   };
@@ -532,7 +534,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       syncDesktopPayload(payload);
       serviceBusyAction = "service-status";
       render();
-      payload = await invokeDesktop("refresh_service_servers", {});
+      await waitForNextPaint();
+      payload = await invokeDesktop("refresh_service_server_status", {});
       syncDesktopPayload(payload);
     } catch (error) {
       serviceError = error?.message || String(error);

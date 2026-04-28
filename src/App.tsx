@@ -21,7 +21,7 @@ import {
   openServiceLog,
   openWorkspace,
   refreshServiceServerCatalog,
-  refreshServiceServers,
+  refreshServiceServerStatus,
   renameCustomTheme,
   selectServiceServer,
   startService,
@@ -281,9 +281,13 @@ function App() {
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
+  const [initialServiceRefreshDone, setInitialServiceRefreshDone] = useState(false)
   const autoReleaseCheckRef = useRef(false)
   const savedServiceSlugRef = useRef('')
   const launchButtonAccentRef = useRef<string | null>(null)
+  const snapshotReady = snapshot !== null
+  const serviceAuthenticated = snapshot?.service.authenticated ?? false
+  const latestUpdate = snapshot?.updates.latest ?? null
 
   useEffect(() => {
     let cancelled = false
@@ -310,42 +314,45 @@ function App() {
   }, [snapshot?.service.selectedServerSlug])
 
   useEffect(() => {
-    if (!snapshot?.service.authenticated || initialServiceRefreshRef.current) {
+    if (!serviceAuthenticated || initialServiceRefreshRef.current) {
       return
     }
 
     initialServiceRefreshRef.current = true
     let cancelled = false
     setServiceRefreshPhase('catalog')
-    void refreshServiceServerCatalog()
-      .then((next) => {
+    void (async () => {
+      try {
+        const catalog = await refreshServiceServerCatalog()
         if (cancelled) {
-          return null
+          return
         }
-        startTransition(() => setSnapshot(next))
+        startTransition(() => setSnapshot(catalog))
         setServiceRefreshPhase('status')
-        return refreshServiceServers()
-      })
-      .then((next) => {
-        if (!cancelled && next) {
-          startTransition(() => setSnapshot(next))
+        await waitForNextPaint()
+        if (cancelled) {
+          return
         }
-      })
-      .catch((error) => {
+        const status = await refreshServiceServerStatus()
+        if (!cancelled) {
+          startTransition(() => setSnapshot(status))
+        }
+      } catch (error) {
         if (!cancelled) {
           setErrorMessage(getErrorMessage(error))
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setServiceRefreshPhase(null)
+          setInitialServiceRefreshDone(true)
         }
-      })
+      }
+    })()
 
     return () => {
       cancelled = true
     }
-  }, [snapshot?.service.authenticated])
+  }, [serviceAuthenticated])
 
   useEffect(() => {
     if (renamingThemeId && renameInputRef.current) {
@@ -386,17 +393,21 @@ function App() {
   }, [newThemeDraft])
 
   useEffect(() => {
-    if (!snapshot || autoReleaseCheckRef.current) {
+    if (
+      !snapshotReady ||
+      autoReleaseCheckRef.current ||
+      (serviceAuthenticated && !initialServiceRefreshDone)
+    ) {
       return
     }
 
-    if (snapshot.updates.latest) {
+    if (latestUpdate) {
       autoReleaseCheckRef.current = true
       setReleaseState({
         loading: false,
         installing: false,
         error: null,
-        latest: snapshot.updates.latest,
+        latest: latestUpdate,
       })
       return
     }
@@ -425,7 +436,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [snapshot])
+  }, [snapshotReady, serviceAuthenticated, initialServiceRefreshDone, latestUpdate])
 
   async function handleThemeChange(themeId: string) {
     if (renamingThemeId === themeId) {
@@ -652,7 +663,7 @@ function App() {
       startTransition(() => setSnapshot(catalog))
       setServiceRefreshPhase('status')
       await waitForNextPaint()
-      const next = await refreshServiceServers()
+      const next = await refreshServiceServerStatus()
       startTransition(() => setSnapshot(next))
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
@@ -804,7 +815,6 @@ function App() {
       (server) => server.slug === snapshot.service.selectedServerSlug,
     ) ??
     snapshot.service.servers.find((server) => server.selected) ??
-    snapshot.service.servers[0] ??
     null
   const savedServiceSlug = snapshot.service.selectedServerSlug.trim()
   const selectedServiceSlug = selectedServiceServer?.slug ?? savedServiceSlug

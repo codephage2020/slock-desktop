@@ -139,6 +139,10 @@ export async function refreshServiceServers() {
   return invoke<BootstrapPayload>('refresh_service_servers')
 }
 
+export async function refreshServiceServerStatus() {
+  return invoke<BootstrapPayload>('refresh_service_server_status')
+}
+
 export async function refreshServiceServerCatalog() {
   return invoke<BootstrapPayload>('refresh_service_server_catalog')
 }

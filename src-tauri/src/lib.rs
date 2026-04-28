@@ -49,6 +49,7 @@ const DAEMON_DESKTOP_MANAGED_ARG: &str = "--slock-desktop-managed";
 const DESKTOP_UPDATER_ENDPOINT: &str =
     "https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json";
 const DESKTOP_UPDATE_CHECK_TIMEOUT: u64 = 8;
+const SERVICE_MACHINE_FETCH_CONCURRENCY_LIMIT: usize = 8;
 #[cfg(debug_assertions)]
 const WORKSPACE_LAUNCH_LOG_PATH: &str = "/tmp/slock-desktop-launch.log";
 
@@ -132,6 +133,7 @@ struct ServiceStartTarget {
 struct AppCloseRuntime {
     prompt_visible: bool,
     confirmed_exit: bool,
+    service_stop_completed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -664,6 +666,35 @@ fn refresh_service_servers(
 }
 
 #[tauri::command]
+fn refresh_service_server_status(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<BootstrapPayload, String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+    let servers = fetch_cached_service_server_status(&app, &state, &settings);
+    let mut runtime = state
+        .service
+        .lock()
+        .map_err(|_| "Unable to lock service runtime".to_string())?;
+    match servers {
+        Ok(servers) => {
+            runtime.cached_servers = servers;
+            runtime.cached_sync_error = None;
+        }
+        Err(err) => {
+            runtime.cached_sync_error = Some(err);
+        }
+    }
+    drop(runtime);
+    build_bootstrap_with_service_options(&app, &state, false, true)
+}
+
+#[tauri::command]
 fn refresh_service_server_catalog(
     app: AppHandle,
     state: State<'_, DesktopState>,
@@ -854,6 +885,9 @@ fn handle_app_exit_requested(app: &AppHandle, state: &DesktopState) -> bool {
 
 fn handle_app_exit(app: &AppHandle, state: &DesktopState) {
     if current_close_app_behavior(state) == CloseAppServiceBehavior::Stop {
+        if take_app_close_service_stop_completed(state) {
+            return;
+        }
         let service_settings = state
             .settings
             .lock()
@@ -878,6 +912,9 @@ fn finish_app_close_async(
 
         match result {
             Ok(()) => {
+                if behavior == CloseAppServiceBehavior::Stop {
+                    mark_app_close_service_stop_completed(&state);
+                }
                 mark_app_close_confirmed(&state);
                 app.exit(0);
             }
@@ -1196,6 +1233,22 @@ fn mark_app_close_confirmed(state: &DesktopState) {
     }
 }
 
+fn mark_app_close_service_stop_completed(state: &DesktopState) {
+    if let Ok(mut runtime) = state.app_close.lock() {
+        runtime.service_stop_completed = true;
+    }
+}
+
+fn take_app_close_service_stop_completed(state: &DesktopState) -> bool {
+    let mut runtime = match state.app_close.lock() {
+        Ok(runtime) => runtime,
+        Err(_) => return false,
+    };
+    let completed = runtime.service_stop_completed;
+    runtime.service_stop_completed = false;
+    completed
+}
+
 fn close_request_confirmed(state: &DesktopState) -> bool {
     let mut runtime = match state.app_close.lock() {
         Ok(runtime) => runtime,
@@ -1312,13 +1365,28 @@ fn build_bootstrap(
     state: &State<'_, DesktopState>,
     refresh_service: bool,
 ) -> Result<BootstrapPayload, String> {
+    build_bootstrap_with_service_options(app, state, refresh_service, refresh_service)
+}
+
+fn build_bootstrap_with_service_options(
+    app: &AppHandle,
+    state: &State<'_, DesktopState>,
+    refresh_service: bool,
+    detect_service_process: bool,
+) -> Result<BootstrapPayload, String> {
     let settings = state
         .settings
         .lock()
         .map_err(|_| "Unable to lock desktop settings".to_string())?
         .clone();
 
-    let service = collect_service_snapshot(app, state, &settings.service, refresh_service)?;
+    let service = collect_service_snapshot(
+        app,
+        state,
+        &settings.service,
+        refresh_service,
+        detect_service_process,
+    )?;
     let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
     let latest = state
         .update_cache
@@ -1938,6 +2006,7 @@ fn collect_service_snapshot(
     state: &DesktopState,
     settings: &ServiceSettings,
     refresh_service: bool,
+    detect_service_process: bool,
 ) -> Result<ServiceSnapshot, String> {
     let mut runtime = state
         .service
@@ -2044,7 +2113,7 @@ fn collect_service_snapshot(
         server.selected = server.slug == settings.selected_server_slug;
     }
 
-    if refresh_service && !running {
+    if detect_service_process && !running {
         if let Ok(Some(process)) = selected_service_daemon_process_from_servers(settings, &servers)
         {
             running = true;
@@ -2166,7 +2235,9 @@ fn force_start_service(
     let cached_target = match cached_service_start_target(app, state, settings) {
         Ok(target) => target,
         Err(err) => {
-            log::warn!("cached service start target failed, falling back to full resolution: {err}");
+            log::warn!(
+                "cached service start target failed, falling back to full resolution: {err}"
+            );
             None
         }
     };
@@ -2854,7 +2925,10 @@ fn stop_service_process(
 
     let target_binding = service_settings
         .and_then(|settings| target_slug.and_then(|slug| find_service_binding(settings, "", slug)));
-    daemon_pids = if stopped_daemon_process {
+    daemon_pids = if !should_resolve_remote_daemon_after_local_stop(
+        stopped_daemon_process,
+        stopped_tracked_child,
+    ) {
         Vec::new()
     } else {
         find_daemon_process_ids(
@@ -2896,6 +2970,13 @@ fn stop_service_process(
         runtime.active_pid = None;
     }
     Ok(())
+}
+
+fn should_resolve_remote_daemon_after_local_stop(
+    stopped_daemon_process: bool,
+    stopped_tracked_child: bool,
+) -> bool {
+    !stopped_daemon_process && !stopped_tracked_child
 }
 
 fn find_daemon_process_ids(
@@ -3138,17 +3219,6 @@ fn daemon_command_matches(
     }
 
     if command.contains(DAEMON_MACHINE_ID_ARG) {
-        if daemon_command_is_desktop_managed(command)
-            && target_server_slug
-                .filter(|server_slug| !server_slug.trim().is_empty())
-                .map(|server_slug| {
-                    command_arg_value_matches(command, DAEMON_SERVER_SLUG_ARG, server_slug)
-                })
-                .unwrap_or(false)
-        {
-            return true;
-        }
-
         if target_machine_id
             .filter(|machine_id| !machine_id.trim().is_empty())
             .map(|machine_id| command_arg_value_matches(command, DAEMON_MACHINE_ID_ARG, machine_id))
@@ -3158,6 +3228,19 @@ fn daemon_command_matches(
         }
 
         if command_arg_value_matches(command, DAEMON_MACHINE_ID_ARG, "***") {
+            return target_server_slug
+                .filter(|server_slug| !server_slug.trim().is_empty())
+                .map(|server_slug| {
+                    command_arg_value_matches(command, DAEMON_SERVER_SLUG_ARG, server_slug)
+                })
+                .unwrap_or(false);
+        }
+
+        if daemon_command_is_desktop_managed(command)
+            && target_machine_id
+                .filter(|machine_id| !machine_id.trim().is_empty())
+                .is_none()
+        {
             return target_server_slug
                 .filter(|server_slug| !server_slug.trim().is_empty())
                 .map(|server_slug| {
@@ -3789,82 +3872,115 @@ fn fetch_service_servers(
         },
     )?;
 
-    let machines_by_server: Vec<Vec<ApiMachine>> = std::thread::scope(|scope| {
-        let handles: Vec<_> = servers
-            .iter()
-            .map(|server| {
-                let server_id = server.id.clone();
-                let server_url = server_url.clone();
-                scope.spawn(move || fetch_server_machines(app, state, &server_url, &server_id))
-            })
-            .collect();
-        handles
-            .into_iter()
-            .map(|handle| {
-                handle
-                    .join()
-                    .map_err(|_| "Machine fetch thread panicked".to_string())?
-            })
-            .collect::<Result<Vec<_>, String>>()
-    })?;
+    let server_ids = servers
+        .iter()
+        .map(|server| server.id.clone())
+        .collect::<Vec<_>>();
+    let machines_by_server = fetch_machines_for_servers(app, state, &server_url, &server_ids)?;
 
     let mut snapshots = Vec::with_capacity(servers.len());
     for (server, machines) in servers.into_iter().zip(machines_by_server) {
         let binding = find_service_binding(settings, &server.id, &server.slug);
-        let bound_machine = binding.as_ref().and_then(|binding| {
-            machines
-                .iter()
-                .find(|machine| machine.id == binding.machine_id)
-        });
-        let active_machine = bound_machine
-            .or_else(|| {
-                machines
-                    .iter()
-                    .find(|machine| machine_counts_as_started(&machine.status))
-            })
-            .or_else(|| machines.first());
-        let machine_status = active_machine
-            .map(|machine| normalize_machine_status(&machine.status))
-            .unwrap_or_else(|| {
-                if binding.is_some() {
-                    "offline".to_string()
-                } else {
-                    "not linked".to_string()
-                }
-            });
-        let api_key_prefix = active_machine
-            .map(|machine| machine.api_key_prefix.trim().to_string())
-            .filter(|prefix| !prefix.is_empty());
+        let (machine_id, machine_name, machine_status, api_key_ready, api_key_prefix) =
+            service_server_machine_fields(binding.as_ref(), &machines);
 
         snapshots.push(ServiceServerSnapshot {
             id: server.id.clone(),
             name: server.name,
             slug: server.slug.clone(),
             selected: server.slug == settings.selected_server_slug,
-            machine_id: binding
-                .as_ref()
-                .map(|item| item.machine_id.clone())
-                .or_else(|| active_machine.map(|machine| machine.id.clone())),
-            machine_name: bound_machine
-                .map(|machine| machine.name.clone())
-                .or_else(|| {
-                    binding
-                        .as_ref()
-                        .map(|item| item.machine_name.clone())
-                        .filter(|name| !name.is_empty())
-                })
-                .or_else(|| active_machine.map(|machine| machine.name.clone())),
+            machine_id,
+            machine_name,
             machine_status,
-            api_key_ready: api_key_prefix.is_some()
-                || binding
-                    .as_ref()
-                    .map(|item| !item.machine_id.trim().is_empty())
-                    .unwrap_or(false),
+            api_key_ready,
             api_key_prefix,
         });
     }
 
     Ok(snapshots)
+}
+
+fn fetch_cached_service_server_status(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &ServiceSettings,
+) -> Result<Vec<ServiceServerSnapshot>, String> {
+    let cached_servers = state
+        .service
+        .lock()
+        .map_err(|_| "Unable to lock service runtime".to_string())?
+        .cached_servers
+        .clone();
+
+    if cached_servers.is_empty() {
+        return fetch_service_servers(app, state, settings);
+    }
+
+    let server_ids = cached_servers
+        .iter()
+        .map(|server| server.id.clone())
+        .collect::<Vec<_>>();
+    let machines_by_server =
+        fetch_machines_for_servers(app, state, &settings.server_url, &server_ids)?;
+
+    let mut snapshots = Vec::with_capacity(cached_servers.len());
+    for (server, machines) in cached_servers.into_iter().zip(machines_by_server) {
+        let binding = find_service_binding(settings, &server.id, &server.slug);
+        let (machine_id, machine_name, machine_status, api_key_ready, api_key_prefix) =
+            service_server_machine_fields(binding.as_ref(), &machines);
+
+        snapshots.push(ServiceServerSnapshot {
+            id: server.id.clone(),
+            name: server.name,
+            slug: server.slug.clone(),
+            selected: server.slug == settings.selected_server_slug,
+            machine_id,
+            machine_name,
+            machine_status,
+            api_key_ready,
+            api_key_prefix,
+        });
+    }
+
+    Ok(snapshots)
+}
+
+fn fetch_machines_for_servers(
+    app: &AppHandle,
+    state: &DesktopState,
+    server_url: &str,
+    server_ids: &[String],
+) -> Result<Vec<Vec<ApiMachine>>, String> {
+    let concurrency = service_machine_fetch_concurrency(server_ids.len());
+    let mut machines_by_server = Vec::with_capacity(server_ids.len());
+
+    for chunk in server_ids.chunks(concurrency) {
+        let chunk_results: Vec<Vec<ApiMachine>> = thread::scope(|scope| {
+            let handles: Vec<_> = chunk
+                .iter()
+                .map(|server_id| {
+                    let server_id = server_id.clone();
+                    let server_url = server_url.to_string();
+                    scope.spawn(move || fetch_server_machines(app, state, &server_url, &server_id))
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| {
+                    handle
+                        .join()
+                        .map_err(|_| "Machine fetch thread panicked".to_string())?
+                })
+                .collect::<Result<Vec<_>, String>>()
+        })?;
+        machines_by_server.extend(chunk_results);
+    }
+
+    Ok(machines_by_server)
+}
+
+fn service_machine_fetch_concurrency(server_count: usize) -> usize {
+    server_count.clamp(1, SERVICE_MACHINE_FETCH_CONCURRENCY_LIMIT)
 }
 
 fn fetch_service_server_catalog(
@@ -3933,6 +4049,55 @@ fn fetch_service_server_catalog(
     }
 
     Ok(snapshots)
+}
+
+fn service_server_machine_fields(
+    binding: Option<&ServiceMachineBinding>,
+    machines: &[ApiMachine],
+) -> (Option<String>, Option<String>, String, bool, Option<String>) {
+    let bound_machine = binding.and_then(|binding| {
+        machines
+            .iter()
+            .find(|machine| machine.id == binding.machine_id)
+    });
+    let machine_id = bound_machine.map(|machine| machine.id.clone()).or_else(|| {
+        binding
+            .map(|item| item.machine_id.clone())
+            .filter(|machine_id| !machine_id.trim().is_empty())
+    });
+    let machine_name = bound_machine
+        .map(|machine| machine.name.clone())
+        .or_else(|| {
+            binding
+                .map(|item| item.machine_name.clone())
+                .filter(|machine_name| !machine_name.trim().is_empty())
+        });
+    let machine_status = bound_machine
+        .map(|machine| normalize_machine_status(&machine.status))
+        .unwrap_or_else(|| {
+            if binding.is_some() {
+                "offline".to_string()
+            } else {
+                "not linked".to_string()
+            }
+        });
+    let api_key_prefix = bound_machine
+        .map(|machine| machine.api_key_prefix.trim().to_string())
+        .filter(|prefix| !prefix.is_empty());
+    let api_key_ready = bound_machine.is_some()
+        && (api_key_prefix.is_some()
+            || machine_id
+                .as_ref()
+                .map(|machine_id| !machine_id.trim().is_empty())
+                .unwrap_or(false));
+
+    (
+        machine_id,
+        machine_name,
+        machine_status,
+        api_key_ready,
+        api_key_prefix,
+    )
 }
 
 fn fetch_server_machines(
@@ -4122,25 +4287,10 @@ fn select_existing_machine(
     binding: Option<&ServiceMachineBinding>,
     machines: &[ApiMachine],
 ) -> Option<ApiMachine> {
-    if let Some(binding) = binding {
-        if let Some(machine) = machines
-            .iter()
-            .find(|machine| machine.id == binding.machine_id)
-        {
-            return Some(machine.clone());
-        }
-        let binding_name = binding.machine_name.trim();
-        if !binding_name.is_empty() {
-            if let Some(machine) = machines.iter().find(|machine| machine.name == binding_name) {
-                return Some(machine.clone());
-            }
-        }
-    }
-
+    let binding = binding?;
     machines
         .iter()
-        .find(|machine| machine_counts_as_started(&machine.status))
-        .or_else(|| machines.first())
+        .find(|machine| machine.id == binding.machine_id)
         .cloned()
 }
 
@@ -4539,6 +4689,7 @@ pub fn run() {
             open_workspace,
             save_service_settings,
             refresh_service_servers,
+            refresh_service_server_status,
             refresh_service_server_catalog,
             select_service_server,
             start_service,
@@ -4597,12 +4748,15 @@ mod tests {
         app_close_prompt_script, clear_desktop_session_service_cache,
         clear_desktop_session_settings, close_app_behavior_from_action, close_app_behavior_from_id,
         close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
-        desktop_session_expired_message, prepare_runtime_for_service_target,
-        process_entries_from_ps_output, process_tree_pids_from_entries,
-        resolve_service_command_from_dirs, sanitize_service_settings, select_existing_machine,
+        desktop_session_expired_message, mark_app_close_service_stop_completed,
+        prepare_runtime_for_service_target, process_entries_from_ps_output,
+        process_tree_pids_from_entries, resolve_service_command_from_dirs,
+        sanitize_service_settings, select_existing_machine,
         selected_service_daemon_process_from_server_snapshots,
-        service_daemon_process_from_resolved_target, should_attempt_workspace_service_start,
-        should_refresh_service_servers, should_start_service_for_workspace,
+        service_daemon_process_from_resolved_target, service_machine_fetch_concurrency,
+        service_server_machine_fields, should_attempt_workspace_service_start,
+        should_refresh_service_servers, should_resolve_remote_daemon_after_local_stop,
+        should_start_service_for_workspace, take_app_close_service_stop_completed,
         terminate_daemon_process, untagged_daemon_pids_from_ps_output,
         workspace_session_clear_script, workspace_session_seed_script, ApiMachine, AppCloseRuntime,
         CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine,
@@ -4980,7 +5134,7 @@ mod tests {
     }
 
     #[test]
-    fn desktop_managed_daemon_parser_matches_slug_when_machine_binding_is_stale() {
+    fn desktop_managed_daemon_parser_requires_machine_match_when_binding_exists() {
         let output = r#"
   101   1 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_service --slock-desktop-server-slug tyan-dyun --slock-desktop-machine-id actual-machine --slock-desktop-managed
 "#;
@@ -4990,6 +5144,25 @@ mod tests {
             "https://api.slock.ai",
             Some("tyan-dyun"),
             Some("stale-machine"),
+            None,
+            None,
+            false,
+        );
+
+        assert!(pids.is_empty());
+    }
+
+    #[test]
+    fn desktop_managed_daemon_parser_matches_slug_without_machine_target() {
+        let output = r#"
+  101   1 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_service --slock-desktop-server-slug tyan-dyun --slock-desktop-machine-id actual-machine --slock-desktop-managed
+"#;
+
+        let pids = daemon_pids_from_ps_output(
+            output,
+            "https://api.slock.ai",
+            Some("tyan-dyun"),
+            None,
             None,
             None,
             false,
@@ -5083,6 +5256,38 @@ mod tests {
     }
 
     #[test]
+    fn completed_close_stop_is_consumed_once_for_exit_hook() {
+        let state = DesktopState {
+            settings: Mutex::new(AppSettings::default()),
+            service: Mutex::new(ServiceRuntime {
+                child: None,
+                last_error: None,
+                active_server_slug: None,
+                active_machine_id: None,
+                active_pid: None,
+                cached_servers: Vec::new(),
+                cached_sync_error: None,
+            }),
+            app_close: Mutex::new(AppCloseRuntime::default()),
+            launch_metrics: Mutex::new(WorkspaceLaunchMetrics::default()),
+            update_cache: Mutex::new(None),
+        };
+
+        assert!(!take_app_close_service_stop_completed(&state));
+        mark_app_close_service_stop_completed(&state);
+        assert!(take_app_close_service_stop_completed(&state));
+        assert!(!take_app_close_service_stop_completed(&state));
+    }
+
+    #[test]
+    fn local_stop_skips_remote_daemon_resolution() {
+        assert!(should_resolve_remote_daemon_after_local_stop(false, false));
+        assert!(!should_resolve_remote_daemon_after_local_stop(true, false));
+        assert!(!should_resolve_remote_daemon_after_local_stop(false, true));
+        assert!(!should_resolve_remote_daemon_after_local_stop(true, true));
+    }
+
+    #[test]
     fn untagged_daemon_parser_ignores_desktop_marked_processes() {
         let output = r#"
   101 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_old
@@ -5127,6 +5332,14 @@ mod tests {
         assert!(!should_refresh_service_servers(false, true));
         assert!(!should_refresh_service_servers(false, false));
         assert!(should_refresh_service_servers(true, true));
+    }
+
+    #[test]
+    fn machine_status_refresh_uses_bounded_concurrency() {
+        assert_eq!(service_machine_fetch_concurrency(0), 1);
+        assert_eq!(service_machine_fetch_concurrency(1), 1);
+        assert_eq!(service_machine_fetch_concurrency(3), 3);
+        assert_eq!(service_machine_fetch_concurrency(64), 8);
     }
 
     #[test]
@@ -5307,7 +5520,7 @@ mod tests {
     }
 
     #[test]
-    fn existing_machine_selection_reuses_any_existing_machine_without_binding() {
+    fn existing_machine_selection_ignores_existing_machine_without_binding() {
         let machines = vec![ApiMachine {
             id: "existing".to_string(),
             name: "Existing machine".to_string(),
@@ -5317,10 +5530,47 @@ mod tests {
 
         let selected = select_existing_machine(None, &machines);
 
-        assert_eq!(
-            selected.map(|machine| machine.id),
-            Some("existing".to_string())
-        );
+        assert!(selected.is_none());
+    }
+
+    #[test]
+    fn existing_machine_selection_ignores_stale_binding_name_match() {
+        let binding = ServiceMachineBinding {
+            server_id: "server".to_string(),
+            server_slug: "slug".to_string(),
+            machine_id: "missing".to_string(),
+            machine_name: "Slock Desktop".to_string(),
+            api_key: String::new(),
+        };
+        let machines = vec![ApiMachine {
+            id: "other".to_string(),
+            name: "Slock Desktop".to_string(),
+            status: "online".to_string(),
+            api_key_prefix: "sk_other".to_string(),
+        }];
+
+        let selected = select_existing_machine(Some(&binding), &machines);
+
+        assert!(selected.is_none());
+    }
+
+    #[test]
+    fn machine_snapshot_leaves_unbound_servers_unlinked() {
+        let machines = vec![ApiMachine {
+            id: "existing".to_string(),
+            name: "Existing machine".to_string(),
+            status: "online".to_string(),
+            api_key_prefix: "sk_existing".to_string(),
+        }];
+
+        let (machine_id, machine_name, machine_status, api_key_ready, api_key_prefix) =
+            service_server_machine_fields(None, &machines);
+
+        assert_eq!(machine_id, None);
+        assert_eq!(machine_name, None);
+        assert_eq!(machine_status, "not linked");
+        assert!(!api_key_ready);
+        assert_eq!(api_key_prefix, None);
     }
 
     #[test]
