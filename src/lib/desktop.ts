@@ -29,12 +29,22 @@ export interface ServiceSnapshot {
   autoStartWithWorkspace: boolean
   closeAppBehavior: 'ask' | 'keep' | 'stop'
   authenticated: boolean
+  account: ServiceAccountSnapshot | null
+  accounts: ServiceAccountSnapshot[]
   configured: boolean
   running: boolean
   pid: number | null
   lastError: string | null
   syncError: string | null
   servers: ServiceServerSnapshot[]
+}
+
+export interface ServiceAccountSnapshot {
+  id: string
+  displayName: string | null
+  email: string | null
+  avatarUrl: string | null
+  initials: string
 }
 
 export interface ServiceServerSnapshot {
@@ -110,6 +120,18 @@ export async function updateLanguage(language: BootstrapPayload['language']) {
 
 export async function openWorkspace(selectedServerSlug?: string) {
   return invoke<BootstrapPayload>('open_workspace', { selectedServerSlug })
+}
+
+export async function openLogin() {
+  return invoke<BootstrapPayload>('open_login')
+}
+
+export async function switchAccount() {
+  return invoke<BootstrapPayload>('switch_account')
+}
+
+export async function activateAccount(accountId: string) {
+  return invoke<BootstrapPayload>('activate_account', { accountId })
 }
 
 export async function selectServiceServer(selectedServerSlug: string) {

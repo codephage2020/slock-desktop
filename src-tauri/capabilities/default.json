@@ -6,7 +6,8 @@
     "urls": ["https://app.slock.ai", "https://app.slock.ai/*"]
   },
   "windows": [
-    "main"
+    "main",
+    "auth"
   ],
   "permissions": [
     "core:default",

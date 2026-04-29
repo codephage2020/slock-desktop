@@ -3,8 +3,8 @@ mod theme;
 mod workspace;
 
 use config::{
-    load_settings, save_settings, AppSettings, CustomThemeSettings, ServiceMachineBinding,
-    ServiceSettings,
+    load_settings, save_settings, AppSettings, CustomThemeSettings, SavedAccountSettings,
+    ServiceMachineBinding, ServiceSettings,
 };
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -24,13 +24,17 @@ use tauri::{
     webview::PageLoadEvent,
     window::Color,
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, State, Theme, Url,
-    WindowEvent,
+    WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_updater::{Updater, UpdaterExt};
 use theme::{meta_catalog, resolve_theme, sanitize_hex, CustomThemeItem, CustomThemeSet};
 
 const MAIN_LABEL: &str = "main";
+const AUTH_LABEL: &str = "auth";
 const WORKSPACE_URL: &str = "https://app.slock.ai";
+const LOGIN_URL: &str = "https://app.slock.ai/login";
+const DESKTOP_AUTH_CALLBACK_EVENT: &str = "desktop-auth-complete";
+const DESKTOP_AUTH_CANCELLED_EVENT: &str = "desktop-auth-cancelled";
 const DEFAULT_SERVER_URL: &str = "https://api.slock.ai";
 const DAEMON_PACKAGE: &str = "@slock-ai/daemon@latest";
 const DAEMON_MACHINE_NAME: &str = "Slock Desktop";
@@ -38,6 +42,10 @@ const LAUNCHER_WINDOW_WIDTH: f64 = 800.0;
 const LAUNCHER_WINDOW_HEIGHT: f64 = 460.0;
 const LAUNCHER_WINDOW_MIN_WIDTH: f64 = 720.0;
 const LAUNCHER_WINDOW_MIN_HEIGHT: f64 = 420.0;
+const AUTH_WINDOW_WIDTH: f64 = 520.0;
+const AUTH_WINDOW_HEIGHT: f64 = 720.0;
+const AUTH_WINDOW_MIN_WIDTH: f64 = 420.0;
+const AUTH_WINDOW_MIN_HEIGHT: f64 = 560.0;
 const WORKSPACE_WINDOW_WIDTH: f64 = 1480.0;
 const WORKSPACE_WINDOW_HEIGHT: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_WIDTH: f64 = 980.0;
@@ -56,6 +64,7 @@ const WORKSPACE_LAUNCH_LOG_PATH: &str = "/tmp/slock-desktop-launch.log";
 pub struct DesktopState {
     settings: Mutex<AppSettings>,
     service: Mutex<ServiceRuntime>,
+    auth: Mutex<AuthRuntime>,
     app_close: Mutex<AppCloseRuntime>,
     launch_metrics: Mutex<WorkspaceLaunchMetrics>,
     update_cache: Mutex<Option<DesktopUpdateCheck>>,
@@ -85,6 +94,11 @@ struct ServiceRuntime {
     active_pid: Option<u32>,
     cached_servers: Vec<ServiceServerSnapshot>,
     cached_sync_error: Option<String>,
+}
+
+#[derive(Default)]
+struct AuthRuntime {
+    clear_login_session_storage: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -159,12 +173,24 @@ struct ServiceSnapshot {
     auto_start_with_workspace: bool,
     close_app_behavior: String,
     authenticated: bool,
+    account: Option<ServiceAccountSnapshot>,
+    accounts: Vec<ServiceAccountSnapshot>,
     configured: bool,
     running: bool,
     pid: Option<u32>,
     last_error: Option<String>,
     sync_error: Option<String>,
     servers: Vec<ServiceServerSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ServiceAccountSnapshot {
+    id: String,
+    display_name: Option<String>,
+    email: Option<String>,
+    avatar_url: Option<String>,
+    initials: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -259,6 +285,13 @@ struct ApiMachineKeyRotation {
 struct ApiRefreshSession {
     access_token: String,
     refresh_token: String,
+}
+
+#[derive(Debug, Default, Clone)]
+struct SessionAccountProfile {
+    display_name: Option<String>,
+    email: Option<String>,
+    avatar_url: Option<String>,
 }
 
 #[tauri::command]
@@ -486,6 +519,9 @@ fn save_session_tokens(
     state: State<'_, DesktopState>,
     access_token: String,
     refresh_token: String,
+    display_name: Option<String>,
+    email: Option<String>,
+    avatar_url: Option<String>,
 ) -> Result<(), String> {
     let access_token = access_token.trim().to_string();
     let refresh_token = refresh_token.trim().to_string();
@@ -493,26 +529,145 @@ fn save_session_tokens(
         return Ok(());
     }
 
+    save_session_tokens_to_settings(
+        &app,
+        &state,
+        access_token,
+        refresh_token,
+        display_name,
+        email,
+        avatar_url,
+    )
+}
+
+fn save_session_tokens_to_settings(
+    app: &AppHandle,
+    state: &DesktopState,
+    access_token: String,
+    refresh_token: String,
+    display_name: Option<String>,
+    email: Option<String>,
+    avatar_url: Option<String>,
+) -> Result<(), String> {
+    let (same_tokens, previous_display_name, previous_email, previous_avatar_url, server_url) = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        (
+            settings.session.access_token == access_token
+                && settings.session.refresh_token == refresh_token,
+            settings.session.display_name.clone(),
+            settings.session.email.clone(),
+            settings.session.avatar_url.clone(),
+            settings.service.server_url.clone(),
+        )
+    };
+
+    let display_name = display_name
+        .and_then(|value| clean_optional_account_text(&value))
+        .or_else(|| same_tokens.then_some(previous_display_name));
+    let email = email
+        .and_then(|value| clean_optional_account_text(&value))
+        .or_else(|| same_tokens.then_some(previous_email));
+    let avatar_url = avatar_url
+        .and_then(|value| sanitize_account_avatar_url(&value))
+        .or_else(|| same_tokens.then_some(previous_avatar_url));
+
+    let needs_profile_fetch =
+        !same_tokens && (display_name.is_none() || email.is_none() || avatar_url.is_none());
+    let profile_access_token = needs_profile_fetch.then(|| access_token.clone());
+    let display_name = display_name.unwrap_or_default();
+    let email = email.unwrap_or_default();
+    let avatar_url = avatar_url.unwrap_or_default();
+
     let mut settings = state
         .settings
         .lock()
         .map_err(|_| "Unable to lock desktop settings".to_string())?;
-    if settings.session.access_token == access_token
-        && settings.session.refresh_token == refresh_token
+    let same_tokens = settings.session.access_token == access_token
+        && settings.session.refresh_token == refresh_token;
+    if same_tokens
+        && settings.session.display_name == display_name
+        && settings.session.email == email
+        && settings.session.avatar_url == avatar_url
     {
         return Ok(());
     }
 
     settings.session.access_token = access_token;
     settings.session.refresh_token = refresh_token;
-    save_settings(&app, &settings)?;
+    settings.session.display_name = display_name;
+    settings.session.email = email;
+    settings.session.avatar_url = avatar_url;
+    upsert_saved_session_account(&mut settings.session);
+    save_settings(app, &settings)?;
     let mut runtime = state
         .service
         .lock()
         .map_err(|_| "Unable to lock service runtime".to_string())?;
     runtime.cached_servers.clear();
     runtime.cached_sync_error = None;
+    let _ = app.emit(DESKTOP_AUTH_CALLBACK_EVENT, ());
+    if let Some(profile_access_token) = profile_access_token {
+        spawn_session_account_profile_fetch(app.clone(), server_url, profile_access_token);
+    }
     Ok(())
+}
+
+fn spawn_session_account_profile_fetch(app: AppHandle, server_url: String, access_token: String) {
+    thread::spawn(move || {
+        let profile = match fetch_session_account_profile(&server_url, &access_token) {
+            Ok(Some(profile)) => profile,
+            Ok(None) => return,
+            Err(err) => {
+                log::debug!("failed to fetch account profile: {err}");
+                return;
+            }
+        };
+
+        let state = app.state::<DesktopState>();
+        let mut settings = match state.settings.lock() {
+            Ok(settings) => settings,
+            Err(_) => return,
+        };
+
+        if settings.session.access_token != access_token {
+            return;
+        }
+
+        let mut changed = false;
+        if settings.session.display_name.trim().is_empty() {
+            if let Some(value) = profile.display_name {
+                settings.session.display_name = value;
+                changed = true;
+            }
+        }
+        if settings.session.email.trim().is_empty() {
+            if let Some(value) = profile.email {
+                settings.session.email = value;
+                changed = true;
+            }
+        }
+        if settings.session.avatar_url.trim().is_empty() {
+            if let Some(value) = profile.avatar_url {
+                settings.session.avatar_url = value;
+                changed = true;
+            }
+        }
+        if !changed {
+            return;
+        }
+
+        upsert_saved_session_account(&mut settings.session);
+        if let Err(err) = save_settings(&app, &settings) {
+            log::debug!("failed to save account profile: {err}");
+            return;
+        }
+        drop(settings);
+
+        let _ = app.emit(DESKTOP_AUTH_CALLBACK_EVENT, ());
+    });
 }
 
 #[tauri::command]
@@ -557,6 +712,127 @@ fn open_workspace(
         &custom_theme_set(&custom_themes),
         &selected_server_slug,
     )?;
+    build_bootstrap(&app, &state, true)
+}
+
+#[tauri::command]
+fn open_login(app: AppHandle, state: State<'_, DesktopState>) -> Result<BootstrapPayload, String> {
+    let command_started = Instant::now();
+    open_login_window(&app, &state, command_started, false)?;
+    build_bootstrap(&app, &state, true)
+}
+
+#[tauri::command]
+fn switch_account(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<BootstrapPayload, String> {
+    let command_started = Instant::now();
+    {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        upsert_saved_session_account(&mut settings.session);
+        save_settings(&app, &settings)?;
+    }
+    clear_desktop_session(&app, &state)?;
+    open_login_window(&app, &state, command_started, true)?;
+    build_bootstrap(&app, &state, true)
+}
+
+fn open_login_window(
+    app: &AppHandle,
+    state: &DesktopState,
+    command_started: Instant,
+    clear_login_session_storage: bool,
+) -> Result<(), String> {
+    begin_workspace_launch_trace(state, command_started, LOGIN_URL);
+    {
+        let mut auth = state
+            .auth
+            .lock()
+            .map_err(|_| "Unable to lock auth runtime".to_string())?;
+        auth.clear_login_session_storage = clear_login_session_storage;
+    }
+    let url = LOGIN_URL.parse::<Url>().map_err(|err| err.to_string())?;
+
+    if let Some(window) = app.get_webview_window(AUTH_LABEL) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        mark_workspace_launch_navigate_called(state, LOGIN_URL);
+        window.navigate(url).map_err(|err| err.to_string())?;
+        return Ok(());
+    }
+
+    mark_workspace_launch_navigate_called(state, LOGIN_URL);
+    let window = WebviewWindowBuilder::new(app, AUTH_LABEL, WebviewUrl::External(url))
+        .title("Slock Sign In")
+        .inner_size(AUTH_WINDOW_WIDTH, AUTH_WINDOW_HEIGHT)
+        .min_inner_size(AUTH_WINDOW_MIN_WIDTH, AUTH_WINDOW_MIN_HEIGHT)
+        .resizable(true)
+        .focused(true)
+        .build()
+        .map_err(|err| err.to_string())?;
+    let _ = window.center();
+    Ok(())
+}
+
+#[tauri::command]
+fn close_login_window(app: AppHandle) {
+    if let Some(window) = app.get_webview_window(AUTH_LABEL) {
+        let _ = window.close();
+    }
+}
+
+#[tauri::command]
+fn activate_account(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    account_id: String,
+) -> Result<BootstrapPayload, String> {
+    let account_id = account_id.trim().to_string();
+    if account_id.is_empty() {
+        return build_bootstrap(&app, &state, true);
+    }
+
+    {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        upsert_saved_session_account(&mut settings.session);
+        let account = settings
+            .session
+            .accounts
+            .iter()
+            .find(|account| account.id == account_id)
+            .cloned()
+            .ok_or_else(|| "Account is unavailable".to_string())?;
+
+        settings.session.access_token = account.access_token;
+        settings.session.refresh_token = account.refresh_token;
+        settings.session.display_name = account.display_name;
+        settings.session.email = account.email;
+        settings.session.avatar_url = account.avatar_url;
+        save_settings(&app, &settings)?;
+    }
+
+    {
+        let mut runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        clear_desktop_session_service_cache(&mut runtime);
+    }
+
+    if let Some(window) = app.get_webview_window(MAIN_LABEL) {
+        if window_is_workspace(&window) {
+            apply_workspace_session_seed_to_window(&window, &state)?;
+        }
+    }
+
     build_bootstrap(&app, &state, true)
 }
 
@@ -1422,11 +1698,30 @@ fn enter_workspace_in_main_window(
     custom_theme: &CustomThemeSet,
     selected_server_slug: &str,
 ) -> Result<(), String> {
+    let target_url = workspace_url_for_slug(selected_server_slug);
+    enter_workspace_url_in_main_window(
+        app,
+        state,
+        theme_id,
+        theme_mode,
+        language,
+        custom_theme,
+        &target_url,
+    )
+}
+
+fn enter_workspace_url_in_main_window(
+    app: &AppHandle,
+    state: &DesktopState,
+    theme_id: &str,
+    theme_mode: &str,
+    language: &str,
+    custom_theme: &CustomThemeSet,
+    target_url: &str,
+) -> Result<(), String> {
     let theme = resolve_theme(theme_id, theme_mode, custom_theme);
     let resolved_language = resolve_desktop_language(language);
-    let target_url = workspace_url_for_slug(selected_server_slug)
-        .parse::<Url>()
-        .map_err(|err| err.to_string())?;
+    let target_url = target_url.parse::<Url>().map_err(|err| err.to_string())?;
     let window = app
         .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "Main window is unavailable".to_string())?;
@@ -2075,6 +2370,8 @@ fn collect_service_snapshot(
             ))
             .to_string(),
             authenticated,
+            account: None,
+            accounts: current_saved_session_accounts(state)?,
             configured: false,
             running,
             pid,
@@ -2108,6 +2405,8 @@ fn collect_service_snapshot(
     } else {
         (cached_servers, cached_sync_error)
     };
+    let account = current_session_account(state)?;
+    let accounts = current_saved_session_accounts(state)?;
 
     for server in &mut servers {
         server.selected = server.slug == settings.selected_server_slug;
@@ -2144,6 +2443,8 @@ fn collect_service_snapshot(
         ))
         .to_string(),
         authenticated,
+        account,
+        accounts,
         configured,
         running,
         pid,
@@ -3586,6 +3887,236 @@ fn current_session_tokens(state: &DesktopState) -> Result<Option<(String, String
     }
 }
 
+fn desktop_session_has_tokens(state: &DesktopState) -> bool {
+    current_session_tokens(state).ok().flatten().is_some()
+}
+
+fn current_session_account(state: &DesktopState) -> Result<Option<ServiceAccountSnapshot>, String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    let display_name = clean_optional_account_text(&settings.session.display_name);
+    let email = clean_optional_account_text(&settings.session.email);
+    let avatar_url = sanitize_account_avatar_url(&settings.session.avatar_url);
+
+    if display_name.is_some() || email.is_some() || avatar_url.is_some() {
+        let initials = account_initials(display_name.as_deref().or(email.as_deref()));
+        let id = session_account_id(
+            &settings.session.access_token,
+            display_name.as_deref(),
+            email.as_deref(),
+        );
+        return Ok(Some(ServiceAccountSnapshot {
+            id,
+            display_name,
+            email,
+            avatar_url,
+            initials,
+        }));
+    }
+
+    Ok(session_account_from_token(&settings.session.access_token))
+}
+
+fn current_saved_session_accounts(
+    state: &DesktopState,
+) -> Result<Vec<ServiceAccountSnapshot>, String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    Ok(session_account_snapshots(&settings.session.accounts))
+}
+
+fn session_account_from_token(access_token: &str) -> Option<ServiceAccountSnapshot> {
+    let payload = access_token.split('.').nth(1)?;
+    let decoded = decode_base64_url(payload)?;
+    let claims = serde_json::from_slice::<serde_json::Value>(&decoded).ok()?;
+    let display_name = first_claim_string(
+        &claims,
+        &[
+            "displayName",
+            "display_name",
+            "fullName",
+            "name",
+            "username",
+        ],
+    );
+    let email = first_claim_string(&claims, &["email", "emailAddress", "email_address"]);
+    let avatar_url = first_claim_string(
+        &claims,
+        &[
+            "avatarUrl",
+            "avatar_url",
+            "picture",
+            "image",
+            "profileImage",
+        ],
+    )
+    .and_then(|url| sanitize_account_avatar_url(&url));
+    let initials = account_initials(display_name.as_deref().or(email.as_deref()));
+    let id = first_claim_string(&claims, &["sub", "id", "userId", "user_id"])
+        .or_else(|| email.clone())
+        .unwrap_or_else(|| token_account_id(access_token));
+
+    if display_name.is_none() && email.is_none() && avatar_url.is_none() {
+        return None;
+    }
+
+    Some(ServiceAccountSnapshot {
+        id,
+        display_name,
+        email,
+        avatar_url,
+        initials,
+    })
+}
+
+fn session_account_snapshots(accounts: &[SavedAccountSettings]) -> Vec<ServiceAccountSnapshot> {
+    accounts.iter().filter_map(saved_account_snapshot).collect()
+}
+
+fn saved_account_snapshot(account: &SavedAccountSettings) -> Option<ServiceAccountSnapshot> {
+    if account.id.trim().is_empty() {
+        return None;
+    }
+
+    let display_name = clean_optional_account_text(&account.display_name);
+    let email = clean_optional_account_text(&account.email);
+    let avatar_url = sanitize_account_avatar_url(&account.avatar_url);
+    if display_name.is_none() && email.is_none() {
+        return None;
+    }
+
+    let initials = account_initials(display_name.as_deref().or(email.as_deref()));
+
+    Some(ServiceAccountSnapshot {
+        id: account.id.trim().to_string(),
+        display_name,
+        email,
+        avatar_url,
+        initials,
+    })
+}
+
+fn session_account_id(
+    access_token: &str,
+    display_name: Option<&str>,
+    email: Option<&str>,
+) -> String {
+    email
+        .and_then(clean_optional_account_text)
+        .or_else(|| display_name.and_then(clean_optional_account_text))
+        .unwrap_or_else(|| token_account_id(access_token))
+}
+
+fn token_account_id(access_token: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in access_token.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("token-{hash:016x}")
+}
+
+fn decode_base64_url(input: &str) -> Option<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut buffer = 0u32;
+    let mut bits = 0u8;
+
+    for byte in input.bytes() {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'-' => 62,
+            b'_' => 63,
+            b'=' => break,
+            _ => return None,
+        } as u32;
+
+        buffer = (buffer << 6) | value;
+        bits += 6;
+        while bits >= 8 {
+            bits -= 8;
+            output.push(((buffer >> bits) & 0xff) as u8);
+            buffer &= (1 << bits) - 1;
+        }
+    }
+
+    Some(output)
+}
+
+fn first_claim_string(claims: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = clean_claim_string(claims.get(*key)) {
+            return Some(value);
+        }
+    }
+
+    for parent in [
+        "data",
+        "result",
+        "user",
+        "profile",
+        "account",
+        "currentUser",
+        "me",
+    ] {
+        if let Some(value) = claims.get(parent) {
+            for key in keys {
+                if let Some(value) = clean_claim_string(value.get(*key)) {
+                    return Some(value);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn clean_claim_string(value: Option<&serde_json::Value>) -> Option<String> {
+    let value = value?.as_str()?.trim();
+    clean_optional_account_text(value)
+}
+
+fn clean_optional_account_text(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.chars().take(160).collect())
+    }
+}
+
+fn sanitize_account_avatar_url(value: &str) -> Option<String> {
+    let url = value.trim();
+    let parsed = Url::parse(url).ok()?;
+    if matches!(parsed.scheme(), "https" | "http") {
+        Some(url.to_string())
+    } else {
+        None
+    }
+}
+
+fn account_initials(source: Option<&str>) -> String {
+    let source = source.unwrap_or("").trim();
+    let mut initials = source
+        .split(|character: char| {
+            character.is_whitespace() || matches!(character, '@' | '.' | '_' | '-')
+        })
+        .filter_map(|part| part.chars().find(|character| character.is_alphanumeric()))
+        .take(2)
+        .collect::<String>();
+
+    if initials.is_empty() {
+        initials.push('S');
+    }
+
+    initials.to_uppercase()
+}
+
 fn current_workspace_session_seed(
     state: &DesktopState,
 ) -> Result<Option<WorkspaceSessionSeed>, String> {
@@ -3639,6 +4170,80 @@ fn clear_desktop_session(app: &AppHandle, state: &DesktopState) -> Result<(), St
 fn clear_desktop_session_settings(settings: &mut AppSettings) {
     settings.session.access_token.clear();
     settings.session.refresh_token.clear();
+    settings.session.display_name.clear();
+    settings.session.email.clear();
+    settings.session.avatar_url.clear();
+}
+
+fn upsert_saved_session_account(session: &mut config::SessionSettings) {
+    let access_token = session.access_token.trim().to_string();
+    let refresh_token = session.refresh_token.trim().to_string();
+    if access_token.is_empty() || refresh_token.is_empty() {
+        return;
+    }
+
+    let mut display_name = clean_optional_account_text(&session.display_name).unwrap_or_default();
+    let mut email = clean_optional_account_text(&session.email).unwrap_or_default();
+    let mut avatar_url = sanitize_account_avatar_url(&session.avatar_url).unwrap_or_default();
+    fill_account_fields_from_token(
+        &access_token,
+        &mut display_name,
+        &mut email,
+        &mut avatar_url,
+    );
+    if display_name.is_empty() && email.is_empty() {
+        return;
+    }
+
+    let id = session_account_id(&access_token, Some(&display_name), Some(&email));
+    let saved = SavedAccountSettings {
+        id: id.clone(),
+        access_token,
+        refresh_token,
+        display_name,
+        email,
+        avatar_url,
+    };
+
+    if let Some(existing) = session.accounts.iter_mut().find(|account| {
+        account.id == id
+            || (!saved.email.is_empty()
+                && clean_optional_account_text(&account.email) == Some(saved.email.clone()))
+    }) {
+        *existing = saved;
+    } else {
+        session.accounts.push(saved);
+    }
+}
+
+fn fill_account_fields_from_token(
+    access_token: &str,
+    display_name: &mut String,
+    email: &mut String,
+    avatar_url: &mut String,
+) {
+    if !display_name.is_empty() && !email.is_empty() && !avatar_url.is_empty() {
+        return;
+    }
+
+    let Some(token_account) = session_account_from_token(access_token) else {
+        return;
+    };
+    if display_name.is_empty() {
+        if let Some(value) = token_account.display_name {
+            *display_name = value;
+        }
+    }
+    if email.is_empty() {
+        if let Some(value) = token_account.email {
+            *email = value;
+        }
+    }
+    if avatar_url.is_empty() {
+        if let Some(value) = token_account.avatar_url {
+            *avatar_url = value;
+        }
+    }
 }
 
 fn clear_desktop_session_service_cache(runtime: &mut ServiceRuntime) {
@@ -3651,6 +4256,149 @@ fn clear_workspace_session_storage(app: &AppHandle) {
     for window in app.webview_windows().values() {
         let _ = window.eval(&script);
     }
+}
+
+fn login_window_session_sync_script(clear_login_session_storage: bool) -> String {
+    let clear_login_session_storage = if clear_login_session_storage {
+        "true"
+    } else {
+        "false"
+    };
+
+    r#"(function() {
+  try {
+    if (window.location.origin !== "https://app.slock.ai") return;
+    const shouldClearLoginSession = __SLOCK_DESKTOP_CLEAR_LOGIN_SESSION__;
+    const clearKey = "slock_desktop_login_session_cleared";
+    const ignoredSignatureKey = "slock_desktop_login_ignored_signature";
+    if (shouldClearLoginSession && sessionStorage.getItem(clearKey) !== "1") {
+      const previousAccessToken = localStorage.getItem("slock_access_token") || "";
+      const previousRefreshToken = localStorage.getItem("slock_refresh_token") || "";
+      const hadTokens =
+        !!previousAccessToken ||
+        !!previousRefreshToken;
+      if (previousAccessToken && previousRefreshToken) {
+        sessionStorage.setItem(ignoredSignatureKey, `${previousAccessToken}::${previousRefreshToken}`);
+      }
+      localStorage.removeItem("slock_access_token");
+      localStorage.removeItem("slock_refresh_token");
+      sessionStorage.setItem(clearKey, "1");
+      delete window.__slockDesktopLoginSignature;
+      try {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: "slock_refresh_token",
+            newValue: null,
+            storageArea: localStorage,
+            url: window.location.href,
+          })
+        );
+      } catch (_) {}
+      try {
+        const channel = new BroadcastChannel("slock-auth-tokens");
+        channel.postMessage({
+          type: "tokens-cleared",
+          sourceId: "slock-desktop-login-reset",
+        });
+        window.setTimeout(() => channel.close(), 1000);
+      } catch (_) {}
+
+      if (hadTokens || !/^\/(?:login|signin|sign-in|auth)(?:\/|$)/i.test(window.location.pathname || "/")) {
+        window.location.replace("https://app.slock.ai/login");
+        return;
+      }
+    }
+
+    if (window.__slockDesktopLoginSyncBound) return;
+    window.__slockDesktopLoginSyncBound = true;
+
+    const accountText = (value) => typeof value === "string" ? value.trim() : "";
+    const accountField = (source, keys) => {
+      if (!source || typeof source !== "object") return "";
+      for (const key of keys) {
+        const value = accountText(source[key]);
+        if (value) return value;
+      }
+      return "";
+    };
+    const collectSessionAccount = () => {
+      const account = { displayName: "", email: "", avatarUrl: "" };
+      const readCandidate = (candidate) => {
+        if (!candidate || typeof candidate !== "object") return;
+        const sources = [
+          candidate,
+          candidate.data,
+          candidate.result,
+          candidate.user,
+          candidate.profile,
+          candidate.account,
+          candidate.currentUser,
+          candidate.me,
+        ];
+        for (const source of sources) {
+          if (!source || typeof source !== "object") continue;
+          account.displayName ||= accountField(source, ["displayName", "display_name", "fullName", "name", "username"]);
+          account.email ||= accountField(source, ["email", "emailAddress", "email_address"]);
+          account.avatarUrl ||= accountField(source, ["avatarUrl", "avatar_url", "picture", "image", "profileImage"]);
+        }
+      };
+
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index) || "";
+        const raw = localStorage.getItem(key) || "";
+        if (!raw || raw.length > 50000) continue;
+        if (!/(user|profile|account|auth|session|slock)/i.test(`${key} ${raw.slice(0, 200)}`)) continue;
+        try {
+          readCandidate(JSON.parse(raw));
+        } catch (_) {}
+      }
+
+      return account;
+    };
+
+    const syncSessionTokens = async () => {
+      try {
+        const accessToken = localStorage.getItem("slock_access_token");
+        const refreshToken = localStorage.getItem("slock_refresh_token");
+        if (!accessToken || !refreshToken) return;
+
+        const nextSignature = `${accessToken}::${refreshToken}`;
+        if (sessionStorage.getItem(ignoredSignatureKey) === nextSignature) return;
+        if (window.__slockDesktopLoginSignature === nextSignature) return;
+
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (typeof invoke !== "function") return;
+
+        const account = collectSessionAccount();
+        await invoke("save_session_tokens", {
+          accessToken,
+          refreshToken,
+          displayName: account.displayName || null,
+          email: account.email || null,
+          avatarUrl: account.avatarUrl || null,
+        });
+        window.__slockDesktopLoginSignature = nextSignature;
+        window.setTimeout(() => {
+          invoke("close_login_window").catch(() => {});
+        }, 450);
+      } catch (error) {
+        console.warn("[Slock Desktop] login session sync failed", error);
+      }
+    };
+
+    window.addEventListener("focus", syncSessionTokens);
+    window.addEventListener("storage", syncSessionTokens);
+    window.addEventListener("visibilitychange", syncSessionTokens);
+    window.__slockDesktopLoginSyncTimer = window.setInterval(syncSessionTokens, 1000);
+    syncSessionTokens();
+  } catch (error) {
+    console.warn("[Slock Desktop] login sync setup failed", error);
+  }
+})();"#
+        .replace(
+            "__SLOCK_DESKTOP_CLEAR_LOGIN_SESSION__",
+            clear_login_session_storage,
+        )
 }
 
 fn workspace_session_seed_script(seed: &WorkspaceSessionSeed) -> String {
@@ -3784,6 +4532,100 @@ fn api_client() -> Result<Client, String> {
         .map_err(|err| format!("Unable to create desktop API client: {err}"))?;
     let _ = API_CLIENT.set(client.clone());
     Ok(client)
+}
+
+fn fetch_session_account_profile(
+    server_url: &str,
+    access_token: &str,
+) -> Result<Option<SessionAccountProfile>, String> {
+    let client = api_client_builder()
+        .connect_timeout(Duration::from_millis(900))
+        .timeout(Duration::from_millis(1500))
+        .build()
+        .map_err(|err| format!("Unable to create account profile API client: {err}"))?;
+    let mut api_roots = vec![api_base_url(server_url)];
+    let workspace_api_root = format!("{WORKSPACE_URL}/api");
+    if !api_roots.iter().any(|root| root == &workspace_api_root) {
+        api_roots.push(workspace_api_root);
+    }
+
+    for api_root in api_roots {
+        for path in [
+            "auth/me",
+            "auth/session",
+            "users/me",
+            "user/me",
+            "user",
+            "me",
+            "profile",
+            "account",
+        ] {
+            let response = client
+                .get(format!("{api_root}/{path}"))
+                .bearer_auth(access_token)
+                .send();
+            let Ok(response) = response else {
+                continue;
+            };
+
+            if response.status() == reqwest::StatusCode::NOT_FOUND
+                || response.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED
+                || response.status() == reqwest::StatusCode::UNAUTHORIZED
+                || response.status() == reqwest::StatusCode::FORBIDDEN
+            {
+                continue;
+            }
+
+            if !response.status().is_success() {
+                continue;
+            }
+
+            let payload = response
+                .json::<serde_json::Value>()
+                .map_err(|err| format!("Failed to parse account profile: {err}"))?;
+            let profile = session_account_profile_from_json(&payload);
+            if profile.display_name.is_some()
+                || profile.email.is_some()
+                || profile.avatar_url.is_some()
+            {
+                return Ok(Some(profile));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn session_account_profile_from_json(payload: &serde_json::Value) -> SessionAccountProfile {
+    SessionAccountProfile {
+        display_name: first_claim_string(
+            payload,
+            &[
+                "displayName",
+                "display_name",
+                "fullName",
+                "full_name",
+                "name",
+                "username",
+            ],
+        ),
+        email: first_claim_string(
+            payload,
+            &["email", "emailAddress", "email_address", "primaryEmail"],
+        ),
+        avatar_url: first_claim_string(
+            payload,
+            &[
+                "avatarUrl",
+                "avatar_url",
+                "picture",
+                "image",
+                "profileImage",
+                "profile_image",
+            ],
+        )
+        .and_then(|url| sanitize_account_avatar_url(&url)),
+    }
 }
 
 fn refresh_session_tokens(
@@ -4479,9 +5321,61 @@ fn normalize_app_settings(settings: AppSettings) -> AppSettings {
         session: config::SessionSettings {
             access_token: settings.session.access_token.trim().to_string(),
             refresh_token: settings.session.refresh_token.trim().to_string(),
+            display_name: clean_optional_account_text(&settings.session.display_name)
+                .unwrap_or_default(),
+            email: clean_optional_account_text(&settings.session.email).unwrap_or_default(),
+            avatar_url: sanitize_account_avatar_url(&settings.session.avatar_url)
+                .unwrap_or_default(),
+            accounts: sanitize_saved_accounts(settings.session.accounts),
         },
         service: sanitize_service_settings(settings.service),
     }
+}
+
+fn sanitize_saved_accounts(accounts: Vec<SavedAccountSettings>) -> Vec<SavedAccountSettings> {
+    let mut sanitized = Vec::new();
+    for account in accounts {
+        let access_token = account.access_token.trim().to_string();
+        let refresh_token = account.refresh_token.trim().to_string();
+        if access_token.is_empty() || refresh_token.is_empty() {
+            continue;
+        }
+
+        let mut display_name =
+            clean_optional_account_text(&account.display_name).unwrap_or_default();
+        let mut email = clean_optional_account_text(&account.email).unwrap_or_default();
+        let mut avatar_url = sanitize_account_avatar_url(&account.avatar_url).unwrap_or_default();
+        fill_account_fields_from_token(
+            &access_token,
+            &mut display_name,
+            &mut email,
+            &mut avatar_url,
+        );
+        if display_name.is_empty() && email.is_empty() {
+            continue;
+        }
+
+        let id = clean_optional_account_text(&account.id).unwrap_or_else(|| {
+            session_account_id(&access_token, Some(&display_name), Some(&email))
+        });
+        let duplicate = sanitized.iter().any(|existing: &SavedAccountSettings| {
+            existing.id == id || (!email.is_empty() && existing.email == email)
+        });
+        if duplicate {
+            continue;
+        }
+
+        sanitized.push(SavedAccountSettings {
+            id,
+            access_token,
+            refresh_token,
+            display_name,
+            email,
+            avatar_url,
+        });
+    }
+
+    sanitized
 }
 
 fn sanitize_language(language: &str) -> &'static str {
@@ -4592,12 +5486,38 @@ pub fn run() {
                 cached_servers: Vec::new(),
                 cached_sync_error: None,
             }),
+            auth: Mutex::new(AuthRuntime::default()),
             app_close: Mutex::new(AppCloseRuntime::default()),
             launch_metrics: Mutex::new(WorkspaceLaunchMetrics::default()),
             update_cache: Mutex::new(None),
         })
         .on_page_load(|webview, payload| {
-            if webview.label() != MAIN_LABEL || !is_workspace_url(payload.url()) {
+            if !is_workspace_url(payload.url()) {
+                return;
+            }
+
+            if webview.label() == AUTH_LABEL {
+                if matches!(payload.event(), PageLoadEvent::Finished) {
+                    let clear_login_session_storage = webview
+                        .state::<DesktopState>()
+                        .auth
+                        .lock()
+                        .map(|mut auth| {
+                            let clear = auth.clear_login_session_storage;
+                            auth.clear_login_session_storage = false;
+                            clear
+                        })
+                        .unwrap_or(false);
+                    if let Err(err) = webview.eval(login_window_session_sync_script(
+                        clear_login_session_storage,
+                    )) {
+                        log::warn!("failed to apply login session sync: {err}");
+                    }
+                }
+                return;
+            }
+
+            if webview.label() != MAIN_LABEL {
                 return;
             }
 
@@ -4718,7 +5638,11 @@ pub fn run() {
             open_service_log,
             start_window_drag,
             check_desktop_update,
-            install_desktop_update
+            install_desktop_update,
+            open_login,
+            switch_account,
+            close_login_window,
+            activate_account
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -4733,6 +5657,15 @@ pub fn run() {
             } if label == MAIN_LABEL => {
                 api.prevent_close();
                 handle_window_close_requested(app, &state);
+            }
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { .. },
+                ..
+            } if label == AUTH_LABEL => {
+                if !desktop_session_has_tokens(&state) {
+                    let _ = app.emit(DESKTOP_AUTH_CANCELLED_EVENT, ());
+                }
             }
             RunEvent::WindowEvent {
                 label,
@@ -4769,20 +5702,23 @@ mod tests {
         close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
         desktop_session_expired_message, mark_app_close_service_stop_completed,
         prepare_runtime_for_service_target, process_entries_from_ps_output,
-        process_tree_pids_from_entries, resolve_service_command_from_dirs,
+        process_tree_pids_from_entries, resolve_service_command_from_dirs, sanitize_saved_accounts,
         sanitize_service_settings, select_existing_machine,
         selected_service_daemon_process_from_server_snapshots,
         service_daemon_process_from_resolved_target, service_machine_fetch_concurrency,
-        service_server_machine_fields, should_attempt_workspace_service_start,
-        should_detect_selected_service_process, should_refresh_service_servers,
-        should_resolve_remote_daemon_after_local_stop, should_start_service_for_workspace,
-        take_app_close_service_stop_completed, terminate_daemon_process,
-        untagged_daemon_pids_from_ps_output, workspace_session_clear_script,
-        workspace_session_seed_script, ApiMachine, AppCloseRuntime, CloseAppPromptCopy,
-        CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine, ServiceRuntime,
-        ServiceServerSnapshot, WorkspaceLaunchMetrics, WorkspaceSessionSeed,
+        service_server_machine_fields, session_account_snapshots,
+        should_attempt_workspace_service_start, should_detect_selected_service_process,
+        should_refresh_service_servers, should_resolve_remote_daemon_after_local_stop,
+        should_start_service_for_workspace, take_app_close_service_stop_completed,
+        terminate_daemon_process, untagged_daemon_pids_from_ps_output,
+        upsert_saved_session_account, workspace_session_clear_script,
+        workspace_session_seed_script, ApiMachine, AppCloseRuntime, AuthRuntime,
+        CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine,
+        ServiceRuntime, ServiceServerSnapshot, WorkspaceLaunchMetrics, WorkspaceSessionSeed,
     };
-    use crate::config::{AppSettings, ServiceMachineBinding, ServiceSettings};
+    use crate::config::{
+        AppSettings, SavedAccountSettings, ServiceMachineBinding, ServiceSettings, SessionSettings,
+    };
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::{
@@ -5255,6 +6191,7 @@ mod tests {
                 cached_servers: Vec::new(),
                 cached_sync_error: None,
             }),
+            auth: Mutex::new(AuthRuntime::default()),
             app_close: Mutex::new(AppCloseRuntime::default()),
             launch_metrics: Mutex::new(WorkspaceLaunchMetrics::default()),
             update_cache: Mutex::new(None),
@@ -5288,6 +6225,7 @@ mod tests {
                 cached_servers: Vec::new(),
                 cached_sync_error: None,
             }),
+            auth: Mutex::new(AuthRuntime::default()),
             app_close: Mutex::new(AppCloseRuntime::default()),
             launch_metrics: Mutex::new(WorkspaceLaunchMetrics::default()),
             update_cache: Mutex::new(None),
@@ -5659,6 +6597,56 @@ mod tests {
         assert_eq!(sanitized.close_app_behavior, "ask");
         assert_eq!(sanitized.machines.len(), 1);
         assert_eq!(sanitized.machines[0].api_key, "");
+    }
+
+    #[test]
+    fn saved_account_sanitizer_drops_token_only_entries() {
+        let sanitized = sanitize_saved_accounts(vec![
+            SavedAccountSettings {
+                id: "token-only-a".to_string(),
+                access_token: "opaque-token-a".to_string(),
+                refresh_token: "refresh-a".to_string(),
+                ..SavedAccountSettings::default()
+            },
+            SavedAccountSettings {
+                id: "known".to_string(),
+                access_token: "opaque-token-known".to_string(),
+                refresh_token: "refresh-known".to_string(),
+                email: " user@example.com ".to_string(),
+                ..SavedAccountSettings::default()
+            },
+            SavedAccountSettings {
+                id: "token-only-b".to_string(),
+                access_token: "opaque-token-b".to_string(),
+                refresh_token: "refresh-b".to_string(),
+                ..SavedAccountSettings::default()
+            },
+        ]);
+
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(sanitized[0].id, "known");
+        assert_eq!(sanitized[0].email, "user@example.com");
+
+        let snapshots = session_account_snapshots(&sanitized);
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].email.as_deref(), Some("user@example.com"));
+    }
+
+    #[test]
+    fn saved_account_upsert_waits_for_account_identity() {
+        let mut session = SessionSettings {
+            access_token: "opaque-token".to_string(),
+            refresh_token: "refresh-token".to_string(),
+            ..SessionSettings::default()
+        };
+
+        upsert_saved_session_account(&mut session);
+        assert!(session.accounts.is_empty());
+
+        session.email = "user@example.com".to_string();
+        upsert_saved_session_account(&mut session);
+        assert_eq!(session.accounts.len(), 1);
+        assert_eq!(session.accounts[0].email, "user@example.com");
     }
 
     #[test]

@@ -6,18 +6,22 @@ import {
   useRef,
   useState,
 } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import './App.css'
 import './Settings.css'
 import {
+  activateAccount,
   type BootstrapPayload,
   type CustomThemeSnapshot,
   type DesktopUpdateCheck,
+  type ServiceAccountSnapshot,
   type ThemeDefinition,
   checkDesktopUpdate,
   createCustomTheme,
   deleteCustomTheme,
   installDesktopUpdate,
   loadBootstrap,
+  openLogin,
   openServiceLog,
   openWorkspace,
   refreshServiceServerCatalog,
@@ -26,6 +30,7 @@ import {
   selectServiceServer,
   startService,
   stopService,
+  switchAccount,
   updateCustomThemeAccent,
   updateLanguage,
   updateTheme,
@@ -96,6 +101,14 @@ const COPY = {
     launching: 'Launching…',
     launchingTitle: 'Opening Slock',
     launchingDetail: 'Preparing workspace',
+    browserLoginPending: 'Complete sign-in in the Slock window',
+    loginInterrupted: 'Sign-in interrupted',
+    signedIn: 'Signed in',
+    signIn: 'Sign in',
+    switchAccount: 'Switch account',
+    addAccount: 'Add account',
+    currentAccount: 'Current',
+    accountEmailUnavailable: 'Signed in',
     running: 'Running',
     configuredIdle: 'Configured / not running',
     notConfigured: 'Not configured',
@@ -183,6 +196,14 @@ const COPY = {
     launching: '启动中…',
     launchingTitle: '正在进入 Slock',
     launchingDetail: '正在准备工作区',
+    browserLoginPending: '请在 Slock 登录窗口完成登录',
+    loginInterrupted: '已中断登录',
+    signedIn: '已登录',
+    signIn: '登录',
+    switchAccount: '切换账号',
+    addAccount: '添加账号',
+    currentAccount: '当前',
+    accountEmailUnavailable: '已登录',
     running: '运行中',
     configuredIdle: '已配置 / 未运行',
     notConfigured: '未配置',
@@ -271,11 +292,14 @@ function App() {
   const [serverQuery, setServerQuery] = useState('')
   const [workspaceLaunchActive, setWorkspaceLaunchActive] = useState(false)
   const [workspaceLaunchTarget, setWorkspaceLaunchTarget] = useState<string | null>(null)
+  const [browserLoginPending, setBrowserLoginPending] = useState(false)
   const [serviceRefreshPhase, setServiceRefreshPhase] = useState<ServiceRefreshPhase>(null)
   const [renamingThemeId, setRenamingThemeId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [newThemeDraft, setNewThemeDraft] = useState<NewThemeDraft | null>(null)
   const [newThemeWheelOpen, setNewThemeWheelOpen] = useState(false)
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const themeCardRef = useRef<HTMLElement | null>(null)
   const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
@@ -288,6 +312,7 @@ function App() {
   const snapshotReady = snapshot !== null
   const serviceAuthenticated = snapshot?.service.authenticated ?? false
   const latestUpdate = snapshot?.updates.latest ?? null
+  const copy = snapshot ? getCopy(snapshot.language, snapshot.resolvedLanguage) : getCopy('system')
 
   useEffect(() => {
     let cancelled = false
@@ -308,6 +333,101 @@ function App() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: (() => void) | undefined
+
+    void listen('desktop-auth-complete', () => {
+      void loadBootstrap(false).then((next) => {
+        if (cancelled) {
+          return
+        }
+        startTransition(() => setSnapshot(next))
+        setBrowserLoginPending(false)
+        setWorkspaceLaunchActive(false)
+        setWorkspaceLaunchTarget(null)
+      })
+    }).then((cleanup) => {
+      unlisten = cleanup
+    })
+
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    let hideTimer: number | undefined
+    let unlisten: (() => void) | undefined
+
+    void listen('desktop-auth-cancelled', () => {
+      if (cancelled) {
+        return
+      }
+
+      window.clearTimeout(hideTimer)
+      setBrowserLoginPending(false)
+      setBusyAction(null)
+      setErrorMessage(null)
+      setWorkspaceLaunchActive(true)
+      setWorkspaceLaunchTarget(copy.loginInterrupted)
+      hideTimer = window.setTimeout(() => {
+        if (cancelled) {
+          return
+        }
+        setWorkspaceLaunchActive(false)
+        setWorkspaceLaunchTarget(null)
+      }, 1800)
+    }).then((cleanup) => {
+      unlisten = cleanup
+    })
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(hideTimer)
+      unlisten?.()
+    }
+  }, [copy.loginInterrupted])
+
+  useEffect(() => {
+    if (!browserLoginPending) {
+      return
+    }
+
+    let attempts = 0
+    let cancelled = false
+    const timer = window.setInterval(() => {
+      attempts += 1
+      void loadBootstrap(false)
+        .then((next) => {
+          if (cancelled) {
+            return
+          }
+          startTransition(() => setSnapshot(next))
+          if (next.service.authenticated || attempts >= 180) {
+            setBrowserLoginPending(false)
+            setWorkspaceLaunchActive(false)
+            setWorkspaceLaunchTarget(null)
+          }
+        })
+        .catch((error) => {
+          if (!cancelled && attempts >= 180) {
+            setBrowserLoginPending(false)
+            setWorkspaceLaunchActive(false)
+            setWorkspaceLaunchTarget(null)
+            setErrorMessage(getErrorMessage(error))
+          }
+        })
+    }, 1000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [browserLoginPending])
 
   useEffect(() => {
     savedServiceSlugRef.current = snapshot?.service.selectedServerSlug ?? ''
@@ -391,6 +511,26 @@ function App() {
     document.addEventListener('pointerdown', closeDraftOnOutsidePointer)
     return () => document.removeEventListener('pointerdown', closeDraftOnOutsidePointer)
   }, [newThemeDraft])
+
+  useEffect(() => {
+    if (!accountMenuOpen) {
+      return
+    }
+
+    const closeAccountMenuOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (accountMenuRef.current?.contains(target)) {
+        return
+      }
+      setAccountMenuOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeAccountMenuOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeAccountMenuOnOutsidePointer)
+  }, [accountMenuOpen])
 
   useEffect(() => {
     if (
@@ -653,6 +793,62 @@ function App() {
     }
   }
 
+  async function handleLoginOpen() {
+    try {
+      setBusyAction('login')
+      setWorkspaceLaunchActive(true)
+      setWorkspaceLaunchTarget(copy.browserLoginPending)
+      setBrowserLoginPending(true)
+      setErrorMessage(null)
+      await waitForNextPaint()
+      const next = await openLogin()
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setBrowserLoginPending(false)
+      setWorkspaceLaunchActive(false)
+      setWorkspaceLaunchTarget(null)
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleSwitchAccount() {
+    try {
+      setBusyAction('switch-account')
+      setWorkspaceLaunchActive(true)
+      setWorkspaceLaunchTarget(copy.browserLoginPending)
+      setBrowserLoginPending(true)
+      setAccountMenuOpen(false)
+      setErrorMessage(null)
+      await waitForNextPaint()
+      const next = await switchAccount()
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setBrowserLoginPending(false)
+      setWorkspaceLaunchActive(false)
+      setWorkspaceLaunchTarget(null)
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleSavedAccountSelect(accountId: string) {
+    try {
+      setBusyAction(`account:${accountId}`)
+      setAccountMenuOpen(false)
+      setErrorMessage(null)
+      await waitForNextPaint()
+      const next = await activateAccount(accountId)
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   async function handleServiceRefresh() {
     try {
       setBusyAction('refresh-service')
@@ -791,13 +987,11 @@ function App() {
   }
 
   if (!snapshot) {
-    const bootCopy = getCopy('system')
-
     return (
       <main className="loading-shell">
         <SlockBrandMark className="loading-mark" />
         <SpinnerIcon />
-        <p className="eyebrow">{bootCopy.appBootingTitle}</p>
+        <p className="eyebrow">{copy.appBootingTitle}</p>
       </main>
     )
   }
@@ -805,7 +999,6 @@ function App() {
   const activeTheme =
     snapshot.themes.find((theme) => theme.id === snapshot.colorScheme) ??
     snapshot.themes[0]
-  const copy = getCopy(snapshot.language, snapshot.resolvedLanguage)
   const selectedThemeAccent =
     snapshot.customThemes.find((theme) => theme.id === snapshot.colorScheme)?.accent ??
     activeTheme.accent
@@ -827,11 +1020,6 @@ function App() {
           .includes(normalizedServerQuery)
       })
     : snapshot.service.servers
-  const serviceStatusLabel = getServiceStatusLabel(
-    snapshot.service,
-    selectedServiceServer,
-    copy,
-  )
   const selectedServiceRunning = isSelectedServiceRunning(
     snapshot.service,
     selectedServiceSlug,
@@ -846,9 +1034,12 @@ function App() {
     busyAction === 'start-service' ||
     busyAction === 'stop-service' ||
     busyAction === 'workspace' ||
+    busyAction === 'login' ||
+    busyAction === 'switch-account' ||
     busyAction === 'refresh-service' ||
     workspaceLaunchActive ||
     Boolean(workspaceLaunchTarget) ||
+    Boolean(busyAction?.startsWith('account:')) ||
     Boolean(busyAction?.startsWith('select-service:'))
   const serviceToggleBusy = busyAction === 'start-service' || busyAction === 'stop-service'
   const serviceToggleLabel =
@@ -861,6 +1052,8 @@ function App() {
           : copy.startService
   const workspaceLaunching =
     busyAction === 'workspace' ||
+    busyAction === 'login' ||
+    busyAction === 'switch-account' ||
     workspaceLaunchActive ||
     Boolean(workspaceLaunchTarget) ||
     snapshot.workspaceOpen
@@ -890,6 +1083,9 @@ function App() {
     (releaseState.latest?.version
       ? `${releaseStatusLabel}: ${releaseState.latest.version}`
       : releaseStatusLabel)
+  const accountEmailLabel = getAccountEmailLabel(snapshot.service.account, copy)
+  const savedAccounts = snapshot.service.accounts
+  const currentAccountId = snapshot.service.account?.id ?? ''
 
   return (
     <main
@@ -975,12 +1171,87 @@ function App() {
 
         <header className="launch-meta-row">
           <div className="launch-status-group">
+            <div
+              ref={accountMenuRef}
+              className="launch-auth-group"
+              aria-label={
+                snapshot.service.authenticated ? accountEmailLabel : copy.serviceSignInRequired
+              }
+            >
+              {snapshot.service.authenticated ? (
+                <>
+                  <span className="account-chip" title={accountEmailLabel}>
+                    <AccountAvatar account={snapshot.service.account} />
+                    <span className="account-email">{accountEmailLabel}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="account-switch-button"
+                    onClick={() => setAccountMenuOpen((open) => !open)}
+                    disabled={busyAction === 'switch-account'}
+                    title={copy.switchAccount}
+                    aria-expanded={accountMenuOpen}
+                  >
+                    {busyAction === 'switch-account' ? <SpinnerIcon /> : null}
+                    <span>{copy.switchAccount}</span>
+                  </button>
+                  {accountMenuOpen ? (
+                    <div
+                      className="account-menu"
+                      role="menu"
+                      aria-label={copy.switchAccount}
+                    >
+                      {savedAccounts.map((account) => {
+                        const selected = account.id === currentAccountId
+                        const label = getAccountEmailLabel(account, copy)
+                        return (
+                          <button
+                            key={account.id}
+                            type="button"
+                            className={`account-menu-item${selected ? ' selected' : ''}`}
+                            role="menuitem"
+                            onClick={() => {
+                              if (!selected) {
+                                void handleSavedAccountSelect(account.id)
+                              }
+                            }}
+                            disabled={selected || busyAction === `account:${account.id}`}
+                          >
+                            <AccountAvatar account={account} />
+                            <span className="account-menu-copy">
+                              <span>{label}</span>
+                              {selected ? <span>{copy.currentAccount}</span> : null}
+                            </span>
+                          </button>
+                        )
+                      })}
+                      <button
+                        type="button"
+                        className="account-menu-item add"
+                        role="menuitem"
+                        onClick={() => void handleSwitchAccount()}
+                      >
+                        <span className="account-menu-add-mark">+</span>
+                        <span>{copy.addAccount}</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="launch-release-button accent"
+                  onClick={handleLoginOpen}
+                  disabled={workspaceLaunching}
+                  title={copy.signIn}
+                >
+                  <span>{copy.signIn}</span>
+                </button>
+              )}
+            </div>
             {snapshot.workspaceOpen ? (
               <span className="status-pill live">{copy.workspaceActive}</span>
             ) : null}
-            <span className={`status-pill${selectedServiceRunning ? ' live' : ''}`}>
-              {serviceStatusLabel}
-            </span>
           </div>
 
           <div className="launch-release-group" aria-label={copy.releaseCheck}>
@@ -1390,6 +1661,30 @@ interface ThemeRowProps {
   renameLabel?: string
   deleteLabel?: string
   accentLabel?: string
+}
+
+function AccountAvatar({
+  account,
+}: {
+  account: ServiceAccountSnapshot | null
+}) {
+  const initials = account?.initials?.trim().slice(0, 2) || 'S'
+
+  return (
+    <span className="account-avatar" aria-hidden="true">
+      <span className="account-avatar-fallback">{initials}</span>
+      {account?.avatarUrl ? (
+        <img
+          src={account.avatarUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={(event) => {
+            event.currentTarget.style.display = 'none'
+          }}
+        />
+      ) : null}
+    </span>
+  )
 }
 
 function ThemeRow(props: ThemeRowProps) {
@@ -2029,27 +2324,11 @@ function parseRgbInput(input: NewThemeDraft['rgbInput']) {
   return { r, g, b }
 }
 
-function getServiceStatusLabel(
-  service: BootstrapPayload['service'],
-  selectedServer: BootstrapPayload['service']['servers'][number] | null,
+function getAccountEmailLabel(
+  account: ServiceAccountSnapshot | null,
   copy: UiCopy,
 ) {
-  const selectedSlug = selectedServer?.slug ?? service.selectedServerSlug
-  const selectedRunning = isServiceServerRunning(service, selectedSlug)
-
-  if (selectedRunning) {
-    return copy.serviceRunning
-  }
-
-  if (!service.authenticated) {
-    return copy.serviceSignInRequired
-  }
-
-  if (!selectedServer) {
-    return copy.notConfigured
-  }
-
-  return service.configured ? copy.serviceIdle : copy.serviceNotLinked
+  return account?.email?.trim() || account?.displayName?.trim() || copy.accountEmailUnavailable
 }
 
 function getMachineStatusLabel(

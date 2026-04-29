@@ -52,6 +52,31 @@ pub struct SessionSettings {
     pub access_token: String,
     #[serde(default)]
     pub refresh_token: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub avatar_url: String,
+    #[serde(default)]
+    pub accounts: Vec<SavedAccountSettings>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedAccountSettings {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub access_token: String,
+    #[serde(default)]
+    pub refresh_token: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub avatar_url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

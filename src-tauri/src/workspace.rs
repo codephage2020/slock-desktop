@@ -3765,6 +3765,45 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
   };
 
+  const accountText = (value) => typeof value === "string" ? value.trim() : "";
+  const accountField = (source, keys) => {
+    if (!source || typeof source !== "object") return "";
+    for (const key of keys) {
+      const value = accountText(source[key]);
+      if (value) return value;
+    }
+    return "";
+  };
+  const collectSessionAccount = () => {
+    const account = {
+      displayName: "",
+      email: "",
+      avatarUrl: "",
+    };
+    const readCandidate = (candidate) => {
+      if (!candidate || typeof candidate !== "object") return;
+      const sources = [candidate, candidate.data, candidate.result, candidate.user, candidate.profile, candidate.account, candidate.currentUser, candidate.me];
+      for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        account.displayName ||= accountField(source, ["displayName", "display_name", "fullName", "name", "username"]);
+        account.email ||= accountField(source, ["email", "emailAddress", "email_address"]);
+        account.avatarUrl ||= accountField(source, ["avatarUrl", "avatar_url", "picture", "image", "profileImage"]);
+      }
+    };
+
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index) || "";
+      const raw = localStorage.getItem(key) || "";
+      if (!raw || raw.length > 50000) continue;
+      if (!/(user|profile|account|auth|session|slock)/i.test(`${key} ${raw.slice(0, 200)}`)) continue;
+      try {
+        readCandidate(JSON.parse(raw));
+      } catch (_) {}
+    }
+
+    return account;
+  };
+
   const syncSessionTokens = async () => {
     try {
       const accessToken = localStorage.getItem("slock_access_token");
@@ -3780,9 +3819,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       }
 
       const wasUnauthenticated = serviceSnapshot?.authenticated === false;
+      const account = collectSessionAccount();
       await invoke("save_session_tokens", {
         accessToken,
         refreshToken,
+        displayName: account.displayName || null,
+        email: account.email || null,
+        avatarUrl: account.avatarUrl || null,
       });
       window.__slockDesktopSessionSignature = nextSignature;
       if (wasUnauthenticated) {
