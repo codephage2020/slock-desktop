@@ -75,6 +75,10 @@ const LANGUAGE_OPTIONS = [
   { id: 'system', icon: 'globe', labelKey: 'languageSystem' },
 ] as const
 
+const AUTH_POLL_INTERVAL_MS = 1000
+const AUTH_POLL_MAX_ATTEMPTS = 180
+const AUTH_INTERRUPTED_HINT_MS = 1800
+
 const COPY = {
   'en-US': {
     workspaceActive: 'Workspace active',
@@ -170,6 +174,7 @@ const COPY = {
     creatingTheme: 'Creating…',
     deletingTheme: 'Deleting…',
     appBootingTitle: 'slock-desktop',
+    loginTimeout: 'Sign-in timed out',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -265,6 +270,7 @@ const COPY = {
     creatingTheme: '创建中…',
     deletingTheme: '删除中…',
     appBootingTitle: 'slock-desktop',
+    loginTimeout: '登录超时',
   },
 } as const
 
@@ -305,10 +311,12 @@ function App() {
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
+  const authResolvedRef = useRef(false)
   const [initialServiceRefreshDone, setInitialServiceRefreshDone] = useState(false)
   const autoReleaseCheckRef = useRef(false)
   const savedServiceSlugRef = useRef('')
   const launchButtonAccentRef = useRef<string | null>(null)
+  const previousAccountIdRef = useRef<string | null>(null)
   const snapshotReady = snapshot !== null
   const serviceAuthenticated = snapshot?.service.authenticated ?? false
   const latestUpdate = snapshot?.updates.latest ?? null
@@ -339,6 +347,7 @@ function App() {
     let unlisten: (() => void) | undefined
 
     void listen('desktop-auth-complete', () => {
+      authResolvedRef.current = true
       void loadBootstrap(false).then((next) => {
         if (cancelled) {
           return
@@ -368,19 +377,41 @@ function App() {
         return
       }
 
+      const restoreId = previousAccountIdRef.current
+      previousAccountIdRef.current = null
+
       window.clearTimeout(hideTimer)
       setBrowserLoginPending(false)
       setBusyAction(null)
       setErrorMessage(null)
-      setWorkspaceLaunchActive(true)
-      setWorkspaceLaunchTarget(copy.loginInterrupted)
-      hideTimer = window.setTimeout(() => {
-        if (cancelled) {
-          return
-        }
-        setWorkspaceLaunchActive(false)
-        setWorkspaceLaunchTarget(null)
-      }, 1800)
+
+      if (restoreId) {
+        void activateAccount(restoreId)
+          .then((next) => {
+            if (cancelled) return
+            startTransition(() => setSnapshot(next))
+            setWorkspaceLaunchActive(false)
+            setWorkspaceLaunchTarget(null)
+          })
+          .catch(() => {
+            if (cancelled) return
+            setWorkspaceLaunchActive(true)
+            setWorkspaceLaunchTarget(copy.loginInterrupted)
+            hideTimer = window.setTimeout(() => {
+              if (cancelled) return
+              setWorkspaceLaunchActive(false)
+              setWorkspaceLaunchTarget(null)
+            }, AUTH_INTERRUPTED_HINT_MS)
+          })
+      } else {
+        setWorkspaceLaunchActive(true)
+        setWorkspaceLaunchTarget(copy.loginInterrupted)
+        hideTimer = window.setTimeout(() => {
+          if (cancelled) return
+          setWorkspaceLaunchActive(false)
+          setWorkspaceLaunchTarget(null)
+        }, AUTH_INTERRUPTED_HINT_MS)
+      }
     }).then((cleanup) => {
       unlisten = cleanup
     })
@@ -397,37 +428,52 @@ function App() {
       return
     }
 
+    authResolvedRef.current = false
     let attempts = 0
     let cancelled = false
     const timer = window.setInterval(() => {
+      if (authResolvedRef.current) {
+        window.clearInterval(timer)
+        return
+      }
+
       attempts += 1
       void loadBootstrap(false)
         .then((next) => {
-          if (cancelled) {
+          if (cancelled || authResolvedRef.current) {
             return
           }
           startTransition(() => setSnapshot(next))
-          if (next.service.authenticated || attempts >= 180) {
+          if (next.service.authenticated) {
+            authResolvedRef.current = true
             setBrowserLoginPending(false)
             setWorkspaceLaunchActive(false)
             setWorkspaceLaunchTarget(null)
+          } else if (attempts >= AUTH_POLL_MAX_ATTEMPTS) {
+            setBrowserLoginPending(false)
+            setWorkspaceLaunchActive(false)
+            setWorkspaceLaunchTarget(null)
+            setErrorMessage(copy.loginTimeout)
           }
         })
         .catch((error) => {
-          if (!cancelled && attempts >= 180) {
+          if (cancelled || authResolvedRef.current) {
+            return
+          }
+          if (attempts >= AUTH_POLL_MAX_ATTEMPTS) {
             setBrowserLoginPending(false)
             setWorkspaceLaunchActive(false)
             setWorkspaceLaunchTarget(null)
             setErrorMessage(getErrorMessage(error))
           }
         })
-    }, 1000)
+    }, AUTH_POLL_INTERVAL_MS)
 
     return () => {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [browserLoginPending])
+  }, [browserLoginPending, copy.loginTimeout])
 
   useEffect(() => {
     savedServiceSlugRef.current = snapshot?.service.selectedServerSlug ?? ''
@@ -793,15 +839,18 @@ function App() {
     }
   }
 
-  async function handleLoginOpen() {
+  async function runBrowserAuthAction(
+    action: string,
+    authFn: () => Promise<BootstrapPayload>,
+  ) {
     try {
-      setBusyAction('login')
+      setBusyAction(action)
       setWorkspaceLaunchActive(true)
       setWorkspaceLaunchTarget(copy.browserLoginPending)
       setBrowserLoginPending(true)
       setErrorMessage(null)
       await waitForNextPaint()
-      const next = await openLogin()
+      const next = await authFn()
       startTransition(() => setSnapshot(next))
     } catch (error) {
       setBrowserLoginPending(false)
@@ -813,25 +862,14 @@ function App() {
     }
   }
 
+  async function handleLoginOpen() {
+    await runBrowserAuthAction('login', openLogin)
+  }
+
   async function handleSwitchAccount() {
-    try {
-      setBusyAction('switch-account')
-      setWorkspaceLaunchActive(true)
-      setWorkspaceLaunchTarget(copy.browserLoginPending)
-      setBrowserLoginPending(true)
-      setAccountMenuOpen(false)
-      setErrorMessage(null)
-      await waitForNextPaint()
-      const next = await switchAccount()
-      startTransition(() => setSnapshot(next))
-    } catch (error) {
-      setBrowserLoginPending(false)
-      setWorkspaceLaunchActive(false)
-      setWorkspaceLaunchTarget(null)
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-    }
+    setAccountMenuOpen(false)
+    previousAccountIdRef.current = snapshot?.service.account?.id ?? null
+    await runBrowserAuthAction('switch-account', switchAccount)
   }
 
   async function handleSavedAccountSelect(accountId: string) {
@@ -925,46 +963,6 @@ function App() {
       setErrorMessage(getErrorMessage(error))
     } finally {
       setBusyAction(null)
-    }
-  }
-
-  async function handleReleaseCheck() {
-    if (!snapshot) {
-      return
-    }
-
-    await runReleaseCheck(false)
-  }
-
-  async function runReleaseCheck(silent: boolean) {
-    try {
-      if (!silent) {
-        setReleaseState((current) => ({
-          ...current,
-          loading: true,
-          error: null,
-        }))
-        await waitForNextPaint()
-      }
-
-      const latest = await checkDesktopUpdate()
-      setReleaseState({
-        loading: false,
-        installing: false,
-        error: null,
-        latest,
-      })
-    } catch (error) {
-      if (silent) {
-        console.warn('[Slock Desktop] automatic update check failed', error)
-        return
-      }
-      setReleaseState((current) => ({
-        loading: false,
-        installing: false,
-        error: getErrorMessage(error),
-        latest: current.latest,
-      }))
     }
   }
 
@@ -1066,23 +1064,19 @@ function App() {
     '--launch-accent': launchButtonAccent,
   } as CSSProperties
   const activeIsOriginal = snapshot.colorScheme === 'original' || !snapshot.colorScheme
-  const releaseIsCurrent =
-    Boolean(releaseState.latest) && !releaseState.latest?.available
   const releaseUpdateAvailable = Boolean(releaseState.latest?.available)
   const releaseStatusLabel = releaseState.loading
     ? copy.checkingRelease
     : releaseState.installing
       ? copy.installingDesktopUpdate
-      : releaseState.latest
-        ? releaseState.latest.available
-          ? copy.updateAvailable
-          : copy.current
-        : copy.notChecked
+      : releaseState.latest?.available
+        ? copy.updateAvailable
+        : ''
   const releaseStatusTitle =
     releaseState.error ??
     (releaseState.latest?.version
-      ? `${releaseStatusLabel}: ${releaseState.latest.version}`
-      : releaseStatusLabel)
+      ? `v${releaseState.latest.version} — ${releaseStatusLabel || copy.current}`
+      : releaseStatusLabel || copy.notChecked)
   const accountEmailLabel = getAccountEmailLabel(snapshot.service.account, copy)
   const savedAccounts = snapshot.service.accounts
   const currentAccountId = snapshot.service.account?.id ?? ''
@@ -1254,33 +1248,13 @@ function App() {
             ) : null}
           </div>
 
-          <div className="launch-release-group" aria-label={copy.releaseCheck}>
             <span
               className={`status-chip launch-release-status${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
               title={releaseStatusTitle}
             >
-              {copy.currentVersion} {snapshot.updates.currentVersion} / {releaseStatusLabel}
+              v{snapshot.updates.currentVersion}
+              {releaseStatusLabel ? ` · ${releaseStatusLabel}` : ''}
             </span>
-            <button
-              type="button"
-              className={`launch-release-button${releaseIsCurrent ? ' static-disabled' : ''}`}
-              onClick={handleReleaseCheck}
-              disabled={
-                releaseState.loading ||
-                releaseState.installing ||
-                releaseIsCurrent
-              }
-              title={releaseStatusTitle}
-            >
-              {releaseState.loading ? <SpinnerIcon /> : <ServiceActionIcon type="refresh" />}
-              <span>
-                {releaseState.loading
-                  ? copy.checkingRelease
-                  : releaseIsCurrent
-                    ? copy.current
-                    : copy.checkGitHubRelease}
-              </span>
-            </button>
             {releaseUpdateAvailable ? (
               <button
                 type="button"
@@ -1296,7 +1270,6 @@ function App() {
                 </span>
               </button>
             ) : null}
-          </div>
         </header>
 
         <section className="launch-layout">

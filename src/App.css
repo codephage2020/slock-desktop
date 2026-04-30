@@ -89,6 +89,7 @@ body:has(.loading-shell),
 .workspace-loading-overlay {
   position: absolute;
   inset: 0;
+  margin-bottom: -60px;
   z-index: 10;
   display: grid;
   place-items: center;
@@ -264,8 +265,7 @@ body:has(.loading-shell),
     0 12px 32px -28px color-mix(in srgb, var(--text) 28%, transparent);
 }
 
-.launch-status-group,
-.launch-release-group {
+.launch-status-group {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -472,14 +472,6 @@ body:has(.loading-shell),
   color: var(--accent);
   font-size: 1rem;
   line-height: 1;
-}
-
-.launch-release-group {
-  min-height: 32px;
-  padding: 3px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-strong) 64%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
 }
 
 .launch-release-status {
@@ -1360,6 +1352,15 @@ body:has(.loading-shell),
 .launch-button:hover,
 .theme-button:hover {
   transform: translateY(-1px);
+}
+
+.launch-button:hover {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--launch-accent, var(--accent)) 80%, #ffffff),
+      color-mix(in srgb, var(--launch-accent, var(--accent)) 88%, #101419)
+    );
 }
 
 .launch-button:disabled,

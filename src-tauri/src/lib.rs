@@ -738,7 +738,35 @@ fn switch_account(
     }
     clear_desktop_session(&app, &state)?;
     open_login_window(&app, &state, command_started, true)?;
-    build_bootstrap(&app, &state, true)
+    let bootstrap = build_bootstrap(&app, &state, true)?;
+    Ok(bootstrap)
+}
+
+fn clear_webview_cookies(window: &tauri::WebviewWindow) {
+    let url = match LOGIN_URL.parse() {
+        Ok(u) => u,
+        Err(err) => {
+            log::warn!("[login] invalid LOGIN_URL: {err}");
+            return;
+        }
+    };
+    match window.cookies_for_url(url) {
+        Ok(cookies) => {
+            let count = cookies.len();
+            for cookie in cookies {
+                log::info!(
+                    "[login] deleting cookie: domain={:?} name={:?}",
+                    cookie.domain(),
+                    cookie.name()
+                );
+                let _ = window.delete_cookie(cookie);
+            }
+            log::info!("[login] cleared {count} cookies for {LOGIN_URL}");
+        }
+        Err(err) => {
+            log::warn!("[login] failed to get cookies: {err}");
+        }
+    }
 }
 
 fn open_login_window(
@@ -761,21 +789,32 @@ fn open_login_window(
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        if clear_login_session_storage {
+            clear_webview_cookies(&window);
+        }
         mark_workspace_launch_navigate_called(state, LOGIN_URL);
         window.navigate(url).map_err(|err| err.to_string())?;
         return Ok(());
     }
 
     mark_workspace_launch_navigate_called(state, LOGIN_URL);
-    let window = WebviewWindowBuilder::new(app, AUTH_LABEL, WebviewUrl::External(url))
-        .title("Slock Sign In")
-        .inner_size(AUTH_WINDOW_WIDTH, AUTH_WINDOW_HEIGHT)
-        .min_inner_size(AUTH_WINDOW_MIN_WIDTH, AUTH_WINDOW_MIN_HEIGHT)
-        .resizable(true)
-        .focused(true)
-        .build()
-        .map_err(|err| err.to_string())?;
+    let window = WebviewWindowBuilder::new(
+        app,
+        AUTH_LABEL,
+        WebviewUrl::External("about:blank".parse().unwrap()),
+    )
+    .title("Slock Sign In")
+    .inner_size(AUTH_WINDOW_WIDTH, AUTH_WINDOW_HEIGHT)
+    .min_inner_size(AUTH_WINDOW_MIN_WIDTH, AUTH_WINDOW_MIN_HEIGHT)
+    .resizable(true)
+    .focused(true)
+    .build()
+    .map_err(|err| err.to_string())?;
     let _ = window.center();
+    if clear_login_session_storage {
+        clear_webview_cookies(&window);
+    }
+    window.navigate(url).map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -4282,6 +4321,19 @@ fn login_window_session_sync_script(clear_login_session_storage: bool) -> String
       }
       localStorage.removeItem("slock_access_token");
       localStorage.removeItem("slock_refresh_token");
+      try {
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i];
+          const eqPos = cookie.indexOf("=");
+          const name = (eqPos > -1 ? cookie.substring(0, eqPos) : cookie).trim();
+          if (name) {
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.slock.ai";
+            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=slock.ai";
+          }
+        }
+      } catch (_) {}
       sessionStorage.setItem(clearKey, "1");
       delete window.__slockDesktopLoginSignature;
       try {
