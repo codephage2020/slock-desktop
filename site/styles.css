@@ -28,6 +28,13 @@
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 20px;
+  --disclaimer-h: 36px;
+  --warn-fg: #b45309;
+  --warn-bg: rgba(245, 158, 11, 0.14);
+  --warn-border: rgba(245, 158, 11, 0.32);
+  --section-py: clamp(72px, 9vw, 104px);
+  --section-gap: clamp(28px, 4vw, 42px);
+  --h2-size: clamp(1.9rem, 3vw, 2.4rem);
   color: var(--text);
   background: var(--app-bg);
   font-family:
@@ -45,6 +52,9 @@
 }
 
 :root[data-theme='dark'] {
+  --warn-fg: #fbbf24;
+  --warn-bg: rgba(245, 158, 11, 0.14);
+  --warn-border: rgba(245, 158, 11, 0.28);
   --app-bg: #1f1f1c;
   --toolbar-bg: #2f302c;
   --panel-bg: #282925;
@@ -77,7 +87,7 @@
 
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 96px;
+  scroll-padding-top: calc(96px + var(--disclaimer-h));
 }
 
 body {
@@ -112,10 +122,46 @@ h3 {
   margin: 0;
 }
 
+.disclaimer-banner {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 30;
+  min-height: var(--disclaimer-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--warn-bg) 100%, var(--surface));
+  border-bottom: 1px solid var(--warn-border);
+  color: var(--warn-fg);
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(14px);
+  text-align: center;
+}
+
+.disclaimer-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.disclaimer-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .site-header {
   position: fixed;
   z-index: 20;
-  top: 18px;
+  top: calc(var(--disclaimer-h) + 14px);
   left: 50%;
   width: min(1120px, calc(100% - 32px));
   min-height: 58px;
@@ -268,48 +314,68 @@ h3 {
   position: fixed;
   z-index: 19;
   top: 50%;
-  right: 24px;
-  width: 132px;
+  right: 28px;
   transform: translateY(-50%);
   display: grid;
-  gap: 14px;
-  padding: 14px 10px;
-  border: 1px solid color-mix(in srgb, var(--border) 48%, transparent);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--header-bg) 42%, transparent);
-  box-shadow: var(--shadow-tight);
-  backdrop-filter: blur(18px);
+  gap: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .side-directory a {
-  min-height: 44px;
+  position: relative;
+  min-height: 28px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  font-size: 0.9rem;
-  font-weight: 700;
+  padding: 0 0 0 22px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--faint);
+  opacity: 0;
+  transform: translateX(8px);
   transition:
-    color 180ms ease,
-    background 180ms ease,
-    transform 180ms ease;
+    opacity 200ms ease,
+    transform 200ms ease,
+    color 200ms ease;
 }
 
 .side-directory a::before {
   content: "";
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border-radius: 999px;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 10px;
+  height: 2px;
+  transform: translateY(-50%);
   background: currentColor;
-  opacity: 0.46;
+  opacity: 0.55;
+  border-radius: 2px;
+  transition: width 200ms ease, background 200ms ease, opacity 200ms ease;
+}
+
+.side-directory:hover a,
+.side-directory:focus-within a {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .side-directory a:hover {
   color: var(--text);
-  background: var(--hover-bg);
+}
+
+.side-directory a[aria-current='true'] {
+  opacity: 1;
+  color: var(--text);
+  transform: translateX(0);
+}
+
+.side-directory a[aria-current='true']::before {
+  width: 16px;
+  opacity: 1;
+  background: var(--accent);
 }
 
 .side-directory a:active,
@@ -323,12 +389,17 @@ h3 {
 
 .hero-section {
   position: relative;
-  min-height: 820px;
   overflow: hidden;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr);
   align-items: center;
-  padding: 132px max(24px, calc((100vw - 1120px) / 2)) 116px;
+  gap: clamp(40px, 6vw, 80px);
+  padding: calc(132px + var(--disclaimer-h)) max(24px, calc((100vw - 1120px) / 2)) 116px;
   isolation: isolate;
+}
+
+.hero-copy {
+  order: -1;
 }
 
 .hero-section::before {
@@ -342,11 +413,9 @@ h3 {
 }
 
 .hero-product-stage {
-  position: absolute;
-  inset: 94px -140px auto auto;
-  z-index: -1;
-  width: min(900px, 66vw);
-  height: 610px;
+  position: relative;
+  width: 100%;
+  height: clamp(440px, 52vw, 610px);
   perspective: 1800px;
   pointer-events: none;
 }
@@ -949,8 +1018,8 @@ h3 {
 
 .section-band {
   display: grid;
-  gap: 42px;
-  padding: 104px 0 84px;
+  gap: var(--section-gap);
+  padding: var(--section-py) 0 calc(var(--section-py) - 20px);
 }
 
 .section-heading {
@@ -962,7 +1031,7 @@ h3 {
 .section-heading h2,
 .control-copy h2,
 .release-band h2 {
-  font-size: 2.4rem;
+  font-size: var(--h2-size);
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1.1;
@@ -988,12 +1057,12 @@ h3 {
 }
 
 .feature-grid article:nth-child(2) {
-  margin-top: 44px;
+  margin-top: clamp(0px, 3vw, 44px);
   background: var(--surface-strong);
 }
 
 .feature-grid article:nth-child(3) {
-  margin-top: 18px;
+  margin-top: clamp(0px, 1.4vw, 18px);
 }
 
 .feature-grid h3 {
@@ -1018,7 +1087,7 @@ h3 {
   grid-template-columns: minmax(260px, 0.6fr) minmax(0, 1fr);
   gap: 54px;
   align-items: center;
-  padding: 84px 0;
+  padding: var(--section-py) 0;
   border-top: 1px solid var(--border);
 }
 
@@ -1262,20 +1331,11 @@ h3 {
 
 @media (max-width: 1360px) {
   .side-directory {
-    width: 44px;
-    padding: 14px 6px;
+    right: 18px;
   }
 
-  .side-directory a {
-    justify-content: center;
-    gap: 0;
-    padding: 0;
+  .side-directory a:not([aria-current='true']) {
     font-size: 0;
-  }
-
-  .side-directory a::before {
-    width: 8px;
-    height: 8px;
   }
 }
 
@@ -1285,9 +1345,9 @@ h3 {
   }
 
   .hero-section {
-    min-height: 920px;
+    grid-template-columns: 1fr;
     align-items: start;
-    padding: 132px 24px 116px;
+    padding: calc(132px + var(--disclaimer-h)) 24px 96px;
   }
 
   .hero-copy h1 {
@@ -1296,18 +1356,10 @@ h3 {
   }
 
   .hero-product-stage {
-    inset: auto -160px 34px auto;
-    width: 860px;
-    max-width: 108vw;
-    height: 540px;
-  }
-
-  .service-badge {
-    left: 48px;
-  }
-
-  .release-badge {
-    right: 156px;
+    width: 100%;
+    max-width: 720px;
+    margin-inline: auto;
+    height: clamp(360px, 56vw, 480px);
   }
 
   .preview-meta-row {
@@ -1333,8 +1385,18 @@ h3 {
 }
 
 @media (max-width: 720px) {
+  :root {
+    --disclaimer-h: 44px;
+  }
+
+  .disclaimer-banner {
+    padding: 6px 12px;
+    font-size: 0.76rem;
+    line-height: 1.25;
+  }
+
   .site-header {
-    top: 10px;
+    top: calc(var(--disclaimer-h) + 6px);
     width: calc(100% - 20px);
     align-items: center;
     flex-wrap: nowrap;
@@ -1403,8 +1465,8 @@ h3 {
   }
 
   .hero-section {
-    min-height: 930px;
-    padding: 108px 20px 96px;
+    padding: calc(108px + var(--disclaimer-h)) 20px 80px;
+    gap: 32px;
   }
 
   .hero-copy {
@@ -1447,10 +1509,10 @@ h3 {
   }
 
   .hero-product-stage {
-    right: -220px;
-    bottom: 6px;
-    width: 540px;
-    height: 260px;
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+    height: clamp(260px, 64vw, 340px);
   }
 
   .stage-badge {
@@ -1468,18 +1530,18 @@ h3 {
   }
 
   .service-badge {
-    top: 32px;
-    left: 58px;
+    top: 18px;
+    left: 14px;
   }
 
   .release-badge {
-    right: 88px;
-    bottom: 22px;
+    right: 14px;
+    bottom: 18px;
   }
 
   .desktop-window {
     border-radius: 22px;
-    transform: rotateX(2deg) rotateY(-10deg) rotateZ(1deg);
+    transform: none;
   }
 
   .window-bar {
@@ -1605,17 +1667,6 @@ h3 {
     min-height: 108px;
   }
 
-  .section-band,
-  .control-section {
-    padding: 68px 0;
-  }
-
-  .section-heading h2,
-  .control-copy h2,
-  .release-band h2 {
-    font-size: 2rem;
-  }
-
   .settings-preview {
     grid-template-columns: 1fr;
   }
@@ -1671,15 +1722,6 @@ h3 {
 
   .hero-copy h1 {
     font-size: 2.55rem;
-  }
-
-  .hero-section {
-    min-height: 930px;
-  }
-
-  .hero-product-stage {
-    right: -226px;
-    bottom: 6px;
   }
 
   .preview-content,

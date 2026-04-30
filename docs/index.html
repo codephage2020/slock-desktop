@@ -61,6 +61,12 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="disclaimer-banner" role="note" aria-live="polite" data-i18n-aria-label="disclaimer.label">
+      <span class="disclaimer-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>
+      </span>
+      <span data-i18n="disclaimer.text">Community-built project — not an official Slock product.</span>
+    </div>
     <header class="site-header" aria-label="Primary navigation" data-i18n-aria-label="nav.label">
       <a class="brand-link" href="#top" aria-label="Slock Desktop home" data-i18n-aria-label="brand.home">
         <img src="./assets/favicon.svg" alt="" width="32" height="32" />
@@ -146,7 +152,7 @@
     </header>
 
     <nav class="side-directory" aria-label="Page sections" data-i18n-aria-label="toc.label">
-      <a href="#top" data-i18n="toc.overview">Overview</a>
+      <a href="#top" data-i18n="toc.overview" aria-current="true">Overview</a>
       <a href="#workflow" data-i18n="toc.client">Client</a>
       <a href="#control" data-i18n="toc.settings">Settings</a>
       <a href="#releases" data-i18n="toc.releases">Releases</a>
@@ -420,6 +426,8 @@
             'Slock Desktop is a macOS client for Slock that opens the Web workspace, manages the local daemon lifecycle, and handles theme, language, config, and GitHub Release updates.',
           'nav.label': 'Primary navigation',
           'nav.sections': 'Landing page sections',
+          'disclaimer.label': 'Project disclaimer',
+          'disclaimer.text': 'Community-built project — not an official Slock product.',
           'nav.workflow': 'Client',
           'nav.control': 'Settings',
           'nav.community': 'Community',
@@ -534,6 +542,8 @@
           metaDescription: 'Slock Desktop 是面向 Slock 的 macOS 桌面客户端，负责打开 Web 工作区、管理本地 daemon 生命周期，并提供主题、语言、配置和 GitHub Release 更新。',
           'nav.label': '主导航',
           'nav.sections': '落地页分区',
+          'disclaimer.label': '项目声明',
+          'disclaimer.text': '本项目为社区独立开发，非 Slock 官方出品。',
           'nav.workflow': '客户端',
           'nav.control': '设置',
           'nav.community': '社区',
@@ -773,6 +783,31 @@
 
       setLanguage(root.dataset.langPreference, false)
       setTheme(root.dataset.themePreference, false)
+    </script>
+    <script>
+      ;(() => {
+        const links = document.querySelectorAll('.side-directory a[href^="#"]')
+        if (!links.length || typeof IntersectionObserver === 'undefined') return
+        const map = new Map()
+        links.forEach((a) => {
+          const id = a.getAttribute('href').slice(1)
+          const target = id === 'top' ? document.getElementById('top') : document.getElementById(id)
+          if (target) map.set(target, a)
+        })
+        const setActive = (el) => {
+          links.forEach((a) => a.removeAttribute('aria-current'))
+          const link = map.get(el)
+          if (link) link.setAttribute('aria-current', 'true')
+        }
+        const observer = new IntersectionObserver(
+          (entries) => {
+            const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)
+            if (visible[0]) setActive(visible[0].target)
+          },
+          { rootMargin: '-40% 0px -50% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
+        )
+        map.forEach((_link, el) => observer.observe(el))
+      })()
     </script>
   </body>
 </html>
