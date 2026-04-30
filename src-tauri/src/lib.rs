@@ -1,3 +1,4 @@
+mod agent_env_import;
 mod config;
 mod theme;
 mod workspace;
@@ -2286,6 +2287,9 @@ fn apply_workspace_scripts_to_window(
             &meta_catalog(active_theme_mode, custom_theme),
         ))
         .map_err(|err| err.to_string())?;
+    window
+        .eval(agent_env_import::agent_env_import_script(resolved_language))
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -2333,6 +2337,9 @@ fn apply_workspace_scripts_to_webview(
             resolved_language,
             &meta_catalog(active_theme_mode, custom_theme),
         ))
+        .map_err(|err| err.to_string())?;
+    webview
+        .eval(agent_env_import::agent_env_import_script(resolved_language))
         .map_err(|err| err.to_string())?;
     Ok(())
 }
