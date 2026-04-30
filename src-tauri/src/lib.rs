@@ -703,7 +703,10 @@ fn open_workspace(
     };
     let target_url = workspace_url_for_slug(&selected_server_slug);
     begin_workspace_launch_trace(&state, command_started, &target_url);
-    maybe_start_service(&app, &state, &service_settings, true)?;
+    let service_bound = selected_service_has_local_binding(&service_settings);
+    if service_bound {
+        maybe_start_service(&app, &state, &service_settings, true)?;
+    }
 
     enter_workspace_in_main_window(
         &app,
@@ -714,7 +717,7 @@ fn open_workspace(
         &custom_theme_set(&custom_themes),
         &selected_server_slug,
     )?;
-    build_bootstrap(&app, &state, true)
+    build_bootstrap(&app, &state, service_bound)
 }
 
 #[tauri::command]
@@ -2674,7 +2677,16 @@ fn should_start_service_for_workspace(
     force_for_workspace: bool,
 ) -> bool {
     !settings.selected_server_slug.trim().is_empty()
+        && selected_service_has_local_binding(settings)
         && (force_for_workspace || settings.auto_start_with_workspace)
+}
+
+fn selected_service_has_local_binding(settings: &ServiceSettings) -> bool {
+    let selected_slug = settings.selected_server_slug.trim();
+    !selected_slug.is_empty()
+        && settings.machines.iter().any(|binding| {
+            binding.server_slug == selected_slug && !binding.machine_id.trim().is_empty()
+        })
 }
 
 fn cached_service_start_target(
@@ -6483,11 +6495,32 @@ mod tests {
         let settings = ServiceSettings {
             selected_server_slug: "open-have".to_string(),
             auto_start_with_workspace: false,
+            machines: vec![ServiceMachineBinding {
+                server_id: "server-open".to_string(),
+                server_slug: "open-have".to_string(),
+                machine_id: "machine-open".to_string(),
+                machine_name: "Open machine".to_string(),
+                api_key: String::new(),
+            }],
             ..ServiceSettings::default()
         };
 
         assert!(should_start_service_for_workspace(&settings, true));
         assert!(should_attempt_workspace_service_start(
+            &settings, true, true
+        ));
+    }
+
+    #[test]
+    fn workspace_launch_skips_service_start_for_unbound_selected_server() {
+        let settings = ServiceSettings {
+            selected_server_slug: "open-have".to_string(),
+            auto_start_with_workspace: true,
+            ..ServiceSettings::default()
+        };
+
+        assert!(!should_start_service_for_workspace(&settings, true));
+        assert!(!should_attempt_workspace_service_start(
             &settings, true, true
         ));
     }
