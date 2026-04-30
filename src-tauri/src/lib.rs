@@ -1187,6 +1187,10 @@ fn update_service(
         settings.service.clone()
     };
 
+    if !selected_service_running_on_current_computer(&state, &service_settings)? {
+        return build_bootstrap_with_service_options(&app, &state, false, true);
+    }
+
     stop_service_process(&app, &state, Some(&service_settings), None)?;
     force_start_service(&app, &state, &service_settings)?;
     build_bootstrap(&app, &state, false)
@@ -2687,6 +2691,131 @@ fn selected_service_has_local_binding(settings: &ServiceSettings) -> bool {
         && settings.machines.iter().any(|binding| {
             binding.server_slug == selected_slug && !binding.machine_id.trim().is_empty()
         })
+}
+
+fn selected_service_running_on_current_computer(
+    state: &DesktopState,
+    settings: &ServiceSettings,
+) -> Result<bool, String> {
+    let selected_slug = settings.selected_server_slug.trim();
+    if selected_slug.is_empty() {
+        return Ok(false);
+    }
+
+    let (cached_servers, runtime_active_machine_id) = {
+        let mut runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+
+        if runtime.active_server_slug.as_deref() == Some(selected_slug) {
+            if let Some(child) = runtime.child.as_mut() {
+                let still_running = child
+                    .try_wait()
+                    .map_err(|err| format!("Unable to inspect service state: {err}"))?
+                    .is_none();
+                if still_running {
+                    return Ok(true);
+                }
+                runtime.child = None;
+                runtime.active_pid = None;
+            } else if let Some(active_pid) = runtime.active_pid {
+                if process_is_alive(active_pid)? {
+                    return Ok(true);
+                }
+                runtime.active_pid = None;
+            }
+        }
+
+        (
+            runtime.cached_servers.clone(),
+            runtime.active_machine_id.clone(),
+        )
+    };
+
+    let Some(process) = selected_service_daemon_process_from_cached_state(
+        settings,
+        &cached_servers,
+        runtime_active_machine_id.as_deref(),
+    )?
+    else {
+        return Ok(false);
+    };
+
+    mark_service_daemon_process_running(state, &process)?;
+    Ok(true)
+}
+
+fn selected_service_daemon_process_from_cached_state(
+    settings: &ServiceSettings,
+    cached_servers: &[ServiceServerSnapshot],
+    runtime_active_machine_id: Option<&str>,
+) -> Result<Option<ServiceDaemonProcess>, String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let output = Command::new("ps")
+            .args(["-axo", "pid=,ppid=,command="])
+            .output()
+            .map_err(|err| format!("Failed to inspect daemon processes: {err}"))?;
+        if !output.status.success() {
+            return Err("Failed to inspect daemon processes".to_string());
+        }
+
+        let listing = String::from_utf8_lossy(&output.stdout);
+        Ok(selected_service_daemon_process_from_cached_output(
+            settings,
+            cached_servers,
+            runtime_active_machine_id,
+            &listing,
+        ))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = settings;
+        let _ = cached_servers;
+        let _ = runtime_active_machine_id;
+        Ok(None)
+    }
+}
+
+fn selected_service_daemon_process_from_cached_output(
+    settings: &ServiceSettings,
+    cached_servers: &[ServiceServerSnapshot],
+    runtime_active_machine_id: Option<&str>,
+    output: &str,
+) -> Option<ServiceDaemonProcess> {
+    let selected_slug = settings.selected_server_slug.trim();
+    if selected_slug.is_empty() {
+        return None;
+    }
+
+    let cached_server = cached_servers
+        .iter()
+        .find(|server| server.slug == selected_slug);
+    let binding = find_service_binding(settings, "", selected_slug);
+    let machine_id = binding
+        .as_ref()
+        .map(|binding| binding.machine_id.as_str())
+        .or_else(|| cached_server.and_then(|server| server.machine_id.as_deref()))
+        .or(runtime_active_machine_id)
+        .filter(|machine_id| !machine_id.trim().is_empty());
+    let api_key_prefix = cached_server
+        .and_then(|server| server.api_key_prefix.as_deref())
+        .filter(|prefix| !prefix.trim().is_empty());
+    let legacy_api_key = binding
+        .as_ref()
+        .map(|binding| binding.api_key.as_str())
+        .filter(|api_key| !api_key.trim().is_empty());
+
+    service_daemon_process_from_target(
+        settings,
+        selected_slug,
+        machine_id,
+        api_key_prefix,
+        legacy_api_key,
+        output,
+    )
 }
 
 fn cached_service_start_target(
@@ -5936,6 +6065,7 @@ mod tests {
         prepare_runtime_for_service_target, process_entries_from_ps_output,
         process_tree_pids_from_entries, resolve_service_command_from_dirs, sanitize_saved_accounts,
         sanitize_service_settings, select_existing_machine,
+        selected_service_daemon_process_from_cached_output,
         selected_service_daemon_process_from_server_snapshots,
         service_daemon_process_from_resolved_target, service_machine_fetch_concurrency,
         service_server_machine_fields, session_account_snapshots,
@@ -6523,6 +6653,65 @@ mod tests {
         assert!(!should_attempt_workspace_service_start(
             &settings, true, true
         ));
+    }
+
+    #[test]
+    fn daemon_update_requires_selected_process_on_current_computer() {
+        let settings = ServiceSettings {
+            selected_server_slug: "open-have".to_string(),
+            machines: vec![ServiceMachineBinding {
+                server_id: "server-open".to_string(),
+                server_slug: "open-have".to_string(),
+                machine_id: "machine-open".to_string(),
+                machine_name: "Open machine".to_string(),
+                api_key: String::new(),
+            }],
+            ..ServiceSettings::default()
+        };
+        let servers = vec![ServiceServerSnapshot {
+            id: "server-open".to_string(),
+            name: "Open Have".to_string(),
+            slug: "open-have".to_string(),
+            selected: true,
+            machine_id: Some("machine-open".to_string()),
+            machine_name: Some("Open machine".to_string()),
+            machine_status: "online".to_string(),
+            api_key_ready: true,
+            api_key_prefix: Some("sk_live".to_string()),
+        }];
+        let output = "";
+
+        let process =
+            selected_service_daemon_process_from_cached_output(&settings, &servers, None, output);
+
+        assert!(process.is_none());
+    }
+
+    #[test]
+    fn daemon_update_detects_selected_process_on_current_computer() {
+        let settings = ServiceSettings {
+            selected_server_slug: "open-have".to_string(),
+            machines: vec![ServiceMachineBinding {
+                server_id: "server-open".to_string(),
+                server_slug: "open-have".to_string(),
+                machine_id: "machine-open".to_string(),
+                machine_name: "Open machine".to_string(),
+                api_key: String::new(),
+            }],
+            ..ServiceSettings::default()
+        };
+        let output = r#"
+  101   1 node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_current --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open --slock-desktop-managed
+"#;
+
+        let process =
+            selected_service_daemon_process_from_cached_output(&settings, &[], None, output);
+
+        assert_eq!(process.as_ref().map(|process| process.pid), Some(101));
+        assert_eq!(
+            process.as_ref().map(|process| process.server_slug.as_str()),
+            Some("open-have")
+        );
     }
 
     #[test]

@@ -3924,6 +3924,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         : null;
     if (!action || !isDaemonUpdateAction(action)) return;
     if (action.dataset.slockDesktopBusy === "true") return;
+    if (!selectedServiceRunning()) return;
 
     try {
       const invoke = window.__TAURI__?.core?.invoke;
@@ -4173,6 +4174,7 @@ mod tests {
         assert!(script.contains("syncDesktopUpdateCheck(event?.payload)"));
         assert!(!script.contains("__slockDesktopAutoUpdateChecked"));
         assert!(script.contains("install_desktop_update"));
+        assert!(script.contains("if (!selectedServiceRunning()) return;"));
         assert!(!script.contains("class=\"launcher"));
     }
 }
