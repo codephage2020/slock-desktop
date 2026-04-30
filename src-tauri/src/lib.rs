@@ -56,6 +56,8 @@ const WORKSPACE_WINDOW_MARGIN: f64 = 24.0;
 const DAEMON_SERVER_SLUG_ARG: &str = "--slock-desktop-server-slug";
 const DAEMON_MACHINE_ID_ARG: &str = "--slock-desktop-machine-id";
 const DAEMON_DESKTOP_MANAGED_ARG: &str = "--slock-desktop-managed";
+const RUNTIME_WRAPPER_DIR: &str = "runtime-wrappers";
+const CLAUDE_WRAPPER_NAME: &str = "claude";
 const DESKTOP_UPDATER_ENDPOINT: &str =
     "https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json";
 const DESKTOP_UPDATE_CHECK_TIMEOUT: u64 = 8;
@@ -728,7 +730,10 @@ fn open_login(app: AppHandle, state: State<'_, DesktopState>) -> Result<Bootstra
 }
 
 #[tauri::command]
-fn open_login_browser(app: AppHandle, state: State<'_, DesktopState>) -> Result<BootstrapPayload, String> {
+fn open_login_browser(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<BootstrapPayload, String> {
     let url = format!("{LOGIN_URL}?desktop=1");
     app.opener()
         .open_url(&url, None::<&str>)
@@ -817,7 +822,15 @@ fn handle_desktop_deep_link(app: &AppHandle, url: &Url) -> Result<(), String> {
     );
 
     let state = app.state::<DesktopState>();
-    save_session_tokens_to_settings(app, &state, access_token, refresh_token, display_name, email, avatar_url)?;
+    save_session_tokens_to_settings(
+        app,
+        &state,
+        access_token,
+        refresh_token,
+        display_name,
+        email,
+        avatar_url,
+    )?;
 
     Ok(())
 }
@@ -2968,6 +2981,7 @@ fn spawn_service_daemon(
     }
 
     let service_command = resolve_service_command()?;
+    let service_path_env = prepare_service_path_env(app, &service_command.path_env)?;
     let mut log_file = open_service_log_file(app, &binding.server_slug)?;
     writeln!(
         &mut log_file,
@@ -2994,7 +3008,7 @@ fn spawn_service_daemon(
             binding.machine_id.as_str(),
             DAEMON_DESKTOP_MANAGED_ARG,
         ])
-        .env("PATH", &service_command.path_env)
+        .env("PATH", &service_path_env)
         .stdin(Stdio::null())
         .stdout(Stdio::from(log_file_for_stdout))
         .stderr(Stdio::from(log_file));
@@ -3123,6 +3137,167 @@ fn resolve_service_command() -> Result<ServiceCommand, String> {
         "Unable to find npx and Node.js. Install Node.js/npm, then restart Slock Desktop."
             .to_string()
     })
+}
+
+fn prepare_service_path_env(app: &AppHandle, path_env: &str) -> Result<String, String> {
+    #[cfg(unix)]
+    {
+        let wrapper_dir = install_runtime_command_wrappers(app)?;
+        return Ok(prepend_path_env_dir(&wrapper_dir, path_env));
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = app;
+        Ok(path_env.to_string())
+    }
+}
+
+#[cfg(unix)]
+fn install_runtime_command_wrappers(app: &AppHandle) -> Result<PathBuf, String> {
+    let wrapper_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|err| err.to_string())?
+        .join(RUNTIME_WRAPPER_DIR);
+    fs::create_dir_all(&wrapper_dir)
+        .map_err(|err| format!("Unable to create runtime wrapper directory: {err}"))?;
+
+    let claude_wrapper_path = wrapper_dir.join(CLAUDE_WRAPPER_NAME);
+    fs::write(&claude_wrapper_path, claude_wrapper_script())
+        .map_err(|err| format!("Unable to write Claude runtime wrapper: {err}"))?;
+    let mut permissions = fs::metadata(&claude_wrapper_path)
+        .map_err(|err| format!("Unable to inspect Claude runtime wrapper: {err}"))?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&claude_wrapper_path, permissions)
+        .map_err(|err| format!("Unable to prepare Claude runtime wrapper: {err}"))?;
+
+    Ok(wrapper_dir)
+}
+
+#[cfg(unix)]
+fn prepend_path_env_dir(dir: &Path, path_env: &str) -> String {
+    let mut path_dirs = vec![dir.to_path_buf()];
+    push_path_env_dirs(&mut path_dirs, std::ffi::OsStr::new(path_env));
+    env::join_paths(&path_dirs)
+        .ok()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| {
+            path_dirs
+                .iter()
+                .map(|path| path.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(":")
+        })
+}
+
+#[cfg(unix)]
+fn claude_wrapper_script() -> &'static str {
+    r#"#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const { spawnSync } = require("child_process");
+
+const wrapperPath = safeRealpath(__filename);
+const wrapperDir = safeRealpath(path.dirname(__filename));
+const rawPath = process.env.PATH || "";
+const searchDirs = rawPath
+  .split(path.delimiter)
+  .filter(Boolean)
+  .filter((dir) => safeRealpath(dir) !== wrapperDir);
+
+function safeRealpath(value) {
+  try {
+    return fs.realpathSync(value);
+  } catch {
+    return path.resolve(value);
+  }
+}
+
+function isExecutable(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) return false;
+    if (process.platform === "win32") return true;
+    return (stat.mode & 0o111) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+function findRealClaude() {
+  for (const dir of searchDirs) {
+    const candidate = path.join(dir, "claude");
+    if (safeRealpath(candidate) !== wrapperPath && isExecutable(candidate)) {
+      return candidate;
+    }
+  }
+
+  if (process.platform === "darwin") {
+    const home = process.env.HOME || "";
+    const fallbacks = [
+      path.join(home, "Applications", "Claude Code URL Handler.app", "Contents", "MacOS", "claude"),
+      "/Applications/Claude Code URL Handler.app/Contents/MacOS/claude",
+    ];
+    for (const candidate of fallbacks) {
+      if (safeRealpath(candidate) !== wrapperPath && isExecutable(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+function overrideModelArgs(args, model) {
+  const cleaned = (model || "").trim();
+  if (!cleaned) return args;
+
+  const next = [];
+  let replaced = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--model") {
+      next.push(arg, cleaned);
+      if (index + 1 < args.length) index += 1;
+      replaced = true;
+      continue;
+    }
+    if (arg.startsWith("--model=")) {
+      next.push(`--model=${cleaned}`);
+      replaced = true;
+      continue;
+    }
+    next.push(arg);
+  }
+  if (!replaced) {
+    next.push("--model", cleaned);
+  }
+  return next;
+}
+
+const command = findRealClaude();
+if (!command) {
+  console.error("Slock Claude wrapper: unable to find the real claude command.");
+  process.exit(127);
+}
+
+const requestedModel =
+  process.env.SLOCK_CLAUDE_MODEL ||
+  process.env.CLAUDE_MODEL ||
+  process.env.ANTHROPIC_MODEL ||
+  "";
+const args = overrideModelArgs(process.argv.slice(2), requestedModel);
+const env = { ...process.env, PATH: searchDirs.join(path.delimiter) };
+const result = spawnSync(command, args, { stdio: "inherit", env });
+
+if (result.error) {
+  console.error(result.error.message);
+  process.exit(126);
+}
+process.exit(typeof result.status === "number" ? result.status : 1);
+"#
 }
 
 fn resolve_service_command_from_dirs(search_dirs: Vec<PathBuf>) -> Option<ServiceCommand> {
@@ -6078,6 +6253,8 @@ mod tests {
         CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine,
         ServiceRuntime, ServiceServerSnapshot, WorkspaceLaunchMetrics, WorkspaceSessionSeed,
     };
+    #[cfg(unix)]
+    use super::{claude_wrapper_script, prepend_path_env_dir};
     use crate::config::{
         AppSettings, SavedAccountSettings, ServiceMachineBinding, ServiceSettings, SessionSettings,
     };
@@ -6306,6 +6483,87 @@ mod tests {
         make_executable(&node_bin.join("npx"));
 
         assert!(resolve_service_command_from_dirs(vec![node_bin]).is_none());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_wrapper_path_is_prepended_to_service_path() {
+        let root = temp_test_dir("runtime-wrapper-path");
+        let wrapper_dir = root.join("wrappers");
+        let node_bin = root.join("node-v24/bin");
+        fs::create_dir_all(&wrapper_dir).unwrap();
+        fs::create_dir_all(&node_bin).unwrap();
+        let path_env = env::join_paths([node_bin.as_path()]).unwrap();
+
+        let next_path = prepend_path_env_dir(&wrapper_dir, &path_env.to_string_lossy());
+        let path_dirs = env::split_paths(&next_path).collect::<Vec<_>>();
+
+        assert_eq!(path_dirs.first(), Some(&wrapper_dir));
+        assert!(path_dirs.contains(&node_bin));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn claude_wrapper_supports_model_override_env_vars() {
+        let script = claude_wrapper_script();
+
+        assert!(script.contains("SLOCK_CLAUDE_MODEL"));
+        assert!(script.contains("CLAUDE_MODEL"));
+        assert!(script.contains("ANTHROPIC_MODEL"));
+        assert!(script.contains("arg === \"--model\""));
+        assert!(script.contains("arg.startsWith(\"--model=\")"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn claude_wrapper_rewrites_model_argument_from_env() {
+        if Command::new("node").arg("--version").output().is_err() {
+            return;
+        }
+
+        let root = temp_test_dir("claude-wrapper-rewrite");
+        let wrapper_dir = root.join("wrappers");
+        let real_dir = root.join("real-bin");
+        fs::create_dir_all(&wrapper_dir).unwrap();
+        fs::create_dir_all(&real_dir).unwrap();
+
+        let wrapper_path = wrapper_dir.join("claude");
+        fs::write(&wrapper_path, claude_wrapper_script()).unwrap();
+        let mut wrapper_permissions = fs::metadata(&wrapper_path).unwrap().permissions();
+        wrapper_permissions.set_mode(0o755);
+        fs::set_permissions(&wrapper_path, wrapper_permissions).unwrap();
+
+        let real_path = real_dir.join("claude");
+        fs::write(
+            &real_path,
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$SLOCK_TEST_ARG_FILE\"\n",
+        )
+        .unwrap();
+        let mut real_permissions = fs::metadata(&real_path).unwrap().permissions();
+        real_permissions.set_mode(0o755);
+        fs::set_permissions(&real_path, real_permissions).unwrap();
+
+        let args_path = root.join("args.txt");
+        let original_path = env::var_os("PATH").unwrap_or_default();
+        let mut path_dirs = vec![wrapper_dir.clone(), real_dir.clone()];
+        path_dirs.extend(env::split_paths(&original_path));
+        let path_env = env::join_paths(&path_dirs).unwrap();
+        let status = Command::new(&wrapper_path)
+            .args(["--model", "sonnet", "--output-format", "stream-json"])
+            .env("PATH", path_env)
+            .env("SLOCK_CLAUDE_MODEL", "claude-sonnet-4-5")
+            .env("SLOCK_TEST_ARG_FILE", &args_path)
+            .status()
+            .unwrap();
+
+        assert!(status.success());
+        let args = fs::read_to_string(args_path).unwrap();
+        assert!(args.contains("--model\nclaude-sonnet-4-5\n"));
+        assert!(!args.contains("sonnet\n"));
 
         fs::remove_dir_all(root).unwrap();
     }
