@@ -20,6 +20,7 @@ import {
   createCustomTheme,
   deleteCustomTheme,
   installDesktopUpdate,
+  forgetAccount,
   loadBootstrap,
   openLogin,
   openServiceLog,
@@ -111,6 +112,7 @@ const COPY = {
     signIn: 'Sign in',
     switchAccount: 'Switch account',
     addAccount: 'Add account',
+    forgetAccount: 'Remove account',
     currentAccount: 'Current',
     accountEmailUnavailable: 'Signed in',
     running: 'Running',
@@ -207,6 +209,7 @@ const COPY = {
     signIn: '登录',
     switchAccount: '切换账号',
     addAccount: '添加账号',
+    forgetAccount: '移除账号',
     currentAccount: '当前',
     accountEmailUnavailable: '已登录',
     running: '运行中',
@@ -348,7 +351,7 @@ function App() {
 
     void listen('desktop-auth-complete', () => {
       authResolvedRef.current = true
-      void loadBootstrap(false).then((next) => {
+      void loadBootstrap(true).then((next) => {
         if (cancelled) {
           return
         }
@@ -443,17 +446,23 @@ function App() {
           if (cancelled || authResolvedRef.current) {
             return
           }
-          startTransition(() => setSnapshot(next))
           if (next.service.authenticated) {
             authResolvedRef.current = true
-            setBrowserLoginPending(false)
-            setWorkspaceLaunchActive(false)
-            setWorkspaceLaunchTarget(null)
-          } else if (attempts >= AUTH_POLL_MAX_ATTEMPTS) {
-            setBrowserLoginPending(false)
-            setWorkspaceLaunchActive(false)
-            setWorkspaceLaunchTarget(null)
-            setErrorMessage(copy.loginTimeout)
+            void loadBootstrap(true).then((refreshed) => {
+              if (cancelled) return
+              startTransition(() => setSnapshot(refreshed))
+              setBrowserLoginPending(false)
+              setWorkspaceLaunchActive(false)
+              setWorkspaceLaunchTarget(null)
+            })
+          } else {
+            startTransition(() => setSnapshot(next))
+            if (attempts >= AUTH_POLL_MAX_ATTEMPTS) {
+              setBrowserLoginPending(false)
+              setWorkspaceLaunchActive(false)
+              setWorkspaceLaunchTarget(null)
+              setErrorMessage(copy.loginTimeout)
+            }
           }
         })
         .catch((error) => {
@@ -887,6 +896,19 @@ function App() {
     }
   }
 
+  async function handleForgetAccount(accountId: string) {
+    try {
+      setBusyAction(`forget:${accountId}`)
+      setErrorMessage(null)
+      const next = await forgetAccount(accountId)
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   async function handleServiceRefresh() {
     try {
       setBusyAction('refresh-service')
@@ -1199,24 +1221,41 @@ function App() {
                         const selected = account.id === currentAccountId
                         const label = getAccountEmailLabel(account, copy)
                         return (
-                          <button
+                          <div
                             key={account.id}
-                            type="button"
-                            className={`account-menu-item${selected ? ' selected' : ''}`}
-                            role="menuitem"
-                            onClick={() => {
-                              if (!selected) {
-                                void handleSavedAccountSelect(account.id)
-                              }
-                            }}
-                            disabled={selected || busyAction === `account:${account.id}`}
+                            className={`account-menu-item-wrap${selected ? ' selected' : ''}`}
                           >
-                            <AccountAvatar account={account} />
-                            <span className="account-menu-copy">
-                              <span>{label}</span>
-                              {selected ? <span>{copy.currentAccount}</span> : null}
-                            </span>
-                          </button>
+                            <button
+                              type="button"
+                              className="account-menu-item-main"
+                              role="menuitem"
+                              onClick={() => {
+                                if (!selected) {
+                                  void handleSavedAccountSelect(account.id)
+                                }
+                              }}
+                              disabled={selected || busyAction === `account:${account.id}`}
+                            >
+                              <AccountAvatar account={account} />
+                              <span className="account-menu-copy">
+                                <span>{label}</span>
+                                {selected ? <span>{copy.currentAccount}</span> : null}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="account-menu-forget"
+                              title={copy.forgetAccount}
+                              aria-label={copy.forgetAccount}
+                              disabled={busyAction === `forget:${account.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void handleForgetAccount(account.id)
+                              }}
+                            >
+                              ×
+                            </button>
+                          </div>
                         )
                       })}
                       <button

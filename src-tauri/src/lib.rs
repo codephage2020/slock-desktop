@@ -26,6 +26,8 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, State, Theme, Url,
     WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
+use tauri_plugin_deep_link::DeepLinkExt;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::{Updater, UpdaterExt};
 use theme::{meta_catalog, resolve_theme, sanitize_hex, CustomThemeItem, CustomThemeSet};
 
@@ -723,6 +725,16 @@ fn open_login(app: AppHandle, state: State<'_, DesktopState>) -> Result<Bootstra
 }
 
 #[tauri::command]
+fn open_login_browser(app: AppHandle, state: State<'_, DesktopState>) -> Result<BootstrapPayload, String> {
+    let url = format!("{LOGIN_URL}?desktop=1");
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|err| format!("Failed to open browser: {err}"))?;
+    log::info!("[login] opened system browser: {url}");
+    build_bootstrap(&app, &state, true)
+}
+
+#[tauri::command]
 fn switch_account(
     app: AppHandle,
     state: State<'_, DesktopState>,
@@ -742,26 +754,91 @@ fn switch_account(
     Ok(bootstrap)
 }
 
+#[tauri::command]
+fn switch_account_browser(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<BootstrapPayload, String> {
+    {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        upsert_saved_session_account(&mut settings.session);
+        save_settings(&app, &settings)?;
+    }
+    clear_desktop_session(&app, &state)?;
+    let url = format!("{LOGIN_URL}?desktop=1");
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|err| format!("Failed to open browser: {err}"))?;
+    log::info!("[login] opened system browser for switch account: {url}");
+    build_bootstrap(&app, &state, true)
+}
+
+fn handle_desktop_deep_link(app: &AppHandle, url: &Url) -> Result<(), String> {
+    // Expected: slock://auth/callback#access_token=xxx&refresh_token=xxx
+    if url.host_str() != Some("auth") || url.path() != "/callback" {
+        log::info!("[deep-link] ignoring non-auth URL: {url}");
+        return Ok(());
+    }
+
+    // Tokens are in the fragment (hash): #access_token=xxx&refresh_token=xxx&email=xxx&name=xxx
+    let fragment = url.fragment().unwrap_or("");
+    let params: std::collections::HashMap<String, String> = fragment
+        .split('&')
+        .filter_map(|pair| {
+            let mut parts = pair.splitn(2, '=');
+            let key = parts.next()?;
+            let value = parts.next().unwrap_or("");
+            Some((key.to_string(), value.to_string()))
+        })
+        .collect();
+
+    let access_token = params
+        .get("access_token")
+        .cloned()
+        .ok_or_else(|| "missing access_token in deep link".to_string())?;
+    let refresh_token = params
+        .get("refresh_token")
+        .cloned()
+        .ok_or_else(|| "missing refresh_token in deep link".to_string())?;
+
+    let display_name = params.get("name").cloned();
+    let email = params.get("email").cloned();
+    let avatar_url = params.get("avatar").cloned();
+
+    log::info!(
+        "[deep-link] received auth callback for {:?}",
+        email.as_deref().unwrap_or("unknown")
+    );
+
+    let state = app.state::<DesktopState>();
+    save_session_tokens_to_settings(app, &state, access_token, refresh_token, display_name, email, avatar_url)?;
+
+    Ok(())
+}
+
 fn clear_webview_cookies(window: &tauri::WebviewWindow) {
-    let url = match LOGIN_URL.parse() {
-        Ok(u) => u,
-        Err(err) => {
-            log::warn!("[login] invalid LOGIN_URL: {err}");
-            return;
-        }
-    };
-    match window.cookies_for_url(url) {
+    match window.cookies() {
         Ok(cookies) => {
-            let count = cookies.len();
+            let mut cleared = 0;
             for cookie in cookies {
-                log::info!(
-                    "[login] deleting cookie: domain={:?} name={:?}",
-                    cookie.domain(),
-                    cookie.name()
-                );
-                let _ = window.delete_cookie(cookie);
+                let is_slock = cookie
+                    .domain()
+                    .map(|d| d == "slock.ai" || d.ends_with(".slock.ai"))
+                    .unwrap_or(false);
+                if is_slock {
+                    log::info!(
+                        "[login] deleting cookie: domain={:?} name={:?}",
+                        cookie.domain(),
+                        cookie.name()
+                    );
+                    let _ = window.delete_cookie(cookie);
+                    cleared += 1;
+                }
             }
-            log::info!("[login] cleared {count} cookies for {LOGIN_URL}");
+            log::info!("[login] cleared {cleared} slock.ai cookies");
         }
         Err(err) => {
             log::warn!("[login] failed to get cookies: {err}");
@@ -869,6 +946,67 @@ fn activate_account(
     if let Some(window) = app.get_webview_window(MAIN_LABEL) {
         if window_is_workspace(&window) {
             apply_workspace_session_seed_to_window(&window, &state)?;
+        }
+    }
+
+    build_bootstrap(&app, &state, true)
+}
+
+#[tauri::command]
+fn forget_account(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    account_id: String,
+) -> Result<BootstrapPayload, String> {
+    let account_id = account_id.trim().to_string();
+    if account_id.is_empty() {
+        return build_bootstrap(&app, &state, true);
+    }
+
+    {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        let was_active = settings.session.access_token
+            == settings
+                .session
+                .accounts
+                .iter()
+                .find(|a| a.id == account_id)
+                .map(|a| a.access_token.as_str())
+                .unwrap_or("");
+        settings.session.accounts.retain(|a| a.id != account_id);
+        if was_active {
+            if let Some(fallback) = settings.session.accounts.first().cloned() {
+                settings.session.access_token = fallback.access_token;
+                settings.session.refresh_token = fallback.refresh_token;
+                settings.session.display_name = fallback.display_name;
+                settings.session.email = fallback.email;
+                settings.session.avatar_url = fallback.avatar_url;
+            } else {
+                settings.session.access_token.clear();
+                settings.session.refresh_token.clear();
+                settings.session.display_name.clear();
+                settings.session.email.clear();
+                settings.session.avatar_url.clear();
+            }
+        }
+        save_settings(&app, &settings)?;
+    }
+
+    {
+        let mut runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime.cached_servers.clear();
+        runtime.cached_sync_error = None;
+    }
+
+    if let Some(window) = app.get_webview_window(MAIN_LABEL) {
+        if window_is_workspace(&window) {
+            let _ = apply_workspace_session_seed_to_window(&window, &state);
         }
     }
 
@@ -5527,6 +5665,8 @@ fn custom_theme_set(custom_themes: &[CustomThemeSettings]) -> CustomThemeSet {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(DesktopState {
             settings: Mutex::new(AppSettings::default()),
             service: Mutex::new(ServiceRuntime {
@@ -5665,6 +5805,31 @@ pub fn run() {
                 apply_launcher_window_size(&window);
             }
 
+            // Register deep link scheme for desktop auth callback
+            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+            {
+                let _ = app.deep_link().register_all();
+            }
+
+            // Handle deep link URLs (slock://auth/callback#access_token=...&refresh_token=...)
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    if let Err(err) = handle_desktop_deep_link(&handle, &url) {
+                        log::warn!("[deep-link] failed to handle {url}: {err}");
+                    }
+                }
+            });
+
+            // Check if app was launched via deep link
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                for url in urls {
+                    if let Err(err) = handle_desktop_deep_link(app.handle(), &url) {
+                        log::warn!("[deep-link] failed to handle launch URL {url}: {err}");
+                    }
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -5692,9 +5857,12 @@ pub fn run() {
             check_desktop_update,
             install_desktop_update,
             open_login,
+            open_login_browser,
             switch_account,
+            switch_account_browser,
             close_login_window,
-            activate_account
+            activate_account,
+            forget_account
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

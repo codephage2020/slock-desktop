@@ -11,6 +11,8 @@
   ],
   "permissions": [
     "core:default",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "deep-link:default",
+    "opener:allow-default-urls"
   ]
 }

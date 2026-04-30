@@ -126,12 +126,24 @@ export async function openLogin() {
   return invoke<BootstrapPayload>('open_login')
 }
 
+export async function openLoginBrowser() {
+  return invoke<BootstrapPayload>('open_login_browser')
+}
+
 export async function switchAccount() {
   return invoke<BootstrapPayload>('switch_account')
 }
 
+export async function switchAccountBrowser() {
+  return invoke<BootstrapPayload>('switch_account_browser')
+}
+
 export async function activateAccount(accountId: string) {
   return invoke<BootstrapPayload>('activate_account', { accountId })
+}
+
+export async function forgetAccount(accountId: string) {
+  return invoke<BootstrapPayload>('forget_account', { accountId })
 }
 
 export async function selectServiceServer(selectedServerSlug: string) {
