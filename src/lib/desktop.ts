@@ -254,3 +254,45 @@ export async function checkDesktopUpdate() {
 export async function installDesktopUpdate() {
   return invoke('install_desktop_update')
 }
+
+// Dashboard types and commands
+
+export interface DashboardChannel {
+  id: string
+  name: string
+  type: string
+  isArchived: boolean
+  lastMessageAt: string | null
+  memberCount: number
+}
+
+export interface DashboardChannelUnread {
+  channelId: string
+  unreadCount: number
+}
+
+export interface DashboardTask {
+  id: string
+  title: string
+  status: 'todo' | 'in_progress' | 'in_review' | 'done'
+  assignee: string | null
+  channelId: string
+}
+
+export interface DashboardAgent {
+  id: string
+  name: string
+  status: 'online' | 'offline' | 'running' | 'busy' | 'idle'
+  updatedAt: string | null
+}
+
+export interface DashboardData {
+  channels: DashboardChannel[]
+  unread: DashboardChannelUnread[]
+  tasks: DashboardTask[]
+  agents: DashboardAgent[]
+}
+
+export async function fetchDashboard(serverSlug: string) {
+  return invoke<DashboardData>('fetch_dashboard', { serverSlug })
+}

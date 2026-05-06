@@ -321,6 +321,62 @@ struct SessionAccountProfile {
     avatar_url: Option<String>,
 }
 
+// Dashboard types
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardData {
+    channels: Vec<DashboardChannel>,
+    unread: Vec<DashboardChannelUnread>,
+    tasks: Vec<DashboardTask>,
+    agents: Vec<DashboardAgent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardChannel {
+    id: String,
+    name: String,
+    #[serde(alias = "type", rename(serialize = "type"))]
+    channel_type: String,
+    #[serde(default, alias = "is_archived")]
+    is_archived: bool,
+    #[serde(alias = "last_message_at")]
+    last_message_at: Option<String>,
+    #[serde(default, alias = "member_count")]
+    member_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardChannelUnread {
+    channel_id: String,
+    #[serde(default)]
+    unread_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardTask {
+    id: String,
+    title: String,
+    status: String,
+    #[serde(alias = "assignee_id")]
+    assignee: Option<String>,
+    #[serde(alias = "channel_id")]
+    channel_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardAgent {
+    id: String,
+    name: String,
+    status: String,
+    #[serde(alias = "updated_at")]
+    updated_at: Option<String>,
+}
+
 #[tauri::command]
 fn bootstrap(
     app: AppHandle,
@@ -1378,6 +1434,113 @@ fn update_service(
     stop_service_process(&app, &state, Some(&service_settings), None)?;
     force_start_service(&app, &state, &service_settings)?;
     build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn fetch_dashboard(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<DashboardData, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    // Find the server ID from cached servers
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found in cached servers"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    // Fetch channels (GET /channels with X-Server-Id header)
+    let channels = load_authenticated_json::<Vec<DashboardChannel>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/channels"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+    .unwrap_or_default();
+
+    // Fetch unread counts (GET /channels/unread with X-Server-Id header)
+    // Returns { channelId: count } object, convert to Vec<DashboardChannelUnread>
+    let unread_map = load_authenticated_json::<std::collections::HashMap<String, u32>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/channels/unread"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+    .unwrap_or_default();
+    let unread: Vec<DashboardChannelUnread> = unread_map
+        .into_iter()
+        .map(|(channel_id, unread_count)| DashboardChannelUnread {
+            channel_id,
+            unread_count,
+        })
+        .collect();
+
+    // Fetch tasks (GET /tasks/server with X-Server-Id header)
+    let tasks = load_authenticated_json::<Vec<DashboardTask>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/tasks/server"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+    .unwrap_or_default();
+
+    // Fetch agents (GET /agents with X-Server-Id header)
+    let agents = load_authenticated_json::<Vec<DashboardAgent>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/agents"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+    .unwrap_or_default();
+
+    Ok(DashboardData {
+        channels,
+        unread,
+        tasks,
+        agents,
+    })
 }
 
 #[tauri::command]
@@ -6614,7 +6777,8 @@ pub fn run() {
             switch_account_browser,
             close_login_window,
             activate_account,
-            forget_account
+            forget_account,
+            fetch_dashboard
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
