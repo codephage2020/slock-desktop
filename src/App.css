@@ -188,41 +188,10 @@ body:has(.loading-shell),
   user-select: none;
 }
 
-.tauri-titlebar-brand {
-  position: relative;
-  flex: 0 1 auto;
-  height: 100%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
-  max-width: 180px;
-  min-width: 0;
-  padding: 0;
-  color: var(--text);
-  pointer-events: none;
-}
-
-.tauri-titlebar-mark {
-  width: 15px;
-  height: 14px;
-  flex: 0 0 auto;
-  color: var(--accent);
-}
-
 .tauri-titlebar-drag {
   align-self: stretch;
   flex: 1 1 auto;
   min-width: 16px;
-}
-
-.tauri-titlebar-wordmark {
-  font-family: "SF Pro Text", "PingFang SC", system-ui, sans-serif;
-  font-weight: 700;
-  font-size: 0.76rem;
-  letter-spacing: 0.025em;
-  color: color-mix(in srgb, var(--muted) 86%, var(--text));
-  white-space: nowrap;
 }
 
 .titlebar-settings {

@@ -1475,11 +1475,6 @@ function App() {
       aria-busy={workspaceLaunching}
     >
       <header className="tauri-titlebar">
-        <div className="tauri-titlebar-brand" data-tauri-drag-region>
-          <SlockBrandMark className="tauri-titlebar-mark" />
-          <span className="tauri-titlebar-wordmark">slock-desktop</span>
-        </div>
-
         <div className="tauri-titlebar-drag" data-tauri-drag-region />
 
         <div className="titlebar-settings" aria-label={`${copy.mode} / ${copy.language}`}>
