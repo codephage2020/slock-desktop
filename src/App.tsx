@@ -423,7 +423,11 @@ function App() {
   const [newThemeDraft, setNewThemeDraft] = useState<NewThemeDraft | null>(null)
   const [newThemeWheelOpen, setNewThemeWheelOpen] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [serverPanelOpen, setServerPanelOpen] = useState(false)
+  const [themePanelOpen, setThemePanelOpen] = useState(false)
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
+  const serverPanelRef = useRef<HTMLDivElement | null>(null)
+  const themePanelRef = useRef<HTMLDivElement | null>(null)
   const themeCardRef = useRef<HTMLElement | null>(null)
   const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
@@ -810,6 +814,46 @@ function App() {
     document.addEventListener('pointerdown', closeAccountMenuOnOutsidePointer)
     return () => document.removeEventListener('pointerdown', closeAccountMenuOnOutsidePointer)
   }, [accountMenuOpen])
+
+  useEffect(() => {
+    if (!serverPanelOpen) {
+      return
+    }
+
+    const closeServerPanelOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (serverPanelRef.current?.contains(target)) {
+        return
+      }
+      setServerPanelOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeServerPanelOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeServerPanelOnOutsidePointer)
+  }, [serverPanelOpen])
+
+  useEffect(() => {
+    if (!themePanelOpen) {
+      return
+    }
+
+    const closeThemePanelOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (themePanelRef.current?.contains(target)) {
+        return
+      }
+      setThemePanelOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeThemePanelOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeThemePanelOnOutsidePointer)
+  }, [themePanelOpen])
 
   useEffect(() => {
     if (
@@ -1542,332 +1586,249 @@ function App() {
       aria-busy={workspaceLaunching}
     >
       <header className="tauri-titlebar">
-        <div className="tauri-titlebar-drag" data-tauri-drag-region />
-
-        <div className="titlebar-settings" aria-label={`${copy.mode} / ${copy.language}`}>
-          <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.mode}>
-            {THEME_MODES.map((mode) => {
-              const selected = mode.id === snapshot.appearanceMode
-              return (
-                <button
-                  key={mode.id}
-                  className={`icon-option${selected ? ' selected' : ''}`}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  title={copy[mode.labelKey]}
-                  onClick={() => handleThemeModeChange(mode.id)}
-                  disabled={busyAction === `mode:${mode.id}`}
-                >
-                  <OptionIcon type={mode.icon} />
-                  <span className="sr-only">{copy[mode.labelKey]}</span>
-                </button>
-              )
-            })}
-          </div>
-          <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.language}>
-            {LANGUAGE_OPTIONS.map((language) => {
-              const selected = language.id === snapshot.language
-              return (
-                <button
-                  key={language.id}
-                  className={`icon-option${selected ? ' selected' : ''}`}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  title={copy[language.labelKey]}
-                  onClick={() => handleLanguageChange(language.id)}
-                  disabled={busyAction === `language:${language.id}`}
-                >
-                  <OptionIcon type={language.icon} />
-                  <span className="sr-only">{copy[language.labelKey]}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </header>
-
-      <section className="launch-board" aria-label={copy.openSlock}>
-        {workspaceLaunching ? (
-          <section className="workspace-loading-overlay" aria-live="polite">
-            <div className="workspace-loading-panel">
-              <div className="workspace-loading-mark">
-                <SlockBrandMark />
-                <span className="workspace-loading-ring" aria-hidden="true" />
-              </div>
-              <div className="workspace-loading-copy">
-                <p className="eyebrow">{copy.launchingTitle}</p>
-                <p>{workspaceLaunchTarget ?? copy.launchingDetail}</p>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        {errorMessage ? (
-          <section className="error-banner" role="alert">
-            <strong>{copy.desktopStateError}</strong>
-            <p>{errorMessage}</p>
-          </section>
-        ) : null}
-
-        <header className="launch-meta-row">
-          <div className="launch-status-group">
-            <div
-              ref={accountMenuRef}
-              className="launch-auth-group"
-              aria-label={
-                snapshot.service.authenticated ? accountEmailLabel : copy.serviceSignInRequired
-              }
-            >
-              {snapshot.service.authenticated ? (
-                <>
-                  <span className="account-chip" title={accountEmailLabel}>
-                    <AccountAvatar account={snapshot.service.account} />
-                    <span className="account-email">{accountEmailLabel}</span>
-                  </span>
-                  <button
-                    type="button"
-                    className="account-switch-button"
-                    onClick={() => setAccountMenuOpen((open) => !open)}
-                    disabled={busyAction === 'switch-account'}
-                    title={copy.switchAccount}
-                    aria-expanded={accountMenuOpen}
-                  >
-                    {busyAction === 'switch-account' ? <SpinnerIcon /> : null}
-                    <span>{copy.switchAccount}</span>
-                  </button>
-                  {accountMenuOpen ? (
-                    <div
-                      className="account-menu"
-                      role="menu"
-                      aria-label={copy.switchAccount}
-                    >
-                      {savedAccounts.map((account) => {
-                        const selected = account.id === currentAccountId
-                        const label = getAccountEmailLabel(account, copy)
-                        return (
-                          <div
-                            key={account.id}
-                            className={`account-menu-item-wrap${selected ? ' selected' : ''}`}
-                          >
-                            <button
-                              type="button"
-                              className="account-menu-item-main"
-                              role="menuitem"
-                              onClick={() => {
-                                if (!selected) {
-                                  void handleSavedAccountSelect(account.id)
-                                }
-                              }}
-                              disabled={selected || busyAction === `account:${account.id}`}
-                            >
-                              <AccountAvatar account={account} />
-                              <span className="account-menu-copy">
-                                <span>{label}</span>
-                                {selected ? <span>{copy.currentAccount}</span> : null}
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              className="account-menu-forget"
-                              title={copy.forgetAccount}
-                              aria-label={copy.forgetAccount}
-                              disabled={busyAction === `forget:${account.id}`}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                void handleForgetAccount(account.id)
-                              }}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        )
-                      })}
-                      <button
-                        type="button"
-                        className="account-menu-item add"
-                        role="menuitem"
-                        onClick={() => void handleSwitchAccount()}
-                      >
-                        <span className="account-menu-add-mark">+</span>
-                        <span>{copy.addAccount}</span>
-                      </button>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="launch-release-button accent"
-                  onClick={handleLoginOpen}
-                  disabled={workspaceLaunching}
-                  title={copy.signIn}
-                >
-                  <span>{copy.signIn}</span>
-                </button>
-              )}
-            </div>
-            {snapshot.workspaceOpen ? (
-              <span className="status-pill live">{copy.workspaceActive}</span>
-            ) : null}
-          </div>
-
-            <span
-              className={`status-chip launch-release-status${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
-              title={releaseStatusTitle}
-            >
-              v{snapshot.updates.currentVersion}
-              {releaseStatusLabel ? ` · ${releaseStatusLabel}` : ''}
-            </span>
-            {releaseUpdateAvailable ? (
+        <div className="titlebar-account" ref={accountMenuRef}>
+          {snapshot.service.authenticated ? (
+            <>
               <button
                 type="button"
-                className="launch-release-button accent"
-                onClick={handleDesktopUpdateInstall}
-                disabled={releaseState.installing || releaseState.loading}
+                className="titlebar-avatar-button"
+                onClick={() => setAccountMenuOpen((open) => !open)}
+                disabled={busyAction === 'switch-account'}
+                title={accountEmailLabel}
+                aria-expanded={accountMenuOpen}
+                aria-label={accountEmailLabel}
               >
-                {releaseState.installing ? <SpinnerIcon /> : null}
-                <span>
-                  {releaseState.installing
-                    ? copy.installingDesktopUpdate
-                    : copy.installDesktopUpdate}
-                </span>
+                <AccountAvatar account={snapshot.service.account} />
               </button>
-            ) : null}
-        </header>
-
-        <section className="launch-layout">
-          <section className="control-card service-card" aria-label={copy.service}>
-            <div className="control-card-head">
-              <p className="eyebrow">{copy.service}</p>
-              <div className="service-launch-head-actions">
-                <span className="server-count-pill">
-                  {normalizedServerQuery
-                    ? `${filteredServiceServers.length}/${snapshot.service.servers.length}`
-                    : `${snapshot.service.servers.length}`}
-                </span>
-                <button
-                  className={`service-toggle-button${selectedServiceRunning ? ' running' : ''}`}
-                  type="button"
-                  onClick={handleSelectedServiceToggle}
-                  disabled={!selectedServiceSlug || serviceActionBusy}
-                  title={serviceToggleLabel}
-                  aria-label={serviceToggleLabel}
+              {accountMenuOpen ? (
+                <div
+                  className="account-menu"
+                  role="menu"
+                  aria-label={copy.switchAccount}
                 >
-                  <ServiceActionIcon
-                    type={selectedServiceRunning ? 'stop' : 'start'}
-                    busy={serviceToggleBusy}
-                  />
-                </button>
-                <button
-                  className="icon-action-button"
-                  onClick={handleServiceRefresh}
-                  disabled={serviceRefreshing}
-                  aria-label={copy.refreshServers}
-                  title={copy.refreshServers}
-                >
-                  <ServiceActionIcon type="refresh" busy={serviceRefreshing} />
-                </button>
-              </div>
-            </div>
-
-            {snapshot.service.syncError ? (
-              <p className="inline-note error">{snapshot.service.syncError}</p>
-            ) : snapshot.service.lastError ? (
-              <p className="inline-note error">{snapshot.service.lastError}</p>
-            ) : !snapshot.service.authenticated ? (
-              <p className="inline-note">{copy.serviceSignInHint}</p>
-            ) : snapshot.service.servers.length === 0 && !serviceRefreshing ? (
-              <p className="inline-note">{copy.noServers}</p>
-            ) : null}
-
-            {snapshot.service.servers.length > 0 ? (
-              <label className="server-search">
-                <ServerSearchIcon />
-                <span className="sr-only">{copy.serverSearch}</span>
-                <input
-                  value={serverQuery}
-                  onChange={(event) => setServerQuery(event.target.value)}
-                  placeholder={copy.serverSearch}
-                  aria-label={copy.serverSearch}
-                />
-              </label>
-            ) : null}
-
-            <div className="service-server-list" role="list" aria-label={copy.selectedServer}>
-              {serviceBusyMessage ? (
-                <div className="service-loading-row" role="status" aria-live="polite">
-                  <SpinnerIcon />
-                  <span>{serviceBusyMessage}</span>
+                  {savedAccounts.map((account) => {
+                    const selected = account.id === currentAccountId
+                    const label = getAccountEmailLabel(account, copy)
+                    return (
+                      <div
+                        key={account.id}
+                        className={`account-menu-item-wrap${selected ? ' selected' : ''}`}
+                      >
+                        <button
+                          type="button"
+                          className="account-menu-item-main"
+                          role="menuitem"
+                          onClick={() => {
+                            if (!selected) {
+                              void handleSavedAccountSelect(account.id)
+                            }
+                          }}
+                          disabled={selected || busyAction === `account:${account.id}`}
+                        >
+                          <AccountAvatar account={account} />
+                          <span className="account-menu-copy">
+                            <span>{label}</span>
+                            {selected ? <span>{copy.currentAccount}</span> : null}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="account-menu-forget"
+                          title={copy.forgetAccount}
+                          aria-label={copy.forgetAccount}
+                          disabled={busyAction === `forget:${account.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void handleForgetAccount(account.id)
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )
+                  })}
+                  <button
+                    type="button"
+                    className="account-menu-item add"
+                    role="menuitem"
+                    onClick={() => void handleSwitchAccount()}
+                  >
+                    <span className="account-menu-add-mark">+</span>
+                    <span>{copy.addAccount}</span>
+                  </button>
                 </div>
               ) : null}
-              {filteredServiceServers.map((server) => {
-                const selected = server.slug === selectedServiceSlug
-                const selecting = busyAction === `select-service:${server.slug}`
-                const serverSelectionDisabled =
-                  busyAction?.startsWith('select-service:') ||
-                  busyAction === 'start-service' ||
-                  busyAction === 'workspace' ||
-                  busyAction === 'stop-service' ||
-                  busyAction === 'refresh-service'
-                const running =
-                  snapshot.service.running &&
-                  server.slug === snapshot.service.activeServerSlug
-                const serverStatusLabel = getServiceServerStatusLabel(
-                  server,
-                  snapshot.service,
-                  copy,
-                  selectedServiceSlug,
-                )
-
-                return (
-                  <div
-                    key={server.id}
-                    className={`service-server-row${selected ? ' selected' : ''}${running ? ' running' : ''}`}
-                    data-disabled={serverSelectionDisabled}
-                  >
-                    <button
-                      className="service-server-select-button"
-                      type="button"
-                      aria-pressed={selected}
-                      disabled={serverSelectionDisabled}
-                      onClick={() => handleServiceServerSelect(server.slug)}
-                    >
-                      <span className="service-server-copy">
-                        <span className="service-server-name-line">
-                          <span className="service-server-name">{server.name}</span>
-                          <span className="service-server-slug">{server.slug}</span>
-                        </span>
-                      </span>
-                      <span className={`status-chip${running ? ' live' : ''}`}>
-                        {selecting ? copy.saving : serverStatusLabel}
-                      </span>
-                    </button>
-                    <button
-                      className="icon-action-button compact service-server-log-button"
-                      type="button"
-                      onClick={() => handleServiceLogOpen(server.slug)}
-                      aria-label={`${copy.openServerLog}: ${server.name}`}
-                      title={copy.openServerLog}
-                    >
-                      <LogsIcon />
-                    </button>
-                  </div>
-                )
-              })}
-              {snapshot.service.servers.length > 0 && filteredServiceServers.length === 0 ? (
-                <p className="inline-note">{copy.noMatchingServers}</p>
-              ) : null}
-            </div>
-          </section>
-
-          <div className="launch-side">
-            <section
-              className="control-card theme-card"
-              aria-label={copy.appearance}
-              ref={themeCardRef}
+            </>
+          ) : (
+            <button
+              type="button"
+              className="titlebar-signin-button"
+              onClick={handleLoginOpen}
+              disabled={workspaceLaunching}
+              title={copy.signIn}
             >
+              <span>{copy.signIn}</span>
+            </button>
+          )}
+        </div>
+
+        <div className="titlebar-server" ref={serverPanelRef}>
+          <button
+            type="button"
+            className="titlebar-server-button"
+            onClick={() => setServerPanelOpen((open) => !open)}
+            disabled={!snapshot.service.authenticated}
+            aria-expanded={serverPanelOpen}
+            title={selectedServiceServer?.name ?? copy.selectedServerPlaceholder}
+          >
+            <span className="titlebar-server-name">
+              {selectedServiceServer?.name ?? copy.selectedServerPlaceholder}
+            </span>
+            {selectedServiceRunning ? (
+              <span className="titlebar-server-dot running" aria-hidden="true" />
+            ) : null}
+          </button>
+          {serverPanelOpen ? (
+            <div className="titlebar-server-panel" role="listbox" aria-label={copy.service}>
+              <div className="titlebar-server-panel-head">
+                <div className="titlebar-server-panel-actions">
+                  <span className="server-count-pill">
+                    {normalizedServerQuery
+                      ? `${filteredServiceServers.length}/${snapshot.service.servers.length}`
+                      : `${snapshot.service.servers.length}`}
+                  </span>
+                  <button
+                    className={`service-toggle-button${selectedServiceRunning ? ' running' : ''}`}
+                    type="button"
+                    onClick={handleSelectedServiceToggle}
+                    disabled={!selectedServiceSlug || serviceActionBusy}
+                    title={serviceToggleLabel}
+                    aria-label={serviceToggleLabel}
+                  >
+                    <ServiceActionIcon
+                      type={selectedServiceRunning ? 'stop' : 'start'}
+                      busy={serviceToggleBusy}
+                    />
+                  </button>
+                  <button
+                    className="icon-action-button"
+                    onClick={handleServiceRefresh}
+                    disabled={serviceRefreshing}
+                    aria-label={copy.refreshServers}
+                    title={copy.refreshServers}
+                  >
+                    <ServiceActionIcon type="refresh" busy={serviceRefreshing} />
+                  </button>
+                </div>
+                {snapshot.service.servers.length > 0 ? (
+                  <label className="server-search">
+                    <ServerSearchIcon />
+                    <span className="sr-only">{copy.serverSearch}</span>
+                    <input
+                      value={serverQuery}
+                      onChange={(event) => setServerQuery(event.target.value)}
+                      placeholder={copy.serverSearch}
+                      aria-label={copy.serverSearch}
+                    />
+                  </label>
+                ) : null}
+              </div>
+
+              {snapshot.service.syncError ? (
+                <p className="inline-note error">{snapshot.service.syncError}</p>
+              ) : snapshot.service.lastError ? (
+                <p className="inline-note error">{snapshot.service.lastError}</p>
+              ) : !snapshot.service.authenticated ? (
+                <p className="inline-note">{copy.serviceSignInHint}</p>
+              ) : snapshot.service.servers.length === 0 && !serviceRefreshing ? (
+                <p className="inline-note">{copy.noServers}</p>
+              ) : null}
+
+              <div className="service-server-list" role="list" aria-label={copy.selectedServer}>
+                {serviceBusyMessage ? (
+                  <div className="service-loading-row" role="status" aria-live="polite">
+                    <SpinnerIcon />
+                    <span>{serviceBusyMessage}</span>
+                  </div>
+                ) : null}
+                {filteredServiceServers.map((server) => {
+                  const selected = server.slug === selectedServiceSlug
+                  const selecting = busyAction === `select-service:${server.slug}`
+                  const serverSelectionDisabled =
+                    busyAction?.startsWith('select-service:') ||
+                    busyAction === 'start-service' ||
+                    busyAction === 'workspace' ||
+                    busyAction === 'stop-service' ||
+                    busyAction === 'refresh-service'
+                  const running =
+                    snapshot.service.running &&
+                    server.slug === snapshot.service.activeServerSlug
+                  const serverStatusLabel = getServiceServerStatusLabel(
+                    server,
+                    snapshot.service,
+                    copy,
+                    selectedServiceSlug,
+                  )
+
+                  return (
+                    <div
+                      key={server.id}
+                      className={`service-server-row${selected ? ' selected' : ''}${running ? ' running' : ''}`}
+                      data-disabled={serverSelectionDisabled}
+                    >
+                      <button
+                        className="service-server-select-button"
+                        type="button"
+                        aria-pressed={selected}
+                        disabled={serverSelectionDisabled}
+                        onClick={() => handleServiceServerSelect(server.slug)}
+                      >
+                        <span className="service-server-copy">
+                          <span className="service-server-name-line">
+                            <span className="service-server-name">{server.name}</span>
+                            <span className="service-server-slug">{server.slug}</span>
+                          </span>
+                        </span>
+                        <span className={`status-chip${running ? ' live' : ''}`}>
+                          {selecting ? copy.saving : serverStatusLabel}
+                        </span>
+                      </button>
+                      <button
+                        className="icon-action-button compact service-server-log-button"
+                        type="button"
+                        onClick={() => handleServiceLogOpen(server.slug)}
+                        aria-label={`${copy.openServerLog}: ${server.name}`}
+                        title={copy.openServerLog}
+                      >
+                        <LogsIcon />
+                      </button>
+                    </div>
+                  )
+                })}
+                {snapshot.service.servers.length > 0 && filteredServiceServers.length === 0 ? (
+                  <p className="inline-note">{copy.noMatchingServers}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="tauri-titlebar-drag" data-tauri-drag-region />
+
+        <div className="titlebar-theme" ref={themePanelRef}>
+          <button
+            type="button"
+            className="titlebar-theme-button"
+            onClick={() => setThemePanelOpen((open) => !open)}
+            aria-expanded={themePanelOpen}
+            aria-label={copy.appearance}
+            title={copy.appearance}
+            style={{ '--current-accent': selectedThemeAccent } as CSSProperties}
+          >
+            <span className="titlebar-theme-swatch" aria-hidden="true" />
+          </button>
+          {themePanelOpen ? (
+            <div className="titlebar-theme-panel" aria-label={copy.appearance}>
               <div className="control-card-head">
                 <p className="eyebrow">{copy.appearance}</p>
                 <button
@@ -2093,21 +2054,114 @@ function App() {
                 </div>
               </div>
             ) : null}
-
-            <div className="launch-dock">
-              <button
-                className={`launch-button launch-button-bottom${workspaceLaunching ? ' launching' : ''}`}
-                onClick={() => {
-                  launchButtonAccentRef.current = selectedThemeAccent
-                  void handleWorkspaceOpen(selectedServiceSlug || undefined)
-                }}
-                disabled={serviceActionBusy}
-              >
-                {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
-              </button>
             </div>
+          ) : null}
+        </div>
+
+        <div className="titlebar-settings" aria-label={`${copy.mode} / ${copy.language}`}>
+          <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.mode}>
+            {THEME_MODES.map((mode) => {
+              const selected = mode.id === snapshot.appearanceMode
+              return (
+                <button
+                  key={mode.id}
+                  className={`icon-option${selected ? ' selected' : ''}`}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  title={copy[mode.labelKey]}
+                  onClick={() => handleThemeModeChange(mode.id)}
+                  disabled={busyAction === `mode:${mode.id}`}
+                >
+                  <OptionIcon type={mode.icon} />
+                  <span className="sr-only">{copy[mode.labelKey]}</span>
+                </button>
+              )
+            })}
           </div>
-        </section>
+          <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.language}>
+            {LANGUAGE_OPTIONS.map((language) => {
+              const selected = language.id === snapshot.language
+              return (
+                <button
+                  key={language.id}
+                  className={`icon-option${selected ? ' selected' : ''}`}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  title={copy[language.labelKey]}
+                  onClick={() => handleLanguageChange(language.id)}
+                  disabled={busyAction === `language:${language.id}`}
+                >
+                  <OptionIcon type={language.icon} />
+                  <span className="sr-only">{copy[language.labelKey]}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        {snapshot.workspaceOpen ? (
+          <span className="status-pill live">{copy.workspaceActive}</span>
+        ) : null}
+        <span
+          className={`status-chip titlebar-version${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
+          title={releaseStatusTitle}
+        >
+          v{snapshot.updates.currentVersion}
+          {releaseStatusLabel ? ` · ${releaseStatusLabel}` : ''}
+        </span>
+        {releaseUpdateAvailable ? (
+          <button
+            type="button"
+            className="titlebar-update-button accent"
+            onClick={handleDesktopUpdateInstall}
+            disabled={releaseState.installing || releaseState.loading}
+          >
+            {releaseState.installing ? <SpinnerIcon /> : null}
+            <span>
+              {releaseState.installing
+                ? copy.installingDesktopUpdate
+                : copy.installDesktopUpdate}
+            </span>
+          </button>
+        ) : null}
+      </header>
+
+      <section className="launch-board" aria-label={copy.openSlock}>
+        {workspaceLaunching ? (
+          <section className="workspace-loading-overlay" aria-live="polite">
+            <div className="workspace-loading-panel">
+              <div className="workspace-loading-mark">
+                <SlockBrandMark />
+                <span className="workspace-loading-ring" aria-hidden="true" />
+              </div>
+              <div className="workspace-loading-copy">
+                <p className="eyebrow">{copy.launchingTitle}</p>
+                <p>{workspaceLaunchTarget ?? copy.launchingDetail}</p>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {errorMessage ? (
+          <section className="error-banner" role="alert">
+            <strong>{copy.desktopStateError}</strong>
+            <p>{errorMessage}</p>
+          </section>
+        ) : null}
+
+        <div className="launch-dock">
+          <button
+            className={`launch-button launch-button-center${workspaceLaunching ? ' launching' : ''}`}
+            onClick={() => {
+              launchButtonAccentRef.current = selectedThemeAccent
+              void handleWorkspaceOpen(selectedServiceSlug || undefined)
+            }}
+            disabled={serviceActionBusy}
+          >
+            {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
+          </button>
+        </div>
       </section>
 
       {serviceLogViewer ? (
