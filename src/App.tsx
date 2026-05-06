@@ -16,6 +16,7 @@ import {
   activateAccount,
   type BootstrapPayload,
   type CustomThemeSnapshot,
+  type DashboardData,
   type DesktopUpdateCheck,
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
@@ -25,6 +26,7 @@ import {
   checkDesktopUpdate,
   createCustomTheme,
   deleteCustomTheme,
+  fetchDashboard,
   installDesktopUpdate,
   forgetAccount,
   importThemeStyle,
@@ -224,6 +226,13 @@ const COPY = {
     appBootingTitle: 'slock-desktop',
     loginTimeout: 'Sign-in timed out',
     close: 'Close',
+    dashboardChannels: 'Channels',
+    dashboardUnread: 'Unread',
+    dashboardTasks: 'Tasks',
+    dashboardAgents: 'Agents',
+    dashboardTaskStatus: 'Task Status',
+    dashboardAgentStatus: 'Agents',
+    dashboardActiveChannels: 'Active Channels',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -353,6 +362,13 @@ const COPY = {
     appBootingTitle: 'slock-desktop',
     loginTimeout: '登录超时',
     close: '关闭',
+    dashboardChannels: '频道',
+    dashboardUnread: '未读',
+    dashboardTasks: '任务',
+    dashboardAgents: 'Agents',
+    dashboardTaskStatus: '任务状态',
+    dashboardAgentStatus: 'Agents',
+    dashboardActiveChannels: '活跃频道',
   },
 } as const
 
@@ -435,6 +451,8 @@ function App() {
   const styleImportInputRef = useRef<HTMLInputElement | null>(null)
   const serviceLogSearchRef = useRef<HTMLInputElement | null>(null)
   const serviceLogContentRef = useRef<HTMLPreElement | null>(null)
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
+  const [dashboardLoading, setDashboardLoading] = useState(false)
   const initialServiceRefreshRef = useRef(false)
   const authResolvedRef = useRef(false)
   const [initialServiceRefreshDone, setInitialServiceRefreshDone] = useState(false)
@@ -854,6 +872,38 @@ function App() {
     document.addEventListener('pointerdown', closeThemePanelOnOutsidePointer)
     return () => document.removeEventListener('pointerdown', closeThemePanelOnOutsidePointer)
   }, [themePanelOpen])
+
+  // Fetch dashboard data when selected server changes
+  useEffect(() => {
+    if (!snapshot?.service.selectedServerSlug || !snapshot.service.authenticated) {
+      setDashboardData(null)
+      return
+    }
+
+    const serverSlug = snapshot.service.selectedServerSlug
+    let cancelled = false
+
+    async function loadDashboard() {
+      setDashboardLoading(true)
+      try {
+        const data = await fetchDashboard(serverSlug)
+        if (!cancelled) {
+          setDashboardData(data)
+        }
+      } catch {
+        if (!cancelled) {
+          setDashboardData(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setDashboardLoading(false)
+        }
+      }
+    }
+
+    void loadDashboard()
+    return () => { cancelled = true }
+  }, [snapshot?.service.selectedServerSlug, snapshot?.service.authenticated])
 
   useEffect(() => {
     if (
@@ -2148,6 +2198,102 @@ function App() {
             <strong>{copy.desktopStateError}</strong>
             <p>{errorMessage}</p>
           </section>
+        ) : null}
+
+        {dashboardData ? (
+          <section className="dashboard" aria-label="Server Dashboard">
+            <div className="dashboard-stats">
+              <div className="dashboard-stat-card">
+                <span className="dashboard-stat-value">
+                  {dashboardData.channels.filter((ch) => !ch.isArchived).length}
+                </span>
+                <span className="dashboard-stat-label">{copy.dashboardChannels ?? 'Channels'}</span>
+              </div>
+              <div className="dashboard-stat-card">
+                <span className="dashboard-stat-value">
+                  {dashboardData.unread.reduce((sum, u) => sum + u.unreadCount, 0)}
+                </span>
+                <span className="dashboard-stat-label">{copy.dashboardUnread ?? 'Unread'}</span>
+              </div>
+              <div className="dashboard-stat-card">
+                <span className="dashboard-stat-value">{dashboardData.tasks.length}</span>
+                <span className="dashboard-stat-label">{copy.dashboardTasks ?? 'Tasks'}</span>
+              </div>
+              <div className="dashboard-stat-card">
+                <span className="dashboard-stat-value">
+                  {dashboardData.agents.filter((a) => a.status !== 'offline').length}/{dashboardData.agents.length}
+                </span>
+                <span className="dashboard-stat-label">{copy.dashboardAgents ?? 'Agents'}</span>
+              </div>
+            </div>
+
+            <div className="dashboard-panels">
+              <div className="dashboard-panel">
+                <p className="eyebrow">{copy.dashboardTaskStatus ?? 'Task Status'}</p>
+                <div className="dashboard-task-bar">
+                  {(() => {
+                    const total = dashboardData.tasks.length || 1
+                    const todo = dashboardData.tasks.filter((t) => t.status === 'todo').length
+                    const inProgress = dashboardData.tasks.filter((t) => t.status === 'in_progress').length
+                    const inReview = dashboardData.tasks.filter((t) => t.status === 'in_review').length
+                    const done = dashboardData.tasks.filter((t) => t.status === 'done').length
+                    return (
+                      <>
+                        {todo > 0 ? <span className="task-bar-segment todo" style={{ flex: todo / total }} title={`Todo: ${todo}`} /> : null}
+                        {inProgress > 0 ? <span className="task-bar-segment in-progress" style={{ flex: inProgress / total }} title={`In Progress: ${inProgress}`} /> : null}
+                        {inReview > 0 ? <span className="task-bar-segment in-review" style={{ flex: inReview / total }} title={`In Review: ${inReview}`} /> : null}
+                        {done > 0 ? <span className="task-bar-segment done" style={{ flex: done / total }} title={`Done: ${done}`} /> : null}
+                      </>
+                    )
+                  })()}
+                </div>
+                <div className="dashboard-task-legend">
+                  <span className="task-legend-item"><span className="task-dot todo" />Todo {dashboardData.tasks.filter((t) => t.status === 'todo').length}</span>
+                  <span className="task-legend-item"><span className="task-dot in-progress" />In Progress {dashboardData.tasks.filter((t) => t.status === 'in_progress').length}</span>
+                  <span className="task-legend-item"><span className="task-dot in-review" />Review {dashboardData.tasks.filter((t) => t.status === 'in_review').length}</span>
+                  <span className="task-legend-item"><span className="task-dot done" />Done {dashboardData.tasks.filter((t) => t.status === 'done').length}</span>
+                </div>
+              </div>
+
+              <div className="dashboard-panel">
+                <p className="eyebrow">{copy.dashboardAgentStatus ?? 'Agents'}</p>
+                <div className="dashboard-agent-list">
+                  {dashboardData.agents.map((agent) => (
+                    <div key={agent.id} className="dashboard-agent-row">
+                      <span className={`agent-status-dot ${agent.status === 'offline' ? 'offline' : 'online'}`} />
+                      <span className="agent-name">{agent.name}</span>
+                      <span className="agent-status-label">{agent.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="dashboard-panel">
+                <p className="eyebrow">{copy.dashboardActiveChannels ?? 'Active Channels'}</p>
+                <div className="dashboard-channel-list">
+                  {dashboardData.channels
+                    .filter((ch) => !ch.isArchived && ch.lastMessageAt)
+                    .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
+                    .slice(0, 5)
+                    .map((channel) => {
+                      const unread = dashboardData.unread.find((u) => u.channelId === channel.id)
+                      return (
+                        <div key={channel.id} className="dashboard-channel-row">
+                          <span className="channel-name">#{channel.name}</span>
+                          {unread && unread.unreadCount > 0 ? (
+                            <span className="channel-unread-badge">{unread.unreadCount}</span>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : dashboardLoading ? (
+          <div className="dashboard-loading">
+            <SpinnerIcon />
+          </div>
         ) : null}
 
         <div className="launch-dock">
