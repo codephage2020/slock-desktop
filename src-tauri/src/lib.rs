@@ -31,7 +31,10 @@ use tauri::{
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::{Updater, UpdaterExt};
-use theme::{meta_catalog, resolve_theme, sanitize_hex, CustomThemeItem, CustomThemeSet};
+use theme::{
+    color_catalog, resolve_style, resolve_theme_with_style, sanitize_hex,
+    style_catalog, CustomStyleSet, CustomThemeItem, CustomThemeSet, ThemeStyleConfig,
+};
 
 const MAIN_LABEL: &str = "main";
 const AUTH_LABEL: &str = "auth";
@@ -84,12 +87,15 @@ struct BootstrapPayload {
     app_name: String,
     workspace_url: String,
     color_scheme: String,
+    style_scheme: String,
     appearance_mode: String,
     custom_themes: Vec<CustomThemeSettings>,
+    custom_styles: Vec<ThemeStyleConfig>,
     language: String,
     resolved_language: String,
     workspace_open: bool,
     themes: Vec<theme::ThemeMeta>,
+    theme_styles: Vec<theme::ThemeStyleMeta>,
     service: ServiceSnapshot,
     updates: UpdateSnapshot,
 }
@@ -330,29 +336,126 @@ fn set_theme(
     state: State<'_, DesktopState>,
     theme_id: String,
 ) -> Result<BootstrapPayload, String> {
-    let (color_scheme, appearance_mode, custom_themes, language) = {
+    let (color_scheme, style_scheme, appearance_mode, custom_themes, custom_styles, language) = {
         let mut settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
-        let theme = resolve_theme(
-            &theme_id,
-            &settings.appearance_mode,
-            &custom_theme_set(&settings.custom_themes),
-        );
-        settings.color_scheme = theme.id.clone();
+        let custom = custom_theme_set(&settings.custom_themes);
+        let styles = custom_style_set(&settings.custom_styles);
+        if theme_id == "original" {
+            settings.color_scheme = theme::default_color_scheme().to_string();
+            settings.style_scheme = theme::default_style_scheme().to_string();
+        } else {
+            let theme = resolve_theme_with_style(
+                &theme_id,
+                &settings.style_scheme,
+                &settings.appearance_mode,
+                &custom,
+                &styles,
+            );
+            settings.color_scheme = theme.id;
+        }
         save_settings(&app, &settings)?;
         (
             settings.color_scheme.clone(),
+            settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
             settings.custom_themes.clone(),
+            settings.custom_styles.clone(),
             settings.language.clone(),
         )
     };
 
     let custom = custom_theme_set(&custom_themes);
-    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
+    let styles = custom_style_set(&custom_styles);
+    let theme = resolve_theme_with_style(
+        &color_scheme,
+        &style_scheme,
+        &appearance_mode,
+        &custom,
+        &styles,
+    );
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+
+    build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn set_theme_style(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    style_id: String,
+) -> Result<BootstrapPayload, String> {
+    let (color_scheme, style_scheme, appearance_mode, custom_themes, custom_styles, language) = {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        let styles = custom_style_set(&settings.custom_styles);
+        let style = resolve_style(&style_id, &styles);
+        settings.style_scheme = style.id;
+        save_settings(&app, &settings)?;
+        (
+            settings.color_scheme.clone(),
+            settings.style_scheme.clone(),
+            settings.appearance_mode.clone(),
+            settings.custom_themes.clone(),
+            settings.custom_styles.clone(),
+            settings.language.clone(),
+        )
+    };
+
+    let custom = custom_theme_set(&custom_themes);
+    let styles = custom_style_set(&custom_styles);
+    let theme = resolve_theme_with_style(
+        &color_scheme,
+        &style_scheme,
+        &appearance_mode,
+        &custom,
+        &styles,
+    );
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+
+    build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn import_theme_style(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    config: ThemeStyleConfig,
+) -> Result<BootstrapPayload, String> {
+    let (color_scheme, style_scheme, appearance_mode, custom_themes, custom_styles, language) = {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        let style = theme::sanitize_style_config(config);
+        settings.custom_styles.retain(|item| item.id != style.id);
+        settings.custom_styles.push(style.clone());
+        settings.style_scheme = style.id;
+        save_settings(&app, &settings)?;
+        (
+            settings.color_scheme.clone(),
+            settings.style_scheme.clone(),
+            settings.appearance_mode.clone(),
+            settings.custom_themes.clone(),
+            settings.custom_styles.clone(),
+            settings.language.clone(),
+        )
+    };
+
+    let custom = custom_theme_set(&custom_themes);
+    let styles = custom_style_set(&custom_styles);
+    let theme = resolve_theme_with_style(
+        &color_scheme,
+        &style_scheme,
+        &appearance_mode,
+        &custom,
+        &styles,
+    );
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -363,7 +466,7 @@ fn set_theme_mode(
     state: State<'_, DesktopState>,
     theme_mode: String,
 ) -> Result<BootstrapPayload, String> {
-    let (color_scheme, appearance_mode, custom_themes, language) = {
+    let (color_scheme, style_scheme, appearance_mode, custom_themes, custom_styles, language) = {
         let mut settings = state
             .settings
             .lock()
@@ -372,15 +475,24 @@ fn set_theme_mode(
         save_settings(&app, &settings)?;
         (
             settings.color_scheme.clone(),
+            settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
             settings.custom_themes.clone(),
+            settings.custom_styles.clone(),
             settings.language.clone(),
         )
     };
 
     let custom = custom_theme_set(&custom_themes);
-    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
+    let styles = custom_style_set(&custom_styles);
+    let theme = resolve_theme_with_style(
+        &color_scheme,
+        &style_scheme,
+        &appearance_mode,
+        &custom,
+        &styles,
+    );
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -392,7 +504,7 @@ fn create_custom_theme(
     name: String,
     accent: String,
 ) -> Result<BootstrapPayload, String> {
-    let (appearance_mode, language, custom_themes, new_id) = {
+    let (style_scheme, appearance_mode, language, custom_themes, custom_styles, new_id) = {
         let mut settings = state
             .settings
             .lock()
@@ -407,16 +519,19 @@ fn create_custom_theme(
         settings.color_scheme = id.clone();
         save_settings(&app, &settings)?;
         (
+            settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
             settings.language.clone(),
             settings.custom_themes.clone(),
+            settings.custom_styles.clone(),
             id,
         )
     };
 
     let custom = custom_theme_set(&custom_themes);
-    let theme = resolve_theme(&new_id, &appearance_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
+    let styles = custom_style_set(&custom_styles);
+    let theme = resolve_theme_with_style(&new_id, &style_scheme, &appearance_mode, &custom, &styles);
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -450,7 +565,7 @@ fn update_custom_theme_accent(
     id: String,
     accent: String,
 ) -> Result<BootstrapPayload, String> {
-    let (appearance_mode, language, custom_themes, color_scheme) = {
+    let (style_scheme, appearance_mode, language, custom_themes, custom_styles, color_scheme) = {
         let mut settings = state
             .settings
             .lock()
@@ -461,16 +576,25 @@ fn update_custom_theme_accent(
         }
         save_settings(&app, &settings)?;
         (
+            settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
             settings.language.clone(),
             settings.custom_themes.clone(),
+            settings.custom_styles.clone(),
             settings.color_scheme.clone(),
         )
     };
 
     let custom = custom_theme_set(&custom_themes);
-    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
+    let styles = custom_style_set(&custom_styles);
+    let theme = resolve_theme_with_style(
+        &color_scheme,
+        &style_scheme,
+        &appearance_mode,
+        &custom,
+        &styles,
+    );
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -481,27 +605,36 @@ fn delete_custom_theme(
     state: State<'_, DesktopState>,
     id: String,
 ) -> Result<BootstrapPayload, String> {
-    let (appearance_mode, language, custom_themes, color_scheme) = {
+    let (style_scheme, appearance_mode, language, custom_themes, custom_styles, color_scheme) = {
         let mut settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         settings.custom_themes.retain(|item| item.id != id);
         if settings.color_scheme == id {
-            settings.color_scheme = "original".to_string();
+            settings.color_scheme = theme::default_color_scheme().to_string();
         }
         save_settings(&app, &settings)?;
         (
+            settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
             settings.language.clone(),
             settings.custom_themes.clone(),
+            settings.custom_styles.clone(),
             settings.color_scheme.clone(),
         )
     };
 
     let custom = custom_theme_set(&custom_themes);
-    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
+    let styles = custom_style_set(&custom_styles);
+    let theme = resolve_theme_with_style(
+        &color_scheme,
+        &style_scheme,
+        &appearance_mode,
+        &custom,
+        &styles,
+    );
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -512,7 +645,7 @@ fn set_language(
     state: State<'_, DesktopState>,
     language: String,
 ) -> Result<BootstrapPayload, String> {
-    let (color_scheme, appearance_mode, custom_themes, language) = {
+    let (color_scheme, style_scheme, appearance_mode, custom_themes, custom_styles, language) = {
         let mut settings = state
             .settings
             .lock()
@@ -521,15 +654,24 @@ fn set_language(
         save_settings(&app, &settings)?;
         (
             settings.color_scheme.clone(),
+            settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
             settings.custom_themes.clone(),
+            settings.custom_styles.clone(),
             settings.language.clone(),
         )
     };
 
     let custom = custom_theme_set(&custom_themes);
-    let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom)?;
+    let styles = custom_style_set(&custom_styles);
+    let theme = resolve_theme_with_style(
+        &color_scheme,
+        &style_scheme,
+        &appearance_mode,
+        &custom,
+        &styles,
+    );
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -707,15 +849,25 @@ fn open_workspace(
         settings.service.clone()
     };
 
-    let (color_scheme, appearance_mode, custom_themes, language, selected_server_slug) = {
+    let (
+        color_scheme,
+        style_scheme,
+        appearance_mode,
+        custom_themes,
+        custom_styles,
+        language,
+        selected_server_slug,
+    ) = {
         let settings = state
             .settings
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         (
             settings.color_scheme.clone(),
+            settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
             settings.custom_themes.clone(),
+            settings.custom_styles.clone(),
             settings.language.clone(),
             settings.service.selected_server_slug.clone(),
         )
@@ -731,9 +883,11 @@ fn open_workspace(
         &app,
         &state,
         &color_scheme,
+        &style_scheme,
         &appearance_mode,
         &language,
         &custom_theme_set(&custom_themes),
+        &custom_style_set(&custom_styles),
         &selected_server_slug,
     )?;
     build_bootstrap(&app, &state, service_bound)
@@ -1906,12 +2060,25 @@ fn build_bootstrap_with_service_options(
         app_name: "slock-desktop".to_string(),
         workspace_url: workspace_url_for_slug(&settings.service.selected_server_slug),
         color_scheme: settings.color_scheme.clone(),
+        style_scheme: settings.style_scheme.clone(),
         appearance_mode: appearance_mode.clone(),
         custom_themes: settings.custom_themes.clone(),
+        custom_styles: settings.custom_styles.clone(),
         language: sanitize_language(&settings.language).to_string(),
         resolved_language: resolve_desktop_language(&settings.language).to_string(),
         workspace_open: main_window_is_workspace(app),
-        themes: meta_catalog(&appearance_mode, &custom_theme_set(&settings.custom_themes)),
+        themes: color_catalog(
+            &appearance_mode,
+            &settings.style_scheme,
+            &custom_theme_set(&settings.custom_themes),
+            &custom_style_set(&settings.custom_styles),
+        ),
+        theme_styles: style_catalog(
+            &appearance_mode,
+            &settings.color_scheme,
+            &custom_theme_set(&settings.custom_themes),
+            &custom_style_set(&settings.custom_styles),
+        ),
         service,
         updates,
     })
@@ -1921,9 +2088,11 @@ fn enter_workspace_in_main_window(
     app: &AppHandle,
     state: &DesktopState,
     theme_id: &str,
+    style_id: &str,
     theme_mode: &str,
     language: &str,
     custom_theme: &CustomThemeSet,
+    custom_style: &CustomStyleSet,
     selected_server_slug: &str,
 ) -> Result<(), String> {
     let target_url = workspace_url_for_slug(selected_server_slug);
@@ -1931,9 +2100,11 @@ fn enter_workspace_in_main_window(
         app,
         state,
         theme_id,
+        style_id,
         theme_mode,
         language,
         custom_theme,
+        custom_style,
         &target_url,
     )
 }
@@ -1942,12 +2113,14 @@ fn enter_workspace_url_in_main_window(
     app: &AppHandle,
     state: &DesktopState,
     theme_id: &str,
+    style_id: &str,
     theme_mode: &str,
     language: &str,
     custom_theme: &CustomThemeSet,
+    custom_style: &CustomStyleSet,
     target_url: &str,
 ) -> Result<(), String> {
-    let theme = resolve_theme(theme_id, theme_mode, custom_theme);
+    let theme = resolve_theme_with_style(theme_id, style_id, theme_mode, custom_theme, custom_style);
     let resolved_language = resolve_desktop_language(language);
     let target_url = target_url.parse::<Url>().map_err(|err| err.to_string())?;
     let window = app
@@ -1971,10 +2144,12 @@ fn enter_workspace_url_in_main_window(
             &window,
             theme,
             theme_id,
+            style_id,
             theme_mode,
             language,
             resolved_language,
             custom_theme,
+            custom_style,
         );
     }
 
@@ -2092,20 +2267,24 @@ fn apply_theme_to_workspace(
     theme_mode: &str,
     language: &str,
     custom_theme: &CustomThemeSet,
+    custom_style: &CustomStyleSet,
 ) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(MAIN_LABEL) {
         apply_window_language(app, &window, language, window_is_workspace(&window));
         if window_is_workspace(&window) {
             apply_window_theme(&window, theme_mode);
             let active_theme_id = theme.id.clone();
+            let active_style_id = theme.style_id.clone();
             apply_workspace_scripts_to_window(
                 &window,
                 theme,
                 &active_theme_id,
+                &active_style_id,
                 theme_mode,
                 language,
                 resolve_desktop_language(language),
                 custom_theme,
+                custom_style,
             )?;
         } else {
             apply_launcher_window_theme(&window, theme_mode);
@@ -2300,10 +2479,12 @@ fn apply_workspace_scripts_to_window(
     window: &tauri::WebviewWindow,
     theme: theme::ThemeDefinition,
     active_theme_id: &str,
+    active_style_id: &str,
     active_theme_mode: &str,
     active_language: &str,
     resolved_language: &str,
     custom_theme: &CustomThemeSet,
+    custom_style: &CustomStyleSet,
 ) -> Result<(), String> {
     window
         .eval(theme::injected_script(theme))
@@ -2314,7 +2495,7 @@ fn apply_workspace_scripts_to_window(
             active_theme_mode,
             active_language,
             resolved_language,
-            &meta_catalog(active_theme_mode, custom_theme),
+            &color_catalog(active_theme_mode, active_style_id, custom_theme, custom_style),
         ))
         .map_err(|err| err.to_string())?;
     window
@@ -2351,10 +2532,12 @@ fn apply_workspace_scripts_to_webview(
     webview: &tauri::Webview,
     theme: theme::ThemeDefinition,
     active_theme_id: &str,
+    active_style_id: &str,
     active_theme_mode: &str,
     active_language: &str,
     resolved_language: &str,
     custom_theme: &CustomThemeSet,
+    custom_style: &CustomStyleSet,
 ) -> Result<(), String> {
     webview
         .eval(theme::injected_script(theme))
@@ -2365,7 +2548,7 @@ fn apply_workspace_scripts_to_webview(
             active_theme_mode,
             active_language,
             resolved_language,
-            &meta_catalog(active_theme_mode, custom_theme),
+            &color_catalog(active_theme_mode, active_style_id, custom_theme, custom_style),
         ))
         .map_err(|err| err.to_string())?;
     webview
@@ -6016,20 +6199,45 @@ fn sanitize_custom_themes(items: Vec<CustomThemeSettings>) -> Vec<CustomThemeSet
     items.into_iter().map(sanitize_custom_theme).collect()
 }
 
+fn sanitize_custom_styles(items: Vec<ThemeStyleConfig>) -> Vec<ThemeStyleConfig> {
+    items.into_iter().map(theme::sanitize_style_config).collect()
+}
+
 fn normalize_app_settings(settings: AppSettings) -> AppSettings {
     let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
     let custom_themes = sanitize_custom_themes(settings.custom_themes);
-    let color_scheme = resolve_theme(
-        &settings.color_scheme,
+    let custom_styles = sanitize_custom_styles(settings.custom_styles);
+    let legacy_original_theme = settings.color_scheme == "original";
+    let inferred_style_scheme = if legacy_original_theme {
+        theme::default_style_scheme().to_string()
+    } else if settings.style_scheme == theme::default_style_scheme()
+        && settings.color_scheme != theme::default_color_scheme()
+    {
+        "default".to_string()
+    } else {
+        settings.style_scheme.clone()
+    };
+    let style_scheme = resolve_style(&inferred_style_scheme, &custom_style_set(&custom_styles)).id;
+    let requested_color_scheme = if legacy_original_theme {
+        theme::default_color_scheme()
+    } else {
+        settings.color_scheme.as_str()
+    };
+    let color_scheme = resolve_theme_with_style(
+        requested_color_scheme,
+        &style_scheme,
         &appearance_mode,
         &custom_theme_set(&custom_themes),
+        &custom_style_set(&custom_styles),
     )
     .id;
 
     AppSettings {
         color_scheme,
+        style_scheme,
         appearance_mode,
         custom_themes,
+        custom_styles,
         language: sanitize_language(&settings.language).to_string(),
         session: config::SessionSettings {
             access_token: settings.session.access_token.trim().to_string(),
@@ -6184,6 +6392,12 @@ fn custom_theme_set(custom_themes: &[CustomThemeSettings]) -> CustomThemeSet {
     }
 }
 
+fn custom_style_set(custom_styles: &[ThemeStyleConfig]) -> CustomStyleSet {
+    CustomStyleSet {
+        items: custom_styles.to_vec(),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -6257,37 +6471,50 @@ pub fn run() {
                 log::warn!("failed to seed workspace session: {err}");
             }
 
-            let (color_scheme, appearance_mode, custom_themes, language) = webview
+            let (color_scheme, style_scheme, appearance_mode, custom_themes, custom_styles, language) = webview
                 .state::<DesktopState>()
                 .settings
                 .lock()
                 .map(|settings| {
                     (
                         settings.color_scheme.clone(),
+                        settings.style_scheme.clone(),
                         settings.appearance_mode.clone(),
                         settings.custom_themes.clone(),
+                        settings.custom_styles.clone(),
                         settings.language.clone(),
                     )
                 })
                 .unwrap_or_else(|_| {
                     (
-                        "original".to_string(),
+                        theme::default_color_scheme().to_string(),
+                        theme::default_style_scheme().to_string(),
                         "system".to_string(),
                         Vec::<CustomThemeSettings>::new(),
+                        Vec::<ThemeStyleConfig>::new(),
                         "system".to_string(),
                     )
                 });
             let custom = custom_theme_set(&custom_themes);
-            let theme = resolve_theme(&color_scheme, &appearance_mode, &custom);
+            let styles = custom_style_set(&custom_styles);
+            let theme = resolve_theme_with_style(
+                &color_scheme,
+                &style_scheme,
+                &appearance_mode,
+                &custom,
+                &styles,
+            );
 
             if let Err(err) = apply_workspace_scripts_to_webview(
                 webview,
                 theme,
                 &color_scheme,
+                &style_scheme,
                 &appearance_mode,
                 &language,
                 resolve_desktop_language(&language),
                 &custom,
+                &styles,
             ) {
                 log::error!("failed to apply workspace desktop scripts: {err}");
             }
@@ -6358,6 +6585,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             bootstrap,
             set_theme,
+            set_theme_style,
+            import_theme_style,
             set_theme_mode,
             create_custom_theme,
             rename_custom_theme,

@@ -1,10 +1,44 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+const DEFAULT_ACCENT_LIGHT: &str = "#10a37f";
+const DEFAULT_ACCENT_DARK: &str = "#19c99b";
 
 #[derive(Debug, Clone)]
 pub struct ThemeDefinition {
     pub id: String,
     pub name: String,
     pub summary: String,
+    pub style_id: String,
+    pub style_name: String,
+    pub style_native: bool,
+    pub mode: String,
+    pub canvas: String,
+    pub surface: String,
+    pub surface_strong: String,
+    pub line: String,
+    pub text: String,
+    pub muted: String,
+    pub accent: String,
+    pub accent_soft: String,
+    pub preview: [String; 3],
+    dark_canvas: String,
+    dark_surface: String,
+    dark_surface_strong: String,
+    dark_line: String,
+    dark_text: String,
+    dark_muted: String,
+    dark_accent: String,
+    dark_accent_soft: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeMeta {
+    pub id: String,
+    pub name: String,
+    pub summary: String,
+    pub style_id: String,
+    pub style_name: String,
     pub mode: String,
     pub canvas: String,
     pub surface: String,
@@ -19,20 +53,63 @@ pub struct ThemeDefinition {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ThemeMeta {
+pub struct ThemeStyleMeta {
     pub id: String,
     pub name: String,
     pub summary: String,
-    pub mode: String,
-    pub canvas: String,
-    pub surface: String,
-    pub surface_strong: String,
-    pub line: String,
-    pub text: String,
-    pub muted: String,
-    pub accent: String,
-    pub accent_soft: String,
     pub preview: [String; 3],
+    pub built_in: bool,
+    pub config: ThemeStyleConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeStyleConfig {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub native: bool,
+    #[serde(default = "default_light_palette")]
+    pub light: ThemeStylePalette,
+    #[serde(default = "default_dark_palette")]
+    pub dark: ThemeStylePalette,
+    #[serde(default = "default_accent_soft_light_mix")]
+    pub accent_soft_light_mix: u8,
+    #[serde(default = "default_accent_soft_dark_mix")]
+    pub accent_soft_dark_mix: u8,
+}
+
+impl Default for ThemeStyleConfig {
+    fn default() -> Self {
+        default_style_config()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeStylePalette {
+    #[serde(default = "default_light_canvas")]
+    pub canvas: String,
+    #[serde(default = "default_light_surface")]
+    pub surface: String,
+    #[serde(default = "default_light_surface_strong")]
+    pub surface_strong: String,
+    #[serde(default = "default_light_line")]
+    pub line: String,
+    #[serde(default = "default_light_text")]
+    pub text: String,
+    #[serde(default = "default_light_muted")]
+    pub muted: String,
+}
+
+impl Default for ThemeStylePalette {
+    fn default() -> Self {
+        default_light_palette()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -47,28 +124,126 @@ pub struct CustomThemeSet {
     pub items: Vec<CustomThemeItem>,
 }
 
-fn materialize_original() -> ThemeDefinition {
-    ThemeDefinition {
+#[derive(Debug, Clone, Default)]
+pub struct CustomStyleSet {
+    pub items: Vec<ThemeStyleConfig>,
+}
+
+fn original_style_config() -> ThemeStyleConfig {
+    ThemeStyleConfig {
         id: "original".to_string(),
         name: "Original".to_string(),
-        summary: "Use Slock's native appearance without desktop theme overrides.".to_string(),
-        mode: "system".to_string(),
-        canvas: "light-dark(#f7f7f5, #1f1f1c)".to_string(),
-        surface: "light-dark(#ffffff, #252623)".to_string(),
-        surface_strong: "light-dark(#f3f4f1, #2f302c)".to_string(),
-        line: "light-dark(#e2e4de, #3e413a)".to_string(),
-        text: "light-dark(#1f1f1c, #f4f4ef)".to_string(),
-        muted: "light-dark(#6b6f67, #b7bbae)".to_string(),
-        accent: "light-dark(#10a37f, #19c99b)".to_string(),
-        accent_soft:
-            "light-dark(color-mix(in srgb, #10a37f 12%, #ffffff), color-mix(in srgb, #19c99b 22%, #1f1f1c))"
-                .to_string(),
-        preview: [
-            "light-dark(#f7f7f5, #1f1f1c)".to_string(),
-            "light-dark(#f3f4f1, #2f302c)".to_string(),
-            "light-dark(#d7dbd2, #4a4d45)".to_string(),
-        ],
+        summary: "Use Slock's native appearance without desktop style overrides.".to_string(),
+        native: true,
+        light: default_light_palette(),
+        dark: default_dark_palette(),
+        accent_soft_light_mix: default_accent_soft_light_mix(),
+        accent_soft_dark_mix: default_accent_soft_dark_mix(),
     }
+}
+
+fn default_style_config() -> ThemeStyleConfig {
+    ThemeStyleConfig {
+        id: "default".to_string(),
+        name: "Default".to_string(),
+        summary: "Desktop refined style with calm surfaces, softened borders, and accent-aware controls."
+            .to_string(),
+        native: false,
+        light: default_light_palette(),
+        dark: default_dark_palette(),
+        accent_soft_light_mix: default_accent_soft_light_mix(),
+        accent_soft_dark_mix: default_accent_soft_dark_mix(),
+    }
+}
+
+pub fn built_in_style_configs() -> Vec<ThemeStyleConfig> {
+    vec![original_style_config(), default_style_config()]
+}
+
+pub fn default_color_scheme() -> &'static str {
+    "default"
+}
+
+pub fn default_style_scheme() -> &'static str {
+    "original"
+}
+
+fn default_light_palette() -> ThemeStylePalette {
+    ThemeStylePalette {
+        canvas: default_light_canvas(),
+        surface: default_light_surface(),
+        surface_strong: default_light_surface_strong(),
+        line: default_light_line(),
+        text: default_light_text(),
+        muted: default_light_muted(),
+    }
+}
+
+fn default_dark_palette() -> ThemeStylePalette {
+    ThemeStylePalette {
+        canvas: default_dark_canvas(),
+        surface: default_dark_surface(),
+        surface_strong: default_dark_surface_strong(),
+        line: default_dark_line(),
+        text: default_dark_text(),
+        muted: default_dark_muted(),
+    }
+}
+
+fn default_light_canvas() -> String {
+    "#f7f7f5".to_string()
+}
+
+fn default_light_surface() -> String {
+    "#ffffff".to_string()
+}
+
+fn default_light_surface_strong() -> String {
+    "#f3f4f1".to_string()
+}
+
+fn default_light_line() -> String {
+    "#e2e4de".to_string()
+}
+
+fn default_light_text() -> String {
+    "#1f1f1c".to_string()
+}
+
+fn default_light_muted() -> String {
+    "#6b6f67".to_string()
+}
+
+fn default_dark_canvas() -> String {
+    "#1f1f1c".to_string()
+}
+
+fn default_dark_surface() -> String {
+    "#252623".to_string()
+}
+
+fn default_dark_surface_strong() -> String {
+    "#2f302c".to_string()
+}
+
+fn default_dark_line() -> String {
+    "#3e413a".to_string()
+}
+
+fn default_dark_text() -> String {
+    "#f4f4ef".to_string()
+}
+
+fn default_dark_muted() -> String {
+    "#b7bbae".to_string()
+}
+
+fn default_accent_soft_light_mix() -> u8 {
+    12
+}
+
+fn default_accent_soft_dark_mix() -> u8 {
+    22
 }
 
 pub fn normalize_mode(mode: &str) -> &'static str {
@@ -80,45 +255,173 @@ pub fn normalize_mode(mode: &str) -> &'static str {
     }
 }
 
-pub fn meta_catalog(mode: &str, custom: &CustomThemeSet) -> Vec<ThemeMeta> {
-    std::iter::once(materialize_original().into())
+pub fn color_catalog(
+    mode: &str,
+    style_id: &str,
+    custom_colors: &CustomThemeSet,
+    custom_styles: &CustomStyleSet,
+) -> Vec<ThemeMeta> {
+    let style = resolve_style(style_id, custom_styles);
+    std::iter::once(materialize_color_item(&default_color_item(), mode, &style).into())
         .chain(
-            custom
+            custom_colors
                 .items
                 .iter()
-                .map(|item| materialize_custom_item(item, mode).into()),
+                .map(|item| materialize_color_item(item, mode, &style).into()),
         )
         .collect()
 }
 
-pub fn resolve_theme(id: &str, mode: &str, custom: &CustomThemeSet) -> ThemeDefinition {
+pub fn meta_catalog(mode: &str, custom: &CustomThemeSet) -> Vec<ThemeMeta> {
+    color_catalog(
+        mode,
+        "default",
+        custom,
+        &CustomStyleSet::default(),
+    )
+}
+
+pub fn style_catalog(
+    mode: &str,
+    color_id: &str,
+    custom_colors: &CustomThemeSet,
+    custom_styles: &CustomStyleSet,
+) -> Vec<ThemeStyleMeta> {
+    let color = resolve_color(color_id, custom_colors);
+    built_in_style_configs()
+        .into_iter()
+        .map(|style| style_meta(style, &color, mode, true))
+        .chain(
+            custom_styles
+                .items
+                .iter()
+                .cloned()
+                .map(|style| style_meta(style, &color, mode, false)),
+        )
+        .collect()
+}
+
+pub fn resolve_style(id: &str, custom_styles: &CustomStyleSet) -> ThemeStyleConfig {
+    if id == "default" {
+        return default_style_config();
+    }
+
     if id == "original" || id.is_empty() {
-        return materialize_original();
+        return original_style_config();
+    }
+
+    custom_styles
+        .items
+        .iter()
+        .find(|item| item.id == id)
+        .cloned()
+        .unwrap_or_else(original_style_config)
+}
+
+pub fn resolve_theme(id: &str, mode: &str, custom: &CustomThemeSet) -> ThemeDefinition {
+    if id == "original" {
+        return resolve_theme_with_style(
+            default_color_scheme(),
+            "original",
+            mode,
+            custom,
+            &CustomStyleSet::default(),
+        );
+    }
+
+    resolve_theme_with_style(id, "default", mode, custom, &CustomStyleSet::default())
+}
+
+pub fn resolve_theme_with_style(
+    color_id: &str,
+    style_id: &str,
+    mode: &str,
+    custom_colors: &CustomThemeSet,
+    custom_styles: &CustomStyleSet,
+) -> ThemeDefinition {
+    let style = resolve_style(style_id, custom_styles);
+    let color = resolve_color(color_id, custom_colors);
+    materialize_color_item(&color, mode, &style)
+}
+
+pub fn sanitize_style_config(mut style: ThemeStyleConfig) -> ThemeStyleConfig {
+    let trimmed_id = style.id.trim();
+    style.id = if trimmed_id.is_empty() || trimmed_id == "original" || trimmed_id == "default" {
+        format!("style-{}", uuid::Uuid::new_v4())
+    } else {
+        trimmed_id.to_string()
+    };
+
+    style.name = sanitize_style_text(&style.name, "Imported Style");
+    style.summary = sanitize_style_text(&style.summary, "Imported desktop style.");
+    style.light = sanitize_palette(style.light, default_light_palette());
+    style.dark = sanitize_palette(style.dark, default_dark_palette());
+    style.accent_soft_light_mix = sanitize_mix(style.accent_soft_light_mix, default_accent_soft_light_mix());
+    style.accent_soft_dark_mix = sanitize_mix(style.accent_soft_dark_mix, default_accent_soft_dark_mix());
+    style
+}
+
+fn style_meta(
+    config: ThemeStyleConfig,
+    color: &CustomThemeItem,
+    mode: &str,
+    built_in: bool,
+) -> ThemeStyleMeta {
+    let theme = materialize_color_item(color, mode, &config);
+    ThemeStyleMeta {
+        id: config.id.clone(),
+        name: config.name.clone(),
+        summary: config.summary.clone(),
+        preview: theme.preview,
+        built_in,
+        config,
+    }
+}
+
+fn default_color_item() -> CustomThemeItem {
+    CustomThemeItem {
+        id: default_color_scheme().to_string(),
+        name: "Default".to_string(),
+        accent: DEFAULT_ACCENT_LIGHT.to_string(),
+    }
+}
+
+fn resolve_color(id: &str, custom: &CustomThemeSet) -> CustomThemeItem {
+    if id == default_color_scheme() || id == "original" || id.is_empty() {
+        return default_color_item();
     }
 
     custom
         .items
         .iter()
         .find(|item| item.id == id)
-        .map(|item| materialize_custom_item(item, mode))
-        .unwrap_or_else(materialize_original)
+        .cloned()
+        .unwrap_or_else(default_color_item)
 }
 
-fn materialize_custom_item(item: &CustomThemeItem, mode: &str) -> ThemeDefinition {
+fn materialize_color_item(
+    item: &CustomThemeItem,
+    mode: &str,
+    style: &ThemeStyleConfig,
+) -> ThemeDefinition {
     let name = if item.name.trim().is_empty() {
         "Custom"
     } else {
         item.name.trim()
     };
-    let accent = sanitize_hex(&item.accent).unwrap_or_else(|| "#10a37f".to_string());
-    materialize_theme(
-        &item.id,
-        name,
-        "User-defined accent theme.",
-        &accent,
-        &accent,
-        mode,
-    )
+    let accent = sanitize_hex(&item.accent).unwrap_or_else(|| DEFAULT_ACCENT_LIGHT.to_string());
+    let dark_accent = if item.id == default_color_scheme() {
+        DEFAULT_ACCENT_DARK.to_string()
+    } else {
+        accent.clone()
+    };
+    let summary = if item.id == default_color_scheme() {
+        "Slock default accent color."
+    } else {
+        "User-defined accent color."
+    };
+
+    materialize_theme(&item.id, name, summary, &accent, &dark_accent, mode, style)
 }
 
 fn materialize_theme(
@@ -128,45 +431,77 @@ fn materialize_theme(
     light_accent: &str,
     dark_accent: &str,
     mode: &str,
+    style: &ThemeStyleConfig,
 ) -> ThemeDefinition {
     let normalized_mode = normalize_mode(mode);
     let system = normalized_mode == "system";
     let dark = normalized_mode == "dark";
+    let light_accent = sanitize_hex(light_accent).unwrap_or_else(|| DEFAULT_ACCENT_LIGHT.to_string());
+    let dark_accent = sanitize_hex(dark_accent).unwrap_or_else(|| light_accent.clone());
+    let light_accent_soft = accent_soft(
+        &light_accent,
+        style.accent_soft_light_mix,
+        &style.light.surface,
+    );
+    let dark_accent_soft = accent_soft(
+        &dark_accent,
+        style.accent_soft_dark_mix,
+        &style.dark.canvas,
+    );
     let accent = if system {
         format!("light-dark({light_accent}, {dark_accent})")
     } else if dark {
-        dark_accent.to_string()
+        dark_accent.clone()
     } else {
-        light_accent.to_string()
+        light_accent.clone()
     };
     let accent_soft = if system {
-        format!(
-            "light-dark(color-mix(in srgb, {light_accent} 12%, #ffffff), color-mix(in srgb, {dark_accent} 22%, #1f1f1c))"
-        )
+        format!("light-dark({light_accent_soft}, {dark_accent_soft})")
     } else if dark {
-        format!("color-mix(in srgb, {accent} 22%, #1f1f1c)")
+        dark_accent_soft.clone()
     } else {
-        format!("color-mix(in srgb, {accent} 12%, #ffffff)")
+        light_accent_soft.clone()
     };
 
     ThemeDefinition {
         id: id.to_string(),
         name: name.to_string(),
         summary: summary.to_string(),
+        style_id: style.id.clone(),
+        style_name: style.name.clone(),
+        style_native: style.native,
         mode: normalized_mode.to_string(),
-        canvas: mode_color(system, dark, "#f7f7f5", "#1f1f1c"),
-        surface: mode_color(system, dark, "#ffffff", "#252623"),
-        surface_strong: mode_color(system, dark, "#f3f4f1", "#2f302c"),
-        line: mode_color(system, dark, "#e2e4de", "#3e413a"),
-        text: mode_color(system, dark, "#1f1f1c", "#f4f4ef"),
-        muted: mode_color(system, dark, "#6b6f67", "#b7bbae"),
+        canvas: mode_color(system, dark, &style.light.canvas, &style.dark.canvas),
+        surface: mode_color(system, dark, &style.light.surface, &style.dark.surface),
+        surface_strong: mode_color(
+            system,
+            dark,
+            &style.light.surface_strong,
+            &style.dark.surface_strong,
+        ),
+        line: mode_color(system, dark, &style.light.line, &style.dark.line),
+        text: mode_color(system, dark, &style.light.text, &style.dark.text),
+        muted: mode_color(system, dark, &style.light.muted, &style.dark.muted),
         accent: accent.clone(),
         accent_soft,
         preview: [
-            mode_color(system, dark, "#f7f7f5", "#1f1f1c"),
-            mode_color(system, dark, "#f3f4f1", "#2f302c"),
+            mode_color(system, dark, &style.light.canvas, &style.dark.canvas),
+            mode_color(
+                system,
+                dark,
+                &style.light.surface_strong,
+                &style.dark.surface_strong,
+            ),
             accent,
         ],
+        dark_canvas: style.dark.canvas.clone(),
+        dark_surface: style.dark.surface.clone(),
+        dark_surface_strong: style.dark.surface_strong.clone(),
+        dark_line: style.dark.line.clone(),
+        dark_text: style.dark.text.clone(),
+        dark_muted: style.dark.muted.clone(),
+        dark_accent,
+        dark_accent_soft,
     }
 }
 
@@ -180,21 +515,40 @@ fn mode_color(system: bool, dark: bool, light_value: &str, dark_value: &str) -> 
     }
 }
 
-pub fn sanitize_hex(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    let hex = trimmed.strip_prefix('#').unwrap_or(trimmed);
-    let valid_length = hex.len() == 6;
-    let valid_digits = hex.chars().all(|ch| ch.is_ascii_hexdigit());
+fn accent_soft(accent: &str, mix: u8, surface: &str) -> String {
+    format!("color-mix(in srgb, {accent} {mix}%, {surface})")
+}
 
-    if valid_length && valid_digits {
-        Some(format!("#{}", hex.to_ascii_lowercase()))
+fn sanitize_style_text(value: &str, fallback: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        fallback.to_string()
     } else {
-        None
+        trimmed.chars().take(80).collect()
+    }
+}
+
+fn sanitize_mix(value: u8, fallback: u8) -> u8 {
+    if value <= 100 {
+        value
+    } else {
+        fallback
+    }
+}
+
+fn sanitize_palette(value: ThemeStylePalette, fallback: ThemeStylePalette) -> ThemeStylePalette {
+    ThemeStylePalette {
+        canvas: sanitize_hex(&value.canvas).unwrap_or(fallback.canvas),
+        surface: sanitize_hex(&value.surface).unwrap_or(fallback.surface),
+        surface_strong: sanitize_hex(&value.surface_strong).unwrap_or(fallback.surface_strong),
+        line: sanitize_hex(&value.line).unwrap_or(fallback.line),
+        text: sanitize_hex(&value.text).unwrap_or(fallback.text),
+        muted: sanitize_hex(&value.muted).unwrap_or(fallback.muted),
     }
 }
 
 pub fn injected_script(theme: ThemeDefinition) -> String {
-    if theme.id == "original" {
+    if theme.style_native {
         return r#"
 (() => {
   const styleId = "slock-desktop-theme";
@@ -781,7 +1135,7 @@ fn color_scheme(theme: &ThemeDefinition) -> &'static str {
 }
 
 fn remote_css(theme: &ThemeDefinition) -> String {
-    if theme.id == "original" {
+    if theme.style_native {
         return String::new();
     }
 
@@ -848,25 +1202,26 @@ fn remote_css(theme: &ThemeDefinition) -> String {
 
 @media (prefers-color-scheme: dark) {{
   html[data-slock-desktop-mode="system"] {{
-    --slock-desktop-canvas: #1f1f1c;
-    --slock-desktop-app-bg: #1f1f1c;
-    --slock-desktop-toolbar-bg: #252623;
-    --slock-desktop-sidebar-bg: #2f302c;
-    --slock-desktop-panel-bg: #282925;
-    --slock-desktop-surface: #252623;
-    --slock-desktop-surface-strong: #2f302c;
-    --slock-desktop-surface-secondary: #2f302c;
-    --slock-desktop-surface-tertiary: #383a34;
-    --slock-desktop-line: #3e413a;
-    --slock-desktop-line-strong: #51554b;
-    --slock-desktop-text: #f4f4ef;
-    --slock-desktop-muted: #b7bbae;
-    --slock-desktop-text-tertiary: #8f9488;
-    --slock-desktop-accent-soft: color-mix(in srgb, {accent} 22%, #1f1f1c);
-    --slock-desktop-selection: color-mix(in srgb, {accent} 22%, #1f1f1c);
-    --slock-desktop-tab-selected: color-mix(in srgb, #252623 84%, #f4f4ef 16%);
-    --slock-desktop-hover: rgba(244, 244, 239, 0.06);
-    --slock-desktop-active: rgba(244, 244, 239, 0.1);
+    --slock-desktop-canvas: {dark_canvas};
+    --slock-desktop-app-bg: {dark_canvas};
+    --slock-desktop-toolbar-bg: {dark_surface};
+    --slock-desktop-sidebar-bg: {dark_surface_strong};
+    --slock-desktop-panel-bg: color-mix(in srgb, {dark_surface_strong} 72%, {dark_canvas});
+    --slock-desktop-surface: {dark_surface};
+    --slock-desktop-surface-strong: {dark_surface_strong};
+    --slock-desktop-surface-secondary: {dark_surface_strong};
+    --slock-desktop-surface-tertiary: color-mix(in srgb, {dark_surface_strong} 72%, {dark_canvas});
+    --slock-desktop-line: {dark_line};
+    --slock-desktop-line-strong: color-mix(in srgb, {dark_line} 82%, {dark_text});
+    --slock-desktop-text: {dark_text};
+    --slock-desktop-muted: {dark_muted};
+    --slock-desktop-text-tertiary: color-mix(in srgb, {dark_muted} 72%, {dark_surface});
+    --slock-desktop-accent: {dark_accent};
+    --slock-desktop-accent-soft: {dark_accent_soft};
+    --slock-desktop-selection: {dark_accent_soft};
+    --slock-desktop-tab-selected: color-mix(in srgb, {dark_surface} 84%, {dark_text} 16%);
+    --slock-desktop-hover: color-mix(in srgb, {dark_text} 6%, transparent);
+    --slock-desktop-active: color-mix(in srgb, {dark_text} 10%, transparent);
   }}
 }}
 
@@ -2187,7 +2542,15 @@ svg {{
         text = theme.text.as_str(),
         muted = theme.muted.as_str(),
         accent = theme.accent.as_str(),
-        accent_soft = theme.accent_soft.as_str()
+        accent_soft = theme.accent_soft.as_str(),
+        dark_canvas = theme.dark_canvas.as_str(),
+        dark_surface = theme.dark_surface.as_str(),
+        dark_surface_strong = theme.dark_surface_strong.as_str(),
+        dark_line = theme.dark_line.as_str(),
+        dark_text = theme.dark_text.as_str(),
+        dark_muted = theme.dark_muted.as_str(),
+        dark_accent = theme.dark_accent.as_str(),
+        dark_accent_soft = theme.dark_accent_soft.as_str()
     )
 }
 
@@ -2197,6 +2560,8 @@ impl From<ThemeDefinition> for ThemeMeta {
             id: value.id,
             name: value.name,
             summary: value.summary,
+            style_id: value.style_id,
+            style_name: value.style_name,
             mode: value.mode,
             canvas: value.canvas,
             surface: value.surface,

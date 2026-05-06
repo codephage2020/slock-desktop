@@ -4,6 +4,8 @@ export interface ThemeDefinition {
   id: string
   name: string
   summary: string
+  styleId: string
+  styleName: string
   mode: 'light' | 'dark' | 'system'
   canvas: string
   surface: string
@@ -20,6 +22,35 @@ export interface CustomThemeSnapshot {
   id: string
   name: string
   accent: string
+}
+
+export interface ThemeStylePalette {
+  canvas: string
+  surface: string
+  surfaceStrong: string
+  line: string
+  text: string
+  muted: string
+}
+
+export interface ThemeStyleConfig {
+  id: string
+  name: string
+  summary: string
+  native: boolean
+  light: ThemeStylePalette
+  dark: ThemeStylePalette
+  accentSoftLightMix: number
+  accentSoftDarkMix: number
+}
+
+export interface ThemeStyleDefinition {
+  id: string
+  name: string
+  summary: string
+  preview: [string, string, string]
+  builtIn: boolean
+  config: ThemeStyleConfig
 }
 
 export interface ServiceSnapshot {
@@ -92,12 +123,15 @@ export interface BootstrapPayload {
   appName: string
   workspaceUrl: string
   colorScheme: string
+  styleScheme: string
   appearanceMode: 'light' | 'dark' | 'system'
   customThemes: CustomThemeSnapshot[]
+  customStyles: ThemeStyleConfig[]
   language: 'en-US' | 'zh-CN' | 'system'
   resolvedLanguage: 'en-US' | 'zh-CN'
   workspaceOpen: boolean
   themes: ThemeDefinition[]
+  themeStyles: ThemeStyleDefinition[]
   service: ServiceSnapshot
   updates: UpdateSnapshot
 }
@@ -108,6 +142,14 @@ export async function loadBootstrap(refresh = true) {
 
 export async function updateTheme(themeId: string) {
   return invoke<BootstrapPayload>('set_theme', { themeId })
+}
+
+export async function updateThemeStyle(styleId: string) {
+  return invoke<BootstrapPayload>('set_theme_style', { styleId })
+}
+
+export async function importThemeStyle(config: ThemeStyleConfig) {
+  return invoke<BootstrapPayload>('import_theme_style', { config })
 }
 
 export async function updateThemeMode(themeMode: BootstrapPayload['appearanceMode']) {

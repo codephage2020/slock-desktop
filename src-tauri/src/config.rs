@@ -1,3 +1,4 @@
+use crate::theme::ThemeStyleConfig;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use tauri::{AppHandle, Manager, Runtime};
@@ -84,6 +85,8 @@ pub struct SavedAccountSettings {
 pub struct AppSettings {
     #[serde(default = "default_color_scheme", alias = "activeTheme")]
     pub color_scheme: String,
+    #[serde(default = "default_style_scheme")]
+    pub style_scheme: String,
     #[serde(default = "default_appearance_mode", alias = "themeMode")]
     pub appearance_mode: String,
     #[serde(
@@ -92,6 +95,8 @@ pub struct AppSettings {
         deserialize_with = "deserialize_custom_themes"
     )]
     pub custom_themes: Vec<CustomThemeSettings>,
+    #[serde(default)]
+    pub custom_styles: Vec<ThemeStyleConfig>,
     #[serde(default = "default_language")]
     pub language: String,
     #[serde(default)]
@@ -104,8 +109,10 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             color_scheme: default_color_scheme(),
+            style_scheme: default_style_scheme(),
             appearance_mode: default_appearance_mode(),
             custom_themes: Vec::new(),
+            custom_styles: Vec::new(),
             language: default_language(),
             session: SessionSettings::default(),
             service: ServiceSettings::default(),
@@ -153,7 +160,11 @@ where
 }
 
 fn default_color_scheme() -> String {
-    "original".to_string()
+    crate::theme::default_color_scheme().to_string()
+}
+
+fn default_style_scheme() -> String {
+    crate::theme::default_style_scheme().to_string()
 }
 
 fn default_appearance_mode() -> String {

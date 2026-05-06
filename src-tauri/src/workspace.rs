@@ -341,9 +341,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       releaseNotes: "Release notes",
       close: "Close",
       themeNames: {
+        default: "Default accent",
         original: "Original",
       },
       themeSummaries: {
+        default: "Slock green.",
         original: "Keep the native Slock look with no desktop theme injection.",
       },
     },
@@ -441,7 +443,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       close: "关闭",
       themeNames: {
         original: "原主题",
-        default: "默认",
+        default: "默认主题色",
         light: "雾蓝",
         dark: "靛蓝",
         graphite: "石墨",
@@ -450,7 +452,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       },
       themeSummaries: {
         original: "保持 Slock 原生外观，不注入桌面主题样式。",
-        default: "适合日常桌面工作的克制绿色强调色。",
+        default: "Slock 绿色。",
         light: "适合安静操作视图的柔和蓝色强调色。",
         dark: "适合结构化专注的低饱和靛蓝强调色。",
         graphite: "适合长时间会话的低饱和灰蓝强调色。",
@@ -1476,10 +1478,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   };
   const titlebarThemeSwatch = (theme) => {
     if (theme?.id === "original") return '#ffd701';
+    if (theme?.id === "default") return '#10a37f';
     return theme?.accent || "var(--desktop-accent)";
   };
   const selectedTheme = () =>
     themeCatalog.find((theme) => theme.id === activeThemeId) ||
+    themeCatalog.find((theme) => theme.id === "default") ||
     themeCatalog.find((theme) => theme.id === "original") ||
     themeCatalog[0];
   const themeVarNames = [
@@ -3864,7 +3868,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 	    }
 	  `;
 
-  const isCustomTheme = (theme) => theme.id !== "original";
+  const isCustomTheme = (theme) => theme.id !== "original" && theme.id !== "default";
   const currentModeOption = () =>
     modes.find((mode) => mode.id === activeMode) || modes.find((mode) => mode.id === "system") || modes[0];
   const nextModeId = () => {
@@ -3918,7 +3922,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const themeLabel = theme ? titlebarThemeLabel(theme) : t("theme");
     const themeOptions = themeCatalog
       .map((theme) => {
-        const selected = theme.id === (activeThemeId || "original");
+        const selected = theme.id === (activeThemeId || "default");
         const swatch = titlebarThemeSwatch(theme);
         const custom = isCustomTheme(theme);
         const deleting = appearanceBusyAction === `theme-delete:${theme.id}`;

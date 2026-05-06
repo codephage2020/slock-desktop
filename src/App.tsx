@@ -1,4 +1,5 @@
 import {
+  type ChangeEvent as ReactChangeEvent,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   startTransition,
@@ -19,11 +20,14 @@ import {
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
   type ThemeDefinition,
+  type ThemeStyleConfig,
+  type ThemeStyleDefinition,
   checkDesktopUpdate,
   createCustomTheme,
   deleteCustomTheme,
   installDesktopUpdate,
   forgetAccount,
+  importThemeStyle,
   loadBootstrap,
   openLogin,
   openServiceLog,
@@ -39,6 +43,7 @@ import {
   updateLanguage,
   updateTheme,
   updateThemeMode,
+  updateThemeStyle,
 } from './lib/desktop'
 
 interface ReleaseState {
@@ -55,7 +60,6 @@ const INITIAL_RELEASE_STATE: ReleaseState = {
   latest: null,
 }
 
-const ORIGINAL_SWATCH = '#ffd701'
 const DEFAULT_NEW_THEME_ACCENT = '#10a37f'
 const THEME_ACCENT_PRESETS = [
   '#ff3b30',
@@ -99,7 +103,8 @@ const COPY = {
     service: 'Server',
     updates: 'Updates',
     mode: 'Mode',
-    themeColor: 'Theme color',
+    themeColor: 'Accent color',
+    themeStyle: 'Style',
     customTheme: 'My accent',
     customThemeAccent: 'Accent',
     customThemeAccentAria: 'Personal accent color',
@@ -196,6 +201,15 @@ const COPY = {
     unknownDate: 'unknown date',
     themeOriginalName: 'Original',
     themeOriginalSummary: 'Slock’s native appearance.',
+    themeDefaultColorName: 'Default accent',
+    themeDefaultColorSummary: 'Slock green.',
+    themeStyleOriginalName: 'Original style',
+    themeStyleOriginalSummary: 'Current web UI without desktop overrides.',
+    themeStyleDefaultName: 'Default style',
+    themeStyleDefaultSummary: 'Desktop refined style.',
+    themeImportStyle: 'Import style',
+    themeExportStyle: 'Export style',
+    themeImportInvalid: 'Invalid style file.',
     themeNewLabel: 'New theme',
     themeRename: 'Rename',
     themeDelete: 'Delete',
@@ -218,7 +232,8 @@ const COPY = {
     service: '服务',
     updates: '更新',
     mode: '模式',
-    themeColor: '主题色彩',
+    themeColor: '主题色',
+    themeStyle: '样式',
     customTheme: '我的强调色',
     customThemeAccent: '强调色',
     customThemeAccentAria: '我的强调色',
@@ -315,6 +330,15 @@ const COPY = {
     unknownDate: '未知日期',
     themeOriginalName: '原主题',
     themeOriginalSummary: '保持 Slock 原生外观。',
+    themeDefaultColorName: '默认主题色',
+    themeDefaultColorSummary: 'Slock 绿色。',
+    themeStyleOriginalName: '原样式',
+    themeStyleOriginalSummary: '保留当前 Web UI 原始样式。',
+    themeStyleDefaultName: '默认样式',
+    themeStyleDefaultSummary: 'Desktop 整理后的样式。',
+    themeImportStyle: '导入样式',
+    themeExportStyle: '导出样式',
+    themeImportInvalid: '样式文件无效。',
     themeNewLabel: '新建主题',
     themeRename: '重命名',
     themeDelete: '删除',
@@ -404,6 +428,7 @@ function App() {
   const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
+  const styleImportInputRef = useRef<HTMLInputElement | null>(null)
   const serviceLogSearchRef = useRef<HTMLInputElement | null>(null)
   const serviceLogContentRef = useRef<HTMLPreElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
@@ -843,6 +868,47 @@ function App() {
       startTransition(() => setSnapshot(next))
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleThemeStyleChange(styleId: string) {
+    try {
+      setBusyAction(`style:${styleId}`)
+      setErrorMessage(null)
+      const next = await updateThemeStyle(styleId)
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  function handleExportThemeStyle(style: ThemeStyleDefinition | null | undefined) {
+    if (!style) {
+      return
+    }
+    exportThemeStyleFile(style)
+  }
+
+  async function handleImportThemeStyleFile(event: ReactChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) {
+      return
+    }
+
+    try {
+      setBusyAction('import-style')
+      setErrorMessage(null)
+      const parsed = JSON.parse(await file.text()) as unknown
+      const config = readThemeStyleConfig(parsed)
+      const next = await importThemeStyle(config)
+      startTransition(() => setSnapshot(next))
+    } catch {
+      setErrorMessage(copy.themeImportInvalid)
     } finally {
       setBusyAction(null)
     }
@@ -1376,9 +1442,10 @@ function App() {
   const activeTheme =
     snapshot.themes.find((theme) => theme.id === snapshot.colorScheme) ??
     snapshot.themes[0]
-  const selectedThemeAccent =
-    snapshot.customThemes.find((theme) => theme.id === snapshot.colorScheme)?.accent ??
-    activeTheme.accent
+  const activeStyle =
+    snapshot.themeStyles.find((style) => style.id === snapshot.styleScheme) ??
+    snapshot.themeStyles[0]
+  const selectedThemeAccent = activeTheme.accent
   const stackButtonLabel = snapshot.workspaceOpen ? copy.focusSlock : copy.openSlock
   const selectedServiceServer =
     snapshot.service.servers.find(
@@ -1442,7 +1509,7 @@ function App() {
     ...buildShellStyle(activeTheme),
     '--launch-accent': launchButtonAccent,
   } as CSSProperties
-  const activeIsOriginal = snapshot.colorScheme === 'original' || !snapshot.colorScheme
+  const activeIsOriginal = snapshot.styleScheme === 'original' || !snapshot.styleScheme
   const releaseUpdateAvailable = Boolean(releaseState.latest?.available)
   const releaseStatusLabel = releaseState.loading
     ? copy.checkingRelease
@@ -1820,33 +1887,27 @@ function App() {
                 </button>
               </div>
 
+              <div className="theme-section-head">
+                <span>{copy.themeColor}</span>
+              </div>
               <ul className="theme-rail" role="radiogroup" aria-label={copy.themeColor}>
-                <li>
-                  <ThemeRow
-                    themeId="original"
-                    swatch={ORIGINAL_SWATCH}
-                    name={copy.themeOriginalName}
-                    summary={copy.themeOriginalSummary}
-                    selected={activeIsOriginal}
-                    busy={busyAction === 'theme:original'}
-                    locked
-                    lockedLabel={copy.themeBuiltIn}
-                    onSelect={() => handleThemeChange('original')}
-                  />
-                </li>
-                {snapshot.customThemes.map((theme) => {
+                {snapshot.themes.map((theme) => {
+                  const customTheme = snapshot.customThemes.find((item) => item.id === theme.id)
                   const selected = theme.id === snapshot.colorScheme
                   const isRenaming = theme.id === renamingThemeId
-                  const summary = `${theme.accent.toUpperCase()}`
+                  const builtIn = !customTheme
+                  const swatch = customTheme?.accent ?? DEFAULT_NEW_THEME_ACCENT
                   return (
                     <li key={theme.id}>
                       <ThemeRow
                         themeId={theme.id}
-                        swatch={theme.accent}
-                        name={theme.name}
-                        summary={summary}
+                        swatch={swatch}
+                        name={builtIn ? copy.themeDefaultColorName : (customTheme?.name ?? theme.name)}
+                        summary={builtIn ? copy.themeDefaultColorSummary : swatch.toUpperCase()}
                         selected={selected}
                         busy={busyAction === `theme:${theme.id}`}
+                        locked={builtIn}
+                        lockedLabel={copy.themeBuiltIn}
                         renaming={isRenaming}
                         renameDraft={renameDraft}
                         onRenameDraftChange={setRenameDraft}
@@ -1854,9 +1915,9 @@ function App() {
                         onCommitRename={() => void commitRename()}
                         onCancelRename={cancelRename}
                         onSelect={() => handleThemeChange(theme.id)}
-                        onStartRename={() => startRename(theme)}
-                        onAccentChange={(value) => void handleAccentChange(theme.id, value)}
-                        onDelete={() => void handleDeleteTheme(theme.id)}
+                        onStartRename={customTheme ? () => startRename(customTheme) : undefined}
+                        onAccentChange={customTheme ? (value) => void handleAccentChange(theme.id, value) : undefined}
+                        onDelete={customTheme ? () => void handleDeleteTheme(theme.id) : undefined}
                         deleting={busyAction === `delete:${theme.id}`}
                         renameLabel={copy.themeRename}
                         deleteLabel={copy.themeDelete}
@@ -1870,6 +1931,49 @@ function App() {
                     <p className="inline-note">{copy.themeEmptyHint}</p>
                   </li>
                 ) : null}
+              </ul>
+
+              <div className="theme-section-head theme-style-head">
+                <span>{copy.themeStyle}</span>
+                <span className="theme-style-actions">
+                  <button
+                    className="text-action-button"
+                    type="button"
+                    onClick={() => styleImportInputRef.current?.click()}
+                    disabled={busyAction === 'import-style'}
+                  >
+                    {copy.themeImportStyle}
+                  </button>
+                  <button
+                    className="text-action-button"
+                    type="button"
+                    onClick={() => handleExportThemeStyle(activeStyle)}
+                    disabled={!activeStyle}
+                  >
+                    {copy.themeExportStyle}
+                  </button>
+                </span>
+              </div>
+              <input
+                ref={styleImportInputRef}
+                className="sr-only"
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => void handleImportThemeStyleFile(event)}
+              />
+              <ul className="theme-rail theme-style-rail" role="radiogroup" aria-label={copy.themeStyle}>
+                {snapshot.themeStyles.map((style) => (
+                  <li key={style.id}>
+                    <ThemeStyleRow
+                      style={style}
+                      name={getThemeStyleName(style, copy)}
+                      summary={getThemeStyleSummary(style, copy)}
+                      selected={style.id === snapshot.styleScheme || (style.id === 'original' && activeIsOriginal)}
+                      busy={busyAction === `style:${style.id}`}
+                      onSelect={() => handleThemeStyleChange(style.id)}
+                    />
+                  </li>
+                ))}
               </ul>
             </section>
 
@@ -2354,6 +2458,53 @@ function ThemeRow(props: ThemeRowProps) {
           </button>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+interface ThemeStyleRowProps {
+  style: ThemeStyleDefinition
+  name: string
+  summary: string
+  selected: boolean
+  busy: boolean
+  onSelect: () => void
+}
+
+function ThemeStyleRow({
+  style,
+  name,
+  summary,
+  selected,
+  busy,
+  onSelect,
+}: ThemeStyleRowProps) {
+  return (
+    <div
+      className={`theme-row theme-style-row${selected ? ' selected' : ''}`}
+      role="radio"
+      aria-checked={selected}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
+      onClick={onSelect}
+    >
+      <span className="theme-style-preview" aria-hidden="true">
+        {style.preview.map((color, index) => (
+          <span key={`${style.id}-${index}`} style={{ background: color }} />
+        ))}
+      </span>
+      <span className="theme-row-copy">
+        <span className="theme-row-name">{name}</span>
+        <span className="theme-row-summary">{summary}</span>
+      </span>
+      <span className="theme-row-actions visible">
+        {busy ? <SpinnerIcon /> : null}
+      </span>
     </div>
   )
 }
@@ -3018,6 +3169,71 @@ function getResolvedLanguage(
 
   const systemLanguage = typeof navigator === 'undefined' ? 'en-US' : navigator.language
   return systemLanguage.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
+}
+
+function getThemeStyleName(style: ThemeStyleDefinition, copy: UiCopy) {
+  if (style.id === 'original') {
+    return copy.themeStyleOriginalName
+  }
+  if (style.id === 'default') {
+    return copy.themeStyleDefaultName
+  }
+  return style.name
+}
+
+function getThemeStyleSummary(style: ThemeStyleDefinition, copy: UiCopy) {
+  if (style.id === 'original') {
+    return copy.themeStyleOriginalSummary
+  }
+  if (style.id === 'default') {
+    return copy.themeStyleDefaultSummary
+  }
+  return style.summary
+}
+
+function exportThemeStyleFile(style: ThemeStyleDefinition) {
+  const payload = {
+    schema: 'slock-desktop.theme-style.v1',
+    style: style.config,
+  }
+  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], {
+    type: 'application/json',
+  })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${toFileSlug(style.name || style.id)}.slock-style.json`
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+function readThemeStyleConfig(value: unknown): ThemeStyleConfig {
+  if (!isObjectRecord(value)) {
+    throw new Error('Invalid style file')
+  }
+  const candidate = isObjectRecord(value.style)
+    ? value.style
+    : isObjectRecord(value.config)
+      ? value.config
+      : value
+  if (!isObjectRecord(candidate)) {
+    throw new Error('Invalid style file')
+  }
+  return candidate as unknown as ThemeStyleConfig
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function toFileSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'theme-style'
 }
 
 function createNewThemeDraft(accent = DEFAULT_NEW_THEME_ACCENT): NewThemeDraft {
