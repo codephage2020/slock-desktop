@@ -226,6 +226,12 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
     "slockDesktopMenuItem",
     "slockDesktopAccountDock",
     "slockDesktopAccountAction",
+    "slockDesktopProfileControl",
+    "slockDesktopLeftRail",
+    "slockDesktopSidebarColumn",
+    "slockDesktopPanelHeader",
+    "slockDesktopMessageAffordance",
+    "slockDesktopInlineReference",
     "slockDesktopTaskToolbar",
     "slockDesktopRoute"
   ];
@@ -296,6 +302,7 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
         '[class*="bg-brutal-lime"]',
         '[class*="bg-brutal-yellow"]',
         '[class*="bg-brutal-orange"]',
+        '[class*="bg-brutal-red"]',
         '[class*="bg-brutal-lavender"]',
         '[class*="h-"][class*="w-"][class*="items-center"][class*="justify-center"]'
       ].join(',');
@@ -432,10 +439,15 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
     const markSemanticStatusTokens = () => {{
       if (!document.body) return;
 
-      const brutalColors = ["yellow", "orange", "pink", "cyan", "lime", "lavender"];
+      const brutalColors = ["yellow", "orange", "red", "pink", "cyan", "lime", "lavender"];
       const resolveBrutalColor = (className) =>
         brutalColors.find((color) => className.includes(`brutal-${{color}}`)) || null;
-      const resolveTaskState = (text) => {{
+      const resolveTaskState = (text, explicitState = "") => {{
+        const state = String(explicitState || "").trim().toLowerCase().replace(/[_\s-]+/g, "-");
+        if (state === "todo") return "todo";
+        if (state === "in-progress" || state === "doing" || state === "open") return "in-progress";
+        if (state === "in-review" || state === "review") return "in-review";
+        if (state === "done" || state === "completed" || state === "closed") return "done";
         const value = (text || "").trim().toLowerCase();
         if (!value) return null;
         if (/(^|[^a-z])(todo|to do)(?=$|[^a-z])/.test(value) || /待办/.test(value)) return "todo";
@@ -453,6 +465,8 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
             '[class*="border-brutal"]',
             '[class*="ml-auto"]',
             '[data-state]',
+            '[data-task-status]',
+            '[data-message-affordance]',
             '[aria-label*="task" i]',
             '[aria-label*="任务"]'
           ].join(",")
@@ -495,8 +509,9 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
             delete element.dataset.slockDesktopCountTone;
           }}
 
-          const taskState = resolveTaskState(text);
-          if (taskState && badgeLike) {{
+          const explicitTaskStatus = element.getAttribute("data-task-status");
+          const taskState = resolveTaskState(text, explicitTaskStatus);
+          if (taskState && (badgeLike || explicitTaskStatus)) {{
             element.dataset.slockDesktopTaskState = taskState;
           }} else {{
             delete element.dataset.slockDesktopTaskState;
@@ -507,22 +522,29 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
     const markWorkspaceModuleSurfaces = () => {{
       if (!document.body) return;
 
-      if (/\/search\b/i.test(window.location.pathname)) {{
-        document.documentElement.dataset.slockDesktopRoute = "search";
+      const routeMatch = window.location.pathname.match(/\/s\/[^/]+\/([^/?#]+)/i);
+      const workspaceRoute = routeMatch?.[1]?.toLowerCase() || "";
+      if (workspaceRoute) {{
+        document.documentElement.dataset.slockDesktopRoute = workspaceRoute;
       }} else {{
         document.documentElement.removeAttribute("data-slock-desktop-route");
       }}
 
-      const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"],.flex.h-full.w-full.flex-col[class*="border-r"],.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow';
+      const sidebarSelector = 'nav,aside,[class*="sidebar"],[class*="Sidebar"],.flex.h-full.w-full.flex-col[class*="border-r"],.flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow,.bg-brutal-cream.relative.min-w-0.flex-1';
       const surfaceProps = [
         "slockDesktopMenuItem",
         "slockDesktopAccountDock",
         "slockDesktopAccountAction",
         "slockDesktopProfileControl",
+        "slockDesktopLeftRail",
+        "slockDesktopSidebarColumn",
+        "slockDesktopPanelHeader",
+        "slockDesktopMessageAffordance",
+        "slockDesktopInlineReference",
         "slockDesktopTaskToolbar"
       ];
 
-      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-profile-control],[data-slock-desktop-task-toolbar]').forEach((element) => {{
+      document.querySelectorAll('[data-slock-desktop-menu-item],[data-slock-desktop-account-dock],[data-slock-desktop-account-action],[data-slock-desktop-profile-control],[data-slock-desktop-left-rail],[data-slock-desktop-sidebar-column],[data-slock-desktop-panel-header],[data-slock-desktop-message-affordance],[data-slock-desktop-inline-reference],[data-slock-desktop-task-toolbar]').forEach((element) => {{
         if (!(element instanceof HTMLElement)) return;
         surfaceProps.forEach((key) => delete element.dataset[key]);
       }});
@@ -536,6 +558,58 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 
       const normalizeSurfaceText = (value) =>
         String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+      document
+        .querySelectorAll(
+          [
+            '[data-testid^="left-rail"]',
+            '[data-testid="rail-bottom"]',
+            '[data-testid="left-rail-settings"]',
+            '[data-testid*="warning-trigger-rail"]'
+          ].join(",")
+        )
+        .forEach((element) => {{
+          if (!(element instanceof HTMLElement)) return;
+          if (element.closest('#slock-desktop-settings-host')) return;
+          element.dataset.slockDesktopLeftRail = "true";
+          let container = element.parentElement;
+          for (let depth = 0; container && depth < 5; depth += 1, container = container.parentElement) {{
+            if (!(container instanceof HTMLElement)) continue;
+            const rect = container.getBoundingClientRect();
+            if (rect.width > 0 && rect.width <= 96 && rect.height >= 120) {{
+              container.dataset.slockDesktopLeftRail = "true";
+              break;
+            }}
+          }}
+        }});
+
+      document
+        .querySelectorAll(
+          [
+            '.bg-brutal-cream.relative.min-w-0.flex-1',
+            '.flex.h-panel-header.shrink-0.items-center.border-b-2.border-black.bg-brutal-cream',
+            '.relative.flex.h-panel-header.shrink-0.items-center.gap-3.border-b-2.border-black.bg-brutal-yellow'
+          ].join(",")
+        )
+        .forEach((element) => {{
+          if (!(element instanceof HTMLElement)) return;
+          if (element.closest('#slock-desktop-settings-host')) return;
+          element.dataset.slockDesktopSidebarColumn = "true";
+        }});
+
+      document.querySelectorAll('.h-panel-header,[class*="h-panel-header"]').forEach((element) => {{
+        if (!(element instanceof HTMLElement)) return;
+        if (element.closest('#slock-desktop-settings-host')) return;
+        element.dataset.slockDesktopPanelHeader = "true";
+      }});
+
+      document.querySelectorAll('[data-message-affordance]').forEach((element) => {{
+        if (element instanceof HTMLElement) element.dataset.slockDesktopMessageAffordance = "true";
+      }});
+
+      document.querySelectorAll('a[data-channel],a[data-task-ref],a[data-thread-ref]').forEach((element) => {{
+        if (element instanceof HTMLElement) element.dataset.slockDesktopInlineReference = "true";
+      }});
+
       const taskToolbarSelectors = [
         'main .relative > .flex > .flex > .flex',
         'main .flex > .flex > .flex > .flex',
@@ -762,8 +836,10 @@ fn remote_css(theme: &ThemeDefinition) -> String {
   --color-brutal-lime: {surface};
   --color-brutal-lavender: {line};
   --color-brutal-orange: {accent_soft};
+  --color-brutal-red: color-mix(in srgb, #f97264 18%, {surface});
   --slock-semantic-yellow: #f2c86b;
   --slock-semantic-orange: #eb9d61;
+  --slock-semantic-red: #d96657;
   --slock-semantic-pink: #ef6f9b;
   --slock-semantic-cyan: #53c0df;
   --slock-semantic-lime: #79b56a;
@@ -986,14 +1062,22 @@ button,
 .btn-brutal.bg-brutal-cyan,
 .btn-brutal.bg-brutal-yellow,
 .btn-brutal.bg-brutal-orange,
+.btn-brutal.bg-brutal-red,
 .btn-brutal-sm.bg-brutal-pink,
 .btn-brutal-sm.bg-brutal-lime,
 .btn-brutal-sm.bg-brutal-cyan,
 .btn-brutal-sm.bg-brutal-yellow,
-.btn-brutal-sm.bg-brutal-orange {{
+.btn-brutal-sm.bg-brutal-orange,
+.btn-brutal-sm.bg-brutal-red {{
   background: var(--slock-desktop-accent) !important;
   color: var(--slock-desktop-surface) !important;
   border-color: transparent !important;
+}}
+
+.btn-brutal.bg-brutal-red,
+.btn-brutal-sm.bg-brutal-red {{
+  background: var(--slock-semantic-red) !important;
+  color: var(--slock-desktop-surface) !important;
 }}
 
 .btn-brutal:hover,
@@ -1001,6 +1085,14 @@ button,
 button:hover,
 [role="button"]:hover {{
   background: var(--slock-desktop-hover) !important;
+}}
+
+.btn-brutal.bg-brutal-red:hover,
+.btn-brutal.bg-brutal-red:focus-visible,
+.btn-brutal-sm.bg-brutal-red:hover,
+.btn-brutal-sm.bg-brutal-red:focus-visible {{
+  background: color-mix(in srgb, var(--slock-semantic-red) 86%, var(--slock-desktop-text)) !important;
+  color: var(--slock-desktop-surface) !important;
 }}
 
 .flex.h-full.w-full.flex-col.border-r-3.border-black.bg-brutal-yellow > .relative.flex.items-center.border-b-2.border-black.px-4.py-3 > .relative.inline-flex.items-center.gap-1\.5.tilt-neg-2.border-2.border-black.bg-black,
@@ -1078,6 +1170,11 @@ button:hover,
   background-color: var(--slock-desktop-surface-secondary) !important;
 }}
 
+[class*="bg-brutal-red"],
+[class*="hover\:bg-brutal-red"] {{
+  background-color: color-mix(in srgb, var(--slock-semantic-red) 18%, var(--slock-desktop-surface)) !important;
+}}
+
 [class*="bg-brutal-pink"],
 [class*="bg-brutal-cyan"],
 [class*="bg-brutal-lavender"],
@@ -1097,7 +1194,10 @@ button:hover,
 [class*="bg-brutal-pink\/40"],
 [class*="bg-brutal-cyan\/40"],
 [class*="bg-brutal-lime\/40"],
-[class*="bg-brutal-orange\/40"] {{
+[class*="bg-brutal-orange\/40"],
+[class*="bg-brutal-red\/20"],
+[class*="bg-brutal-red\/40"],
+[class*="bg-brutal-red\/60"] {{
   background-color: transparent !important;
   border-color: transparent !important;
 }}
@@ -1113,7 +1213,13 @@ button:hover,
 [class*="bg-brutal-lime\/40"]:hover,
 [class*="bg-brutal-lime\/40"]:focus-visible,
 [class*="bg-brutal-orange\/40"]:hover,
-[class*="bg-brutal-orange\/40"]:focus-visible {{
+[class*="bg-brutal-orange\/40"]:focus-visible,
+[class*="bg-brutal-red\/20"]:hover,
+[class*="bg-brutal-red\/20"]:focus-visible,
+[class*="bg-brutal-red\/40"]:hover,
+[class*="bg-brutal-red\/40"]:focus-visible,
+[class*="bg-brutal-red\/60"]:hover,
+[class*="bg-brutal-red\/60"]:focus-visible {{
   background-color: var(--slock-desktop-hover) !important;
   border-color: var(--slock-desktop-line) !important;
 }}
@@ -1131,6 +1237,10 @@ span[class*="text-[10px]"][class*="border-black"][class*="bg-brutal-"] {{
 [class*="text-brutal-orange"],
 [class*="hover\:text-brutal"] {{
   color: var(--slock-desktop-accent) !important;
+}}
+
+[class*="text-brutal-red"] {{
+  color: color-mix(in srgb, var(--slock-semantic-red) 86%, var(--slock-desktop-text)) !important;
 }}
 
 .bg-white,
@@ -1153,6 +1263,12 @@ span[class*="text-[10px]"][class*="border-black"][class*="bg-brutal-"] {{
 .bg-brutal-orange\/20,
 .bg-brutal-orange\/30 {{
   background-color: var(--slock-desktop-surface-secondary) !important;
+}}
+
+.bg-brutal-red,
+.bg-brutal-red\/20,
+.bg-brutal-red\/60 {{
+  background-color: color-mix(in srgb, var(--slock-semantic-red) 18%, var(--slock-desktop-surface)) !important;
 }}
 
 .bg-brutal-pink,
@@ -1180,6 +1296,7 @@ span[class*="text-[10px]"][class*="border-black"][class*="bg-brutal-"] {{
 .hover\:bg-brutal-cyan\/60:hover,
 .hover\:bg-brutal-lavender:hover,
 .hover\:bg-brutal-orange:hover,
+.hover\:bg-brutal-red:hover,
 .hover\:bg-brutal-cream:hover,
 .hover\:bg-brutal-cream\/40:hover,
 .hover\:bg-white:hover,
@@ -1192,6 +1309,7 @@ span[class*="text-[10px]"][class*="border-black"][class*="bg-brutal-"] {{
 .safe-top.safe-left.safe-right,
 .safe-top,
 [class*="safe-top"],
+[data-slock-desktop-panel-header="true"],
 [class*="titlebar"],
 [class*="Titlebar"],
 [class*="topbar"],
@@ -1200,12 +1318,15 @@ span[class*="text-[10px]"][class*="border-black"][class*="bg-brutal-"] {{
 [class*="Toolbar"],
 [role="banner"],
 header,
+.h-panel-header,
 .flex.h-\[62px\],
+.flex.h-\[54px\],
 .flex.h-\[62px\].shrink-0,
 .relative.flex.items-center,
 .flex.overflow-x-auto,
 .shrink-0.border-b-2,
 .md\:hidden.shrink-0,
+[class*="h-panel-header"],
 [class*="border-b-2"].bg-white {{
   background: var(--slock-desktop-surface) !important;
   border-color: var(--slock-desktop-line) !important;
@@ -1364,6 +1485,10 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold:not([data-slock-de
 
 [data-slock-desktop-semantic-color="orange"] {{
   --slock-desktop-semantic-current: var(--slock-semantic-orange);
+}}
+
+[data-slock-desktop-semantic-color="red"] {{
+  --slock-desktop-semantic-current: var(--slock-semantic-red);
 }}
 
 [data-slock-desktop-semantic-color="pink"] {{
@@ -1543,6 +1668,10 @@ button.border-black.bg-brutal-pink.shadow-brutal-sm.font-bold:not([data-slock-de
 .text-brutal-pink,
 .text-brutal-lime {{
   color: var(--slock-desktop-accent) !important;
+}}
+
+.text-brutal-red {{
+  color: color-mix(in srgb, var(--slock-semantic-red) 86%, var(--slock-desktop-text)) !important;
 }}
 
 h1,
@@ -1728,6 +1857,89 @@ html[data-slock-desktop-route="search"] main .relative > .flex > .flex > .shrink
   border-color: transparent !important;
   color: var(--slock-desktop-text) !important;
   box-shadow: none !important;
+}}
+
+[data-slock-desktop-left-rail="true"] {{
+  background: color-mix(in srgb, var(--slock-desktop-surface-strong) 88%, var(--slock-desktop-accent) 12%) !important;
+  border-color: var(--slock-desktop-line) !important;
+  box-shadow: none !important;
+}}
+
+button[data-slock-desktop-left-rail="true"],
+[role="button"][data-slock-desktop-left-rail="true"],
+[data-slock-desktop-left-rail="true"] :is(button,a,[role="button"]) {{
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: var(--slock-desktop-muted) !important;
+}}
+
+button[data-slock-desktop-left-rail="true"]:hover,
+button[data-slock-desktop-left-rail="true"]:focus-visible,
+[role="button"][data-slock-desktop-left-rail="true"]:hover,
+[role="button"][data-slock-desktop-left-rail="true"]:focus-visible,
+[data-slock-desktop-left-rail="true"] :is(button,a,[role="button"]):hover,
+[data-slock-desktop-left-rail="true"] :is(button,a,[role="button"]):focus-visible {{
+  background: var(--slock-desktop-hover) !important;
+  color: var(--slock-desktop-text) !important;
+}}
+
+[data-slock-desktop-left-rail="true"] :is([aria-current="page"],[aria-selected="true"],[data-state="active"],[data-active="true"]),
+button[data-slock-desktop-left-rail="true"][aria-current="page"],
+button[data-slock-desktop-left-rail="true"][aria-selected="true"],
+button[data-slock-desktop-left-rail="true"][data-state="active"],
+button[data-slock-desktop-left-rail="true"][data-active="true"] {{
+  background: var(--slock-desktop-selection) !important;
+  color: var(--slock-desktop-text) !important;
+}}
+
+[data-slock-desktop-sidebar-column="true"] {{
+  background: var(--slock-desktop-canvas) !important;
+  border-color: var(--slock-desktop-line) !important;
+  box-shadow: none !important;
+}}
+
+[data-slock-desktop-panel-header="true"] {{
+  background: var(--slock-desktop-surface) !important;
+  border-color: var(--slock-desktop-line) !important;
+  box-shadow: none !important;
+}}
+
+.md\:bg-white {{
+  background: var(--slock-desktop-surface) !important;
+}}
+
+[data-select-screenshot-root],
+[data-slock-desktop-message-affordance="true"] {{
+  background: var(--slock-desktop-surface) !important;
+  border-color: var(--slock-desktop-line) !important;
+  color: var(--slock-desktop-text) !important;
+  box-shadow: var(--slock-desktop-soft-shadow) !important;
+}}
+
+[data-slock-desktop-message-affordance="true"]:hover,
+[data-slock-desktop-message-affordance="true"]:focus-visible {{
+  background: var(--slock-desktop-hover) !important;
+}}
+
+[data-slock-desktop-inline-reference="true"] {{
+  display: inline-flex !important;
+  align-items: center !important;
+  max-width: 100% !important;
+  min-height: 1.45em !important;
+  padding: 0 0.36em !important;
+  border: 1px solid color-mix(in srgb, var(--slock-desktop-accent) 30%, var(--slock-desktop-line)) !important;
+  border-radius: var(--slock-desktop-radius-xs) !important;
+  background: var(--slock-desktop-accent-soft) !important;
+  color: color-mix(in srgb, var(--slock-desktop-accent) 72%, var(--slock-desktop-text)) !important;
+  box-shadow: none !important;
+  vertical-align: baseline !important;
+}}
+
+[data-slock-desktop-inline-reference="true"]:hover,
+[data-slock-desktop-inline-reference="true"]:focus-visible {{
+  background: color-mix(in srgb, var(--slock-desktop-accent) 18%, var(--slock-desktop-surface)) !important;
+  color: var(--slock-desktop-text) !important;
 }}
 
 main .shrink-0 > .flex > .relative > .inline-flex[class*="bg-brutal"]:not([class*="bg-brutal-yellow\/40"]):not([class*="bg-brutal-cream"]),
@@ -2121,5 +2333,37 @@ mod tests {
         assert!(script.contains(r#"input[placeholder*=\"搜索频道、私信、消息\"]"#));
         assert!(script.contains("background-color: transparent !important;"));
         assert!(script.contains("background-clip: padding-box !important;"));
+    }
+
+    #[test]
+    fn injected_script_adapts_current_workspace_data_markers() {
+        let script = injected_script(resolve_theme("default", "light", &fixture_set()));
+
+        assert!(script.contains("bg-brutal-red"));
+        assert!(script.contains("--color-brutal-red"));
+        assert!(script.contains("--slock-semantic-red"));
+        assert!(script.contains("[data-task-status]"));
+        assert!(script.contains(r#"element.getAttribute("data-task-status")"#));
+        assert!(script.contains(r#"[data-testid^="left-rail"]"#));
+        assert!(script.contains("slockDesktopLeftRail"));
+        assert!(script.contains("slockDesktopSidebarColumn"));
+        assert!(script.contains("slockDesktopPanelHeader"));
+        assert!(script.contains("h-panel-header"));
+        assert!(script.contains(".md\\\\:bg-white"));
+        assert!(script.contains("[data-message-affordance]"));
+        assert!(script.contains("slockDesktopMessageAffordance"));
+        assert!(script.contains("a[data-channel],a[data-task-ref],a[data-thread-ref]"));
+        assert!(script.contains("slockDesktopInlineReference"));
+    }
+
+    #[test]
+    fn original_theme_cleans_current_workspace_data_markers() {
+        let script = injected_script(resolve_theme("original", "system", &fixture_set()));
+
+        assert!(script.contains("slockDesktopLeftRail"));
+        assert!(script.contains("slockDesktopSidebarColumn"));
+        assert!(script.contains("slockDesktopPanelHeader"));
+        assert!(script.contains("slockDesktopMessageAffordance"));
+        assert!(script.contains("slockDesktopInlineReference"));
     }
 }
