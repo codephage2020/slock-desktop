@@ -1981,7 +1981,6 @@ function App() {
                   </li>
                 ))}
               </ul>
-            </section>
 
             {newThemeDraft ? (
               <div

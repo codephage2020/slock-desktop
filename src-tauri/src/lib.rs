@@ -321,6 +321,58 @@ struct SessionAccountProfile {
     avatar_url: Option<String>,
 }
 
+// Dashboard types
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardData {
+    channels: Vec<DashboardChannel>,
+    unread: Vec<DashboardChannelUnread>,
+    tasks: Vec<DashboardTask>,
+    agents: Vec<DashboardAgent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardChannel {
+    id: String,
+    name: String,
+    #[serde(rename = "type")]
+    channel_type: String,
+    #[serde(default)]
+    is_archived: bool,
+    last_message_at: Option<String>,
+    #[serde(default)]
+    member_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardChannelUnread {
+    channel_id: String,
+    #[serde(default)]
+    unread_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardTask {
+    id: String,
+    title: String,
+    status: String,
+    assignee: Option<String>,
+    channel_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardAgent {
+    id: String,
+    name: String,
+    status: String,
+    updated_at: Option<String>,
+}
+
 #[tauri::command]
 fn bootstrap(
     app: AppHandle,
@@ -1378,6 +1430,101 @@ fn update_service(
     stop_service_process(&app, &state, Some(&service_settings), None)?;
     force_start_service(&app, &state, &service_settings)?;
     build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn fetch_dashboard(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<DashboardData, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    // Find the server ID from cached servers
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found in cached servers"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    // Fetch channels
+    let channels = load_authenticated_json::<Vec<DashboardChannel>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers/{server_id}/channels"))
+                .bearer_auth(access_token)
+        },
+    )
+    .unwrap_or_default();
+
+    // Fetch unread counts
+    let unread = load_authenticated_json::<Vec<DashboardChannelUnread>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers/{server_id}/channels/unread"))
+                .bearer_auth(access_token)
+        },
+    )
+    .unwrap_or_default();
+
+    // Fetch tasks
+    let tasks = load_authenticated_json::<Vec<DashboardTask>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers/{server_id}/tasks"))
+                .bearer_auth(access_token)
+        },
+    )
+    .unwrap_or_default();
+
+    // Fetch agents
+    let agents = load_authenticated_json::<Vec<DashboardAgent>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers/{server_id}/agents"))
+                .bearer_auth(access_token)
+        },
+    )
+    .unwrap_or_default();
+
+    Ok(DashboardData {
+        channels,
+        unread,
+        tasks,
+        agents,
+    })
 }
 
 #[tauri::command]
@@ -6614,7 +6761,8 @@ pub fn run() {
             switch_account_browser,
             close_login_window,
             activate_account,
-            forget_account
+            forget_account,
+            fetch_dashboard
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
