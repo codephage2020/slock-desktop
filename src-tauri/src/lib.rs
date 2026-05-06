@@ -3,13 +3,14 @@ mod config;
 mod theme;
 mod workspace;
 
+use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 use config::{
     load_settings, save_settings, AppSettings, CustomThemeSettings, SavedAccountSettings,
     ServiceMachineBinding, ServiceSettings,
 };
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
@@ -63,6 +64,8 @@ const DESKTOP_UPDATER_ENDPOINT: &str =
     "https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json";
 const DESKTOP_UPDATE_CHECK_TIMEOUT: u64 = 8;
 const SERVICE_MACHINE_FETCH_CONCURRENCY_LIMIT: usize = 8;
+const SERVICE_LOG_MAX_BYTES: u64 = 2 * 1024 * 1024;
+const SERVICE_LOG_DEFAULT_WINDOW_MS: i64 = 30 * 60 * 1000;
 #[cfg(debug_assertions)]
 const WORKSPACE_LAUNCH_LOG_PATH: &str = "/tmp/slock-desktop-launch.log";
 
@@ -229,6 +232,19 @@ struct DesktopUpdateCheck {
     body: Option<String>,
     date: Option<String>,
     download_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ServiceLogSnapshot {
+    server_slug: String,
+    path: String,
+    content: String,
+    truncated: bool,
+    total_bytes: u64,
+    from_epoch_ms: i64,
+    to_epoch_ms: i64,
+    timestamp_filtered: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1211,11 +1227,25 @@ fn update_service(
 }
 
 #[tauri::command]
-fn open_service_log(app: AppHandle, server_slug: String) -> Result<(), String> {
+fn open_service_log(
+    app: AppHandle,
+    server_slug: String,
+    from_epoch_ms: Option<i64>,
+    to_epoch_ms: Option<i64>,
+) -> Result<ServiceLogSnapshot, String> {
     let slug = server_slug.trim();
     if slug.is_empty() {
         return Err("Choose a server before opening logs.".to_string());
     }
+
+    let now = current_epoch_ms();
+    let to_epoch_ms = to_epoch_ms.unwrap_or(now);
+    let from_epoch_ms = from_epoch_ms.unwrap_or(to_epoch_ms - SERVICE_LOG_DEFAULT_WINDOW_MS);
+    let (from_epoch_ms, to_epoch_ms) = if from_epoch_ms <= to_epoch_ms {
+        (from_epoch_ms, to_epoch_ms)
+    } else {
+        (to_epoch_ms, from_epoch_ms)
+    };
 
     let log_path = service_log_path(&app, slug)?;
     if !log_path.exists() {
@@ -1223,7 +1253,7 @@ fn open_service_log(app: AppHandle, server_slug: String) -> Result<(), String> {
             .map_err(|err| format!("Unable to create server log: {err}"))?;
     }
 
-    open_log_tail(&app, slug, &log_path)
+    read_service_log_range(slug, &log_path, from_epoch_ms, to_epoch_ms)
 }
 
 #[tauri::command]
@@ -2992,12 +3022,15 @@ fn spawn_service_daemon(
     let mut log_file = open_service_log_file(app, &binding.server_slug)?;
     writeln!(
         &mut log_file,
-        "\n--- starting daemon for {} at {:?} ---",
+        "\n[slock-desktop ts={} stream=desktop] starting daemon for {}",
+        current_epoch_ms(),
         binding.server_slug,
-        std::time::SystemTime::now()
     )
     .map_err(|err| format!("Unable to write service log header: {err}"))?;
     let log_file_for_stdout = log_file
+        .try_clone()
+        .map_err(|err| format!("Unable to prepare service log: {err}"))?;
+    let log_file_for_stderr = log_file
         .try_clone()
         .map_err(|err| format!("Unable to prepare service log: {err}"))?;
     let mut command = Command::new(&service_command.executable);
@@ -3017,15 +3050,21 @@ fn spawn_service_daemon(
         ])
         .env("PATH", &service_path_env)
         .stdin(Stdio::null())
-        .stdout(Stdio::from(log_file_for_stdout))
-        .stderr(Stdio::from(log_file));
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-    let child = command.spawn().map_err(|err| {
+    let mut child = command.spawn().map_err(|err| {
         format!(
             "Failed to start service with {}: {err}",
             service_command.executable.display()
         )
     })?;
+    if let Some(stdout) = child.stdout.take() {
+        pipe_service_output_to_log(stdout, log_file_for_stdout, "stdout");
+    }
+    if let Some(stderr) = child.stderr.take() {
+        pipe_service_output_to_log(stderr, log_file_for_stderr, "stderr");
+    }
     let mut runtime = state
         .service
         .lock()
@@ -3047,6 +3086,44 @@ fn open_service_log_file(app: &AppHandle, server_slug: &str) -> Result<fs::File,
         .map_err(|err| format!("Unable to open service log: {err}"))
 }
 
+fn pipe_service_output_to_log<R>(reader: R, mut log_file: fs::File, stream: &'static str)
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut bytes = Vec::new();
+        loop {
+            bytes.clear();
+            let read = match reader.read_until(b'\n', &mut bytes) {
+                Ok(read) => read,
+                Err(err) => {
+                    let _ = writeln!(
+                        log_file,
+                        "[slock-desktop ts={} stream=desktop] failed to read {stream}: {err}",
+                        current_epoch_ms()
+                    );
+                    break;
+                }
+            };
+            if read == 0 {
+                break;
+            }
+
+            while matches!(bytes.last(), Some(b'\n' | b'\r')) {
+                bytes.pop();
+            }
+            let line = String::from_utf8_lossy(&bytes);
+            let _ = writeln!(
+                log_file,
+                "[slock-desktop ts={} stream={stream}] {line}",
+                current_epoch_ms()
+            );
+            let _ = log_file.flush();
+        }
+    });
+}
+
 fn service_log_path(app: &AppHandle, server_slug: &str) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -3058,54 +3135,182 @@ fn service_log_path(app: &AppHandle, server_slug: &str) -> Result<PathBuf, Strin
     Ok(dir.join(format!("{}.log", safe_log_slug(server_slug))))
 }
 
-fn open_log_tail(app: &AppHandle, server_slug: &str, log_path: &Path) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let dir = app
-            .path()
-            .app_config_dir()
-            .map_err(|err| err.to_string())?
-            .join("server-logs");
-        fs::create_dir_all(&dir)
-            .map_err(|err| format!("Unable to create server log directory: {err}"))?;
-        let script_path = dir.join(format!("tail-{}.command", safe_log_slug(server_slug)));
-        let script = format!(
-            "#!/bin/zsh\nLOG_PATH={}\nclear\nprintf 'Slock daemon logs: {}\\n\\n'\ntouch \"$LOG_PATH\"\ntail -n 200 -F \"$LOG_PATH\"\n",
-            shell_quote(log_path),
-            server_slug.replace('\'', "'\\''")
-        );
-        fs::write(&script_path, script)
-            .map_err(|err| format!("Unable to create log viewer: {err}"))?;
-        let mut permissions = fs::metadata(&script_path)
-            .map_err(|err| format!("Unable to inspect log viewer: {err}"))?
-            .permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&script_path, permissions)
-            .map_err(|err| format!("Unable to prepare log viewer: {err}"))?;
-        Command::new("open")
-            .arg(&script_path)
-            .spawn()
-            .map_err(|err| format!("Unable to open server log: {err}"))?;
-        return Ok(());
+fn read_service_log_range(
+    server_slug: &str,
+    log_path: &Path,
+    from_epoch_ms: i64,
+    to_epoch_ms: i64,
+) -> Result<ServiceLogSnapshot, String> {
+    let file =
+        fs::File::open(log_path).map_err(|err| format!("Unable to read service log: {err}"))?;
+    let total_bytes = file
+        .metadata()
+        .map_err(|err| format!("Unable to inspect service log: {err}"))?
+        .len();
+    let mut reader = BufReader::new(file);
+    let mut raw_line = Vec::new();
+    let mut content = String::new();
+    let mut active_timestamp = None;
+    let mut saw_timestamp = false;
+    let mut truncated = false;
+
+    loop {
+        raw_line.clear();
+        let read = reader
+            .read_until(b'\n', &mut raw_line)
+            .map_err(|err| format!("Unable to read service log: {err}"))?;
+        if read == 0 {
+            break;
+        }
+
+        let line = String::from_utf8_lossy(&raw_line);
+        if let Some(timestamp) = parse_log_line_epoch_ms(&line) {
+            active_timestamp = Some(timestamp);
+            saw_timestamp = true;
+        }
+
+        let include = active_timestamp
+            .map(|timestamp| timestamp >= from_epoch_ms && timestamp <= to_epoch_ms)
+            .unwrap_or(false);
+        if include {
+            content.push_str(&line);
+            while content.len() as u64 > SERVICE_LOG_MAX_BYTES {
+                truncated = true;
+                if let Some(next_line) = content.find('\n') {
+                    content.drain(..=next_line);
+                } else {
+                    content.clear();
+                    break;
+                }
+            }
+        }
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("cmd")
-            .args(["/C", "start", "", &log_path.to_string_lossy()])
-            .spawn()
-            .map_err(|err| format!("Unable to open server log: {err}"))?;
-        return Ok(());
+    if !saw_timestamp {
+        return read_service_log_tail(server_slug, log_path, from_epoch_ms, to_epoch_ms);
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        Command::new("xdg-open")
-            .arg(log_path)
-            .spawn()
-            .map_err(|err| format!("Unable to open server log: {err}"))?;
-        return Ok(());
+    Ok(ServiceLogSnapshot {
+        server_slug: server_slug.to_string(),
+        path: log_path.to_string_lossy().to_string(),
+        content,
+        truncated,
+        total_bytes,
+        from_epoch_ms,
+        to_epoch_ms,
+        timestamp_filtered: true,
+    })
+}
+
+fn read_service_log_tail(
+    server_slug: &str,
+    log_path: &Path,
+    from_epoch_ms: i64,
+    to_epoch_ms: i64,
+) -> Result<ServiceLogSnapshot, String> {
+    let mut file =
+        fs::File::open(log_path).map_err(|err| format!("Unable to read service log: {err}"))?;
+    let total_bytes = file
+        .metadata()
+        .map_err(|err| format!("Unable to inspect service log: {err}"))?
+        .len();
+    let offset = total_bytes.saturating_sub(SERVICE_LOG_MAX_BYTES);
+    if offset > 0 {
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|err| format!("Unable to read service log: {err}"))?;
     }
+
+    let mut bytes = Vec::with_capacity((total_bytes - offset) as usize);
+    file.read_to_end(&mut bytes)
+        .map_err(|err| format!("Unable to read service log: {err}"))?;
+    let mut content = String::from_utf8_lossy(&bytes).into_owned();
+    if offset > 0 {
+        if let Some(line_start) = content.find('\n') {
+            content = content[line_start + 1..].to_string();
+        }
+    }
+
+    Ok(ServiceLogSnapshot {
+        server_slug: server_slug.to_string(),
+        path: log_path.to_string_lossy().to_string(),
+        content,
+        truncated: offset > 0,
+        total_bytes,
+        from_epoch_ms,
+        to_epoch_ms,
+        timestamp_filtered: false,
+    })
+}
+
+fn current_epoch_ms() -> i64 {
+    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => duration.as_millis().min(i64::MAX as u128) as i64,
+        Err(_) => 0,
+    }
+}
+
+fn parse_log_line_epoch_ms(line: &str) -> Option<i64> {
+    parse_log_marker_epoch_ms(line)
+        .or_else(|| parse_system_time_debug_epoch_ms(line))
+        .or_else(|| parse_common_datetime_epoch_ms(line))
+}
+
+fn parse_log_marker_epoch_ms(line: &str) -> Option<i64> {
+    for marker in ["ts=", "timestamp="] {
+        let Some(start) = line.find(marker).map(|index| index + marker.len()) else {
+            continue;
+        };
+        let digits: String = line[start..]
+            .chars()
+            .take_while(|ch| ch.is_ascii_digit())
+            .collect();
+        if digits.len() >= 10 {
+            return digits.parse::<i64>().ok();
+        }
+    }
+    None
+}
+
+fn parse_system_time_debug_epoch_ms(line: &str) -> Option<i64> {
+    let seconds = parse_i64_after(line, "tv_sec:")?;
+    let nanos = parse_i64_after(line, "tv_nsec:").unwrap_or(0);
+    Some(seconds.saturating_mul(1000).saturating_add(nanos / 1_000_000))
+}
+
+fn parse_i64_after(line: &str, marker: &str) -> Option<i64> {
+    let start = line.find(marker)? + marker.len();
+    let digits: String = line[start..]
+        .chars()
+        .skip_while(|ch| ch.is_ascii_whitespace())
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect();
+    digits.parse::<i64>().ok()
+}
+
+fn parse_common_datetime_epoch_ms(line: &str) -> Option<i64> {
+    let trimmed = line
+        .trim_start()
+        .trim_start_matches('[')
+        .trim_start_matches('(');
+    for len in [35usize, 30, 29, 25, 24, 23, 20, 19] {
+        if trimmed.len() < len {
+            continue;
+        }
+        let candidate = trimmed[..len]
+            .trim_end_matches(|ch: char| matches!(ch, ']' | ')' | ',' | ' '))
+            .trim();
+        if let Ok(parsed) = DateTime::parse_from_rfc3339(candidate) {
+            return Some(parsed.timestamp_millis());
+        }
+        for format in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f"] {
+            if let Ok(naive) = NaiveDateTime::parse_from_str(candidate, format) {
+                if let Some(local) = Local.from_local_datetime(&naive).earliest() {
+                    return Some(local.timestamp_millis());
+                }
+            }
+        }
+    }
+    None
 }
 
 fn safe_log_slug(value: &str) -> String {
@@ -3126,11 +3331,6 @@ fn safe_log_slug(value: &str) -> String {
     } else {
         sanitized
     }
-}
-
-#[cfg(target_os = "macos")]
-fn shell_quote(path: &Path) -> String {
-    format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
 
 fn resolve_service_command() -> Result<ServiceCommand, String> {

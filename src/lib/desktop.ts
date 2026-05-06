@@ -72,6 +72,22 @@ export interface DesktopUpdateCheck {
   downloadUrl: string | null
 }
 
+export interface ServiceLogSnapshot {
+  serverSlug: string
+  path: string
+  content: string
+  truncated: boolean
+  totalBytes: number
+  fromEpochMs: number
+  toEpochMs: number
+  timestampFiltered: boolean
+}
+
+export interface ServiceLogRange {
+  fromEpochMs?: number | null
+  toEpochMs?: number | null
+}
+
 export interface BootstrapPayload {
   appName: string
   workspaceUrl: string
@@ -185,8 +201,8 @@ export async function updateService(selectedServerSlug?: string) {
   return invoke<BootstrapPayload>('update_service', { selectedServerSlug })
 }
 
-export async function openServiceLog(serverSlug: string) {
-  return invoke('open_service_log', { serverSlug })
+export async function openServiceLog(serverSlug: string, range: ServiceLogRange = {}) {
+  return invoke<ServiceLogSnapshot>('open_service_log', { serverSlug, ...range })
 }
 
 export async function checkDesktopUpdate() {

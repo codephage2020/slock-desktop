@@ -36,6 +36,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   let serviceSnapshot = window.__slockDesktopServiceSnapshot || null;
   let themeCatalog = window.__slockDesktopThemeCatalog || themes;
   let updateSnapshot = window.__slockDesktopUpdateSnapshot || null;
+  let serviceLogViewer = window.__slockDesktopServiceLogViewer || null;
+  let serviceLogSearchTimer = null;
+  let serviceLogSearchToken = 0;
   let releaseState = window.__slockDesktopReleaseState || {
     loading: false,
     installing: false,
@@ -109,8 +112,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   };
   const paletteIcon = () =>
     `<svg class="titlebar-theme-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle><path d="M12 22a10 10 0 1 1 10-10 4 4 0 0 1-4 4h-1.5a2.5 2.5 0 0 0 0 5H12Z"></path></svg>`;
-  const shellIcon = () =>
-    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 8 4 4-4 4"></path><path d="M10 16h10"></path><rect width="20" height="16" x="2" y="4" rx="2"></rect></svg>`;
+  const logIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="16" x="4" y="3" rx="2"></rect><path d="M8 8h6"></path><path d="M8 12h4"></path><circle cx="16.5" cy="16.5" r="2.5"></circle><path d="m18.5 18.5 2 2"></path></svg>`;
   const plusIcon = () =>
     `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>`;
   const editIcon = () =>
@@ -121,6 +124,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4 10-10"></path></svg>`;
   const searchIcon = () =>
     `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`;
+  const calendarIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="5" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path></svg>`;
+  const clockIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v5"></path><path d="m12 13 3 2"></path></svg>`;
+  const chevronIcon = (direction) =>
+    direction === "up"
+      ? `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"></path></svg>`
+      : `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>`;
   const normalizeHexColor = (value) => {
     const compact = String(value || "").trim().replace(/^#/, "");
     if (/^[0-9a-fA-F]{3}$/.test(compact)) {
@@ -265,6 +276,27 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       refreshServers: "Refresh servers",
       refreshingServers: "Refreshing...",
       openServerLog: "View server logs",
+      serverLogTitle: "Server logs",
+      serverLogSearch: "Search logs",
+      serverLogSearching: "Searching...",
+      serverLogFrom: "From",
+      serverLogTo: "To",
+      serverLogRange: "Range",
+      serverLogCustomRange: "Custom",
+      serverLogRangeApply: "Load range",
+      serverLogQuick30s: "30s",
+      serverLogQuick1m: "1m",
+      serverLogQuick5m: "5m",
+      serverLogQuick30m: "30m",
+      serverLogQuick1h: "1h",
+      serverLogLoading: "Loading logs...",
+      serverLogEmpty: "Log is empty.",
+      serverLogPath: "Log file",
+      serverLogTruncated: "Showing recent log tail",
+      serverLogPreviousMatch: "Previous match",
+      serverLogNextMatch: "Next match",
+      serverLogNoMatches: "No matches",
+      serverLogLines: "lines",
       startService: "Start service",
       closeServer: "Close server",
       closingServer: "Closing...",
@@ -343,6 +375,27 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       refreshServers: "刷新 Server",
       refreshingServers: "刷新中...",
       openServerLog: "查看 server 日志",
+      serverLogTitle: "Server 日志",
+      serverLogSearch: "搜索日志",
+      serverLogSearching: "搜索中...",
+      serverLogFrom: "开始",
+      serverLogTo: "结束",
+      serverLogRange: "范围",
+      serverLogCustomRange: "自定义",
+      serverLogRangeApply: "加载时间范围",
+      serverLogQuick30s: "30秒",
+      serverLogQuick1m: "1分钟",
+      serverLogQuick5m: "5分钟",
+      serverLogQuick30m: "30分钟",
+      serverLogQuick1h: "1小时",
+      serverLogLoading: "正在读取日志...",
+      serverLogEmpty: "日志为空。",
+      serverLogPath: "日志文件",
+      serverLogTruncated: "正在显示最近的日志尾部",
+      serverLogPreviousMatch: "上一条匹配",
+      serverLogNextMatch: "下一条匹配",
+      serverLogNoMatches: "没有匹配项",
+      serverLogLines: "行",
       startService: "启动服务",
       closeServer: "关闭 Server",
       closingServer: "关闭中...",
@@ -435,6 +488,213 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  const countLogLines = (content) => {
+    const text = String(content || "");
+    if (!text) return 0;
+    let lines = 1;
+    for (let index = 0; index < text.length; index += 1) {
+      const code = text.charCodeAt(index);
+      if (code === 10) {
+        lines += 1;
+      } else if (code === 13) {
+        lines += 1;
+        if (text.charCodeAt(index + 1) === 10) index += 1;
+      }
+    }
+    return lines;
+  };
+  const emptyLogSearch = (query = "", activeMatchIndex = 0, searching = false) => ({
+    query,
+    activeMatchIndex,
+    count: 0,
+    activeStart: -1,
+    activeEnd: -1,
+    searching,
+  });
+  const currentLogSearch = (viewer) => {
+    const query = String(viewer?.query || "").trim();
+    const search = viewer?.search;
+    if (search && search.query === query && search.activeMatchIndex === (viewer.activeMatchIndex || 0)) {
+      return search;
+    }
+    return emptyLogSearch(query, viewer?.activeMatchIndex || 0, Boolean(query));
+  };
+  const scanLogMatchesInChunks = (content, query, activeMatchIndex, token) => {
+    const text = String(content || "");
+    const needle = String(query || "").trim().toLowerCase();
+    if (!needle) return emptyLogSearch("", 0, false);
+
+    const chunkSize = 64 * 1024;
+    const needleLength = needle.length;
+    let scanStart = 0;
+    let count = 0;
+    let activeStart = -1;
+    let lastMatchStart = -1;
+
+    const finish = (result) => {
+      if (token !== serviceLogSearchToken) return;
+      if (!serviceLogViewer || String(serviceLogViewer.query || "").trim() !== query) return;
+      serviceLogViewer = { ...serviceLogViewer, search: result };
+      window.__slockDesktopServiceLogViewer = serviceLogViewer;
+      updateServiceLogSearchUi();
+      applyServiceLogHighlight();
+    };
+
+    const scanNextChunk = () => {
+      if (token !== serviceLogSearchToken) return;
+      const acceptedEnd = Math.min(text.length, scanStart + chunkSize);
+      const chunkEnd = Math.min(text.length, acceptedEnd + needleLength - 1);
+      const chunk = text.slice(scanStart, chunkEnd).toLowerCase();
+      let cursor = 0;
+      while (cursor < chunk.length) {
+        const next = chunk.indexOf(needle, cursor);
+        if (next === -1) break;
+        const matchStart = scanStart + next;
+        if (matchStart >= acceptedEnd) break;
+        if (count === activeMatchIndex) activeStart = matchStart;
+        lastMatchStart = matchStart;
+        count += 1;
+        cursor = next + needleLength;
+      }
+      scanStart += chunkSize;
+      if (scanStart < text.length) {
+        serviceLogSearchTimer = window.setTimeout(scanNextChunk, 0);
+        return;
+      }
+      const resolvedStart = activeStart >= 0 ? activeStart : lastMatchStart;
+      finish({
+        query,
+        activeMatchIndex,
+        count,
+        activeStart: resolvedStart,
+        activeEnd: resolvedStart >= 0 ? resolvedStart + needleLength : -1,
+        searching: false,
+      });
+    };
+
+    serviceLogSearchTimer = window.setTimeout(scanNextChunk, 0);
+    return emptyLogSearch(query, activeMatchIndex, true);
+  };
+  const serviceLogStatus = (viewer) => {
+    const content = viewer?.snapshot?.content || "";
+    const query = String(viewer?.query || "").trim();
+    const search = currentLogSearch(viewer);
+    if (!query) return `${countLogLines(content)} ${t("serverLogLines")}`;
+    if (search.searching) return t("serverLogSearching");
+    if (search.count > 0) {
+      return `${Math.min(viewer.activeMatchIndex || 0, search.count - 1) + 1}/${search.count}`;
+    }
+    return t("serverLogNoMatches");
+  };
+  const clearServiceLogHighlight = () => {
+    shadow.querySelectorAll("mark[data-service-log-highlight]").forEach((mark) => {
+      const parent = mark.parentNode;
+      mark.replaceWith(document.createTextNode(mark.textContent || ""));
+      parent?.normalize?.();
+    });
+  };
+  const getServiceLogTextRange = (container, start, end) => {
+    if (!container || start < 0 || end <= start) return null;
+    const range = document.createRange();
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let offset = 0;
+    let node = walker.nextNode();
+    let started = false;
+    while (node) {
+      const length = node.textContent?.length || 0;
+      const nextOffset = offset + length;
+      if (!started && start >= offset && start <= nextOffset) {
+        range.setStart(node, start - offset);
+        started = true;
+      }
+      if (started && end >= offset && end <= nextOffset) {
+        range.setEnd(node, end - offset);
+        return range;
+      }
+      offset = nextOffset;
+      node = walker.nextNode();
+    }
+    return null;
+  };
+  const scrollServiceLogRangeIntoView = (range, container) => {
+    if (!range || !container) return;
+    const rangeRect = range.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    if (rangeRect.width === 0 && rangeRect.height === 0) return;
+    const top = rangeRect.top - containerRect.top + container.scrollTop - container.clientHeight / 2;
+    container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  };
+  const applyServiceLogHighlight = () => {
+    const viewer = serviceLogViewer;
+    const search = currentLogSearch(viewer);
+    const content = shadow.querySelector("[data-service-log-content]");
+    if (!viewer || search.searching || search.activeStart < 0 || search.activeEnd <= search.activeStart) {
+      clearServiceLogHighlight();
+      return;
+    }
+    const range = getServiceLogTextRange(content, search.activeStart, search.activeEnd);
+    if (!range) {
+      clearServiceLogHighlight();
+      return;
+    }
+    clearServiceLogHighlight();
+    const mark = document.createElement("mark");
+    mark.className = "active";
+    mark.dataset.serviceLogHighlight = "true";
+    try {
+      range.surroundContents(mark);
+    } catch (_) {
+      const fragment = range.extractContents();
+      mark.append(fragment);
+      range.insertNode(mark);
+    }
+    scrollServiceLogRangeIntoView(range, content);
+  };
+  const updateServiceLogSearchUi = () => {
+    const viewer = serviceLogViewer;
+    if (!viewer) {
+      clearServiceLogHighlight();
+      return;
+    }
+    const search = currentLogSearch(viewer);
+    const status = shadow.querySelector("[data-service-log-count]");
+    if (status) status.textContent = serviceLogStatus(viewer);
+    shadow.querySelectorAll("[data-service-log-step]").forEach((button) => {
+      button.disabled = search.searching || search.count === 0;
+    });
+  };
+  const scheduleServiceLogSearch = ({ immediate = false } = {}) => {
+    const viewer = serviceLogViewer;
+    window.clearTimeout(serviceLogSearchTimer);
+    serviceLogSearchToken += 1;
+    if (!viewer?.snapshot) {
+      clearServiceLogHighlight();
+      return;
+    }
+    const query = String(viewer.query || "").trim();
+    if (!query) {
+      serviceLogViewer = { ...viewer, search: emptyLogSearch() };
+      window.__slockDesktopServiceLogViewer = serviceLogViewer;
+      updateServiceLogSearchUi();
+      clearServiceLogHighlight();
+      return;
+    }
+    const token = serviceLogSearchToken;
+    serviceLogViewer = {
+      ...viewer,
+      search: emptyLogSearch(query, viewer.activeMatchIndex || 0, true),
+    };
+    window.__slockDesktopServiceLogViewer = serviceLogViewer;
+    updateServiceLogSearchUi();
+    serviceLogSearchTimer = window.setTimeout(() => {
+      scanLogMatchesInChunks(
+        serviceLogViewer?.snapshot?.content || "",
+        query,
+        serviceLogViewer?.activeMatchIndex || 0,
+        token,
+      );
+    }, immediate ? 0 : 120);
+  };
   const invokeDesktop = async (command, args = {}) => {
     const invoke = window.__TAURI__?.core?.invoke;
     if (typeof invoke !== "function") {
@@ -2404,6 +2664,264 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 8px;
     }
 
+    .service-log-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 8;
+      display: grid;
+      place-items: center;
+      padding: 44px 12px 12px;
+      background: color-mix(in srgb, var(--desktop-canvas) 72%, transparent);
+      backdrop-filter: blur(14px);
+      pointer-events: auto;
+    }
+
+    .service-log-dialog {
+      width: min(900px, calc(100vw - 24px));
+      max-height: min(640px, calc(100vh - 58px));
+      min-height: min(460px, calc(100vh - 58px));
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      gap: 7px;
+      padding: 10px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-lg);
+      background: var(--desktop-surface);
+      color: var(--desktop-text);
+      box-shadow: 0 20px 64px rgba(0, 0, 0, 0.18);
+    }
+
+    .service-log-head,
+    .service-log-toolbar,
+    .service-log-actions,
+    .service-log-loading {
+      display: flex;
+      align-items: center;
+    }
+
+    .service-log-head {
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .service-log-title {
+      min-width: 0;
+      display: grid;
+      gap: 1px;
+    }
+
+    .service-log-title strong {
+      overflow: hidden;
+      font-size: 14px;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .service-log-path {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--desktop-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.3;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .service-log-controls {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(360px, 1.15fr) minmax(250px, 0.85fr);
+      align-items: end;
+      gap: 7px;
+      padding: 6px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-md);
+      background: color-mix(in srgb, var(--desktop-surface-secondary) 70%, transparent);
+    }
+
+    .service-log-toolbar {
+      gap: 7px;
+    }
+
+    .service-log-timebar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto 28px;
+      align-items: end;
+      gap: 5px;
+    }
+
+    .service-log-time-field {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 0.72fr);
+      gap: 4px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      color: var(--desktop-muted);
+      font-size: 9px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .service-log-time-field legend {
+      grid-column: 1 / -1;
+      padding: 0;
+    }
+
+    .service-log-time-input {
+      min-width: 0;
+      height: 28px;
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr);
+      align-items: center;
+      gap: 5px;
+      padding: 0 6px;
+      min-height: 28px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-sm);
+      background: var(--desktop-surface-secondary);
+      color: var(--desktop-text);
+    }
+
+    .service-log-time-input .option-icon {
+      width: 14px;
+      height: 14px;
+      color: var(--desktop-muted);
+    }
+
+    .service-log-time-input input {
+      width: 100%;
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--desktop-text);
+      font: inherit;
+      font-size: 10px;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    .service-log-range-select {
+      grid-column: auto;
+      min-width: 82px;
+      height: 28px;
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr);
+      align-items: center;
+      gap: 5px;
+      padding: 0 6px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-sm);
+      background: var(--desktop-surface-secondary);
+      color: var(--desktop-muted);
+    }
+
+    .service-log-range-select .option-icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .service-log-range-select select {
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--desktop-text);
+      font: inherit;
+      font-size: 10px;
+      cursor: pointer;
+    }
+
+    .service-log-range-button:disabled,
+    .service-log-range-select:has(select:disabled),
+    .service-log-range-select select:disabled,
+    .service-log-time-input:has(input:disabled),
+    .service-log-time-input input:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .service-log-range-button {
+      align-self: end;
+      width: 28px;
+      height: 28px;
+      color: var(--desktop-accent);
+    }
+
+    .service-log-search {
+      flex: 1 1 auto;
+      min-width: 140px;
+    }
+
+    .service-log-count {
+      min-width: 68px;
+      justify-content: center;
+    }
+
+    .service-log-actions {
+      gap: 4px;
+    }
+
+    .service-log-body {
+      min-height: 0;
+      overflow: hidden;
+      display: grid;
+    }
+
+    .service-log-content {
+      margin: 0;
+      min-height: 0;
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-md);
+      background: var(--desktop-surface-secondary);
+      color: var(--desktop-text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      outline: none;
+      scrollbar-gutter: stable;
+    }
+
+    .service-log-content:focus {
+      border-color: color-mix(in srgb, var(--desktop-accent) 32%, var(--desktop-line));
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--desktop-accent) 12%, transparent);
+    }
+
+    .service-log-content mark {
+      border-radius: var(--desktop-radius-xs);
+      background: color-mix(in srgb, #facc15 58%, transparent);
+      color: inherit;
+      padding: 0 2px;
+    }
+
+    .service-log-content mark.active {
+      background: color-mix(in srgb, var(--desktop-accent) 38%, #facc15);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--desktop-accent) 24%, transparent);
+    }
+
+    .service-log-loading {
+      gap: 8px;
+      min-height: 40px;
+      color: var(--desktop-muted);
+      font-size: 12px;
+    }
+
+    .service-log-error,
+    .service-log-empty,
+    .service-log-truncated {
+      margin: 0;
+    }
+
     button {
       font: inherit;
       touch-action: manipulation;
@@ -3285,6 +3803,42 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         grid-auto-flow: column;
         overflow-x: auto;
       }
+
+      .service-log-dialog {
+        width: calc(100vw - 16px);
+        max-height: calc(100vh - 48px);
+        min-height: calc(100vh - 48px);
+      }
+
+      .service-log-controls {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .service-log-toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .service-log-timebar {
+        grid-template-columns: minmax(0, 1fr) 28px;
+      }
+
+      .service-log-time-field {
+        grid-column: 1 / -1;
+      }
+
+      .service-log-range-select {
+        grid-column: 1;
+      }
+
+      .service-log-range-button {
+        grid-column: 2;
+        grid-row: 3;
+      }
+
+      .service-log-search {
+        grid-column: 1 / -1;
+      }
     }
 
 	    @media (prefers-reduced-motion: reduce) {
@@ -3441,7 +3995,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           title="${t("openServerLog")}"
           aria-label="${t("openServerLog")}"
           ${!selectedSlug ? "disabled" : ""}
-        >${shellIcon()}</button>
+        >${logIcon()}</button>
         <div class="titlebar-theme-wrap" style="--theme-accent:${escapeHtml(themeAccent)}">
           <button class="titlebar-theme-button" type="button" data-titlebar-theme-toggle title="${escapeHtml(themeLabel)}" aria-label="${t("theme")}">
           <span class="titlebar-theme-trigger" aria-hidden="true">
@@ -3508,6 +4062,135 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const busy = selectedServiceRunning() ? "service-stop" : "service-start";
     await loadServiceSnapshot(command, { selectedServerSlug: selectedSlug }, busy);
   };
+  const serviceLogQuickRanges = [
+    { key: "serverLogQuick30s", durationMs: 30 * 1000 },
+    { key: "serverLogQuick1m", durationMs: 60 * 1000 },
+    { key: "serverLogQuick5m", durationMs: 5 * 60 * 1000 },
+    { key: "serverLogQuick30m", durationMs: 30 * 60 * 1000 },
+    { key: "serverLogQuick1h", durationMs: 60 * 60 * 1000 },
+  ];
+  const toDatetimeLocalValue = (date) => {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  };
+  const datetimeDatePart = (value) => String(value || "").split("T")[0] || "";
+  const datetimeTimePart = (value) => {
+    const time = String(value || "").split("T")[1] || "";
+    return time.length === 5 ? `${time}:00` : time;
+  };
+  const normalizeTimeInput = (value) => value.length === 5 ? `${value}:00` : value;
+  const updateDatetimeLocalPart = (value, part, nextValue) => {
+    const fallback = toDatetimeLocalValue(new Date());
+    const date = datetimeDatePart(value) || datetimeDatePart(fallback);
+    const time = datetimeTimePart(value) || "00:00:00";
+    return part === "date"
+      ? `${nextValue || date}T${time}`
+      : `${date}T${normalizeTimeInput(nextValue || time)}`;
+  };
+  const serviceLogRangeForDuration = (durationMs) => {
+    const end = new Date();
+    const start = new Date(end.getTime() - durationMs);
+    return { rangeStart: toDatetimeLocalValue(start), rangeEnd: toDatetimeLocalValue(end) };
+  };
+  const epochFromDatetimeLocal = (value) => {
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : null;
+  };
+  const setServiceLogViewer = (next) => {
+    serviceLogViewer = next;
+    window.__slockDesktopServiceLogViewer = serviceLogViewer;
+    render();
+  };
+  const openServiceLogViewer = async (serverSlug, rangeOverride = null) => {
+    const server = serviceSnapshot?.servers?.find((item) => item.slug === serverSlug);
+    const serverName = server?.name || serverSlug;
+    const query = serviceLogViewer?.serverSlug === serverSlug ? serviceLogViewer.query : "";
+    const preservedRange = serviceLogViewer?.serverSlug === serverSlug;
+    const defaultRange = serviceLogRangeForDuration(30 * 60 * 1000);
+    const rangeStart = rangeOverride?.rangeStart || (preservedRange ? serviceLogViewer.rangeStart : defaultRange.rangeStart);
+    const rangeEnd = rangeOverride?.rangeEnd || (preservedRange ? serviceLogViewer.rangeEnd : defaultRange.rangeEnd);
+    const rangePresetMs =
+      rangeOverride?.rangePresetMs ?? (preservedRange ? serviceLogViewer.rangePresetMs : 30 * 60 * 1000);
+    setServiceLogViewer({
+      loading: true,
+      snapshot: null,
+      serverSlug,
+      serverName,
+      query,
+      rangeStart,
+      rangeEnd,
+      rangePresetMs,
+      activeMatchIndex: 0,
+      search: emptyLogSearch(),
+      error: null,
+    });
+    try {
+      const snapshot = await invokeDesktop("open_service_log", {
+        serverSlug,
+        fromEpochMs: epochFromDatetimeLocal(rangeStart),
+        toEpochMs: epochFromDatetimeLocal(rangeEnd),
+      });
+      if (!serviceLogViewer || serviceLogViewer.serverSlug !== serverSlug) return;
+      setServiceLogViewer({
+        ...serviceLogViewer,
+        loading: false,
+        snapshot,
+        serverName,
+        rangeStart,
+        rangeEnd,
+        rangePresetMs,
+        activeMatchIndex: 0,
+        search: emptyLogSearch(),
+        error: null,
+      });
+      scheduleServiceLogSearch({ immediate: true });
+    } catch (error) {
+      if (!serviceLogViewer || serviceLogViewer.serverSlug !== serverSlug) return;
+      setServiceLogViewer({
+        ...serviceLogViewer,
+        loading: false,
+        error: error?.message || String(error),
+      });
+    }
+  };
+  const updateServiceLogQuery = (query) => {
+    if (!serviceLogViewer) return;
+    serviceLogViewer = { ...serviceLogViewer, query, activeMatchIndex: 0 };
+    window.__slockDesktopServiceLogViewer = serviceLogViewer;
+    scheduleServiceLogSearch();
+  };
+  const updateServiceLogRangePart = (field, part, value) => {
+    if (!serviceLogViewer) return;
+    serviceLogViewer = {
+      ...serviceLogViewer,
+      [field]: updateDatetimeLocalPart(serviceLogViewer[field], part, value),
+      rangePresetMs: null,
+    };
+    window.__slockDesktopServiceLogViewer = serviceLogViewer;
+  };
+  const applyServiceLogRangePreset = (durationMs) => {
+    if (!serviceLogViewer?.serverSlug) return;
+    const range = { ...serviceLogRangeForDuration(durationMs), rangePresetMs: durationMs };
+    void openServiceLogViewer(serviceLogViewer.serverSlug, range);
+  };
+  const stepServiceLogMatch = (direction) => {
+    if (!serviceLogViewer?.snapshot) return;
+    const search = currentLogSearch(serviceLogViewer);
+    if (search.searching || search.count === 0) return;
+    serviceLogViewer = {
+      ...serviceLogViewer,
+      activeMatchIndex:
+        ((serviceLogViewer.activeMatchIndex || 0) + direction + search.count) % search.count,
+    };
+    window.__slockDesktopServiceLogViewer = serviceLogViewer;
+    scheduleServiceLogSearch({ immediate: true });
+  };
+  const closeServiceLogViewer = () => {
+    window.clearTimeout(serviceLogSearchTimer);
+    serviceLogSearchToken += 1;
+    clearServiceLogHighlight();
+    setServiceLogViewer(null);
+  };
   const openSelectedServiceLog = async () => {
     const service = serviceSnapshot;
     const selected = selectedServiceServer();
@@ -3517,12 +4200,74 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       render();
       return;
     }
-    try {
-      await invokeDesktop("open_service_log", { serverSlug: selectedSlug });
-    } catch (error) {
-      serviceError = error?.message || String(error);
-      render();
-    }
+    await openServiceLogViewer(selectedSlug);
+  };
+
+  const serviceLogViewerContent = () => {
+    const viewer = serviceLogViewer;
+    if (!viewer) return "";
+    const content = viewer.snapshot?.content || "";
+    const search = currentLogSearch(viewer);
+    const status = serviceLogStatus(viewer);
+    const path = viewer.snapshot?.path || viewer.serverSlug;
+    const rangeOptions = [
+      `<option value="" ${viewer.rangePresetMs ? "" : "selected"}>${t("serverLogCustomRange")}</option>`,
+      ...serviceLogQuickRanges.map((range) =>
+        `<option value="${range.durationMs}" ${viewer.rangePresetMs === range.durationMs ? "selected" : ""}>${t(range.key)}</option>`,
+      ),
+    ]
+      .join("");
+    const body = viewer.loading
+      ? `<div class="service-log-loading" role="status">${actionIcon("refresh", true)}<span>${t("serverLogLoading")}</span></div>`
+      : content
+        ? `<pre class="service-log-content" data-service-log-content tabindex="0">${escapeHtml(content)}</pre>`
+        : `<p class="service-empty service-log-empty">${t("serverLogEmpty")}</p>`;
+
+    return `
+      <section class="service-log-backdrop" data-service-log-backdrop>
+        <section class="service-log-dialog" role="dialog" aria-modal="true" aria-label="${t("serverLogTitle")}">
+          <header class="service-log-head">
+            <span class="service-log-title">
+              <span class="eyebrow">${t("serverLogTitle")}</span>
+              <strong>${escapeHtml(viewer.serverName || viewer.serverSlug)}</strong>
+              <code class="service-log-path" title="${escapeHtml(path)}">${escapeHtml(path)}</code>
+            </span>
+            <button class="settings-icon-button compact" type="button" data-service-log-close title="${t("close")}" aria-label="${t("close")}">${closeIcon()}</button>
+          </header>
+          <div class="service-log-controls">
+            <div class="service-log-timebar">
+              <fieldset class="service-log-time-field">
+                <legend>${t("serverLogFrom")}</legend>
+                <label class="service-log-time-input">${calendarIcon()}<input type="date" data-service-log-range="rangeStart" data-service-log-range-part="date" value="${escapeHtml(datetimeDatePart(viewer.rangeStart))}" aria-label="${t("serverLogFrom")} date" ${viewer.loading ? "disabled" : ""}></label>
+                <label class="service-log-time-input">${clockIcon()}<input type="time" step="1" data-service-log-range="rangeStart" data-service-log-range-part="time" value="${escapeHtml(datetimeTimePart(viewer.rangeStart))}" aria-label="${t("serverLogFrom")} time" ${viewer.loading ? "disabled" : ""}></label>
+              </fieldset>
+              <fieldset class="service-log-time-field">
+                <legend>${t("serverLogTo")}</legend>
+                <label class="service-log-time-input">${calendarIcon()}<input type="date" data-service-log-range="rangeEnd" data-service-log-range-part="date" value="${escapeHtml(datetimeDatePart(viewer.rangeEnd))}" aria-label="${t("serverLogTo")} date" ${viewer.loading ? "disabled" : ""}></label>
+                <label class="service-log-time-input">${clockIcon()}<input type="time" step="1" data-service-log-range="rangeEnd" data-service-log-range-part="time" value="${escapeHtml(datetimeTimePart(viewer.rangeEnd))}" aria-label="${t("serverLogTo")} time" ${viewer.loading ? "disabled" : ""}></label>
+              </fieldset>
+              <label class="service-log-range-select">${clockIcon()}<select data-service-log-preset aria-label="${t("serverLogRange")}" title="${t("serverLogRange")}" ${viewer.loading ? "disabled" : ""}>${rangeOptions}</select></label>
+              <button class="settings-icon-button compact service-log-range-button" type="button" data-service-log-apply-range title="${t("serverLogRangeApply")}" aria-label="${t("serverLogRangeApply")}" ${viewer.loading ? "disabled" : ""}>${actionIcon("refresh", viewer.loading)}</button>
+            </div>
+            <div class="service-log-toolbar">
+              <label class="server-search service-log-search">
+                ${searchIcon()}
+                <span class="sr-only">${t("serverLogSearch")}</span>
+                <input data-service-log-search value="${escapeHtml(viewer.query || "")}" placeholder="${t("serverLogSearch")}" aria-label="${t("serverLogSearch")}" ${viewer.loading || !viewer.snapshot ? "disabled" : ""}>
+              </label>
+              <span class="service-chip service-log-count" data-service-log-count>${escapeHtml(status)}</span>
+              <div class="service-log-actions">
+                <button class="settings-icon-button compact" type="button" data-service-log-step="-1" title="${t("serverLogPreviousMatch")}" aria-label="${t("serverLogPreviousMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("up")}</button>
+                <button class="settings-icon-button compact" type="button" data-service-log-step="1" title="${t("serverLogNextMatch")}" aria-label="${t("serverLogNextMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("down")}</button>
+              </div>
+            </div>
+          </div>
+          ${viewer.error ? `<p class="service-empty service-log-error" role="alert">${escapeHtml(viewer.error)}</p>` : ""}
+          <div class="service-log-body">${body}</div>
+          ${viewer.snapshot?.truncated ? `<p class="service-empty service-log-truncated">${t("serverLogTruncated")}</p>` : ""}
+        </section>
+      </section>
+    `;
   };
 
   const render = () => {
@@ -3721,7 +4466,63 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       }
     });
 
+    const logViewerContainer = document.createElement("div");
+    logViewerContainer.innerHTML = serviceLogViewerContent();
+    const logViewerElement = logViewerContainer.firstElementChild;
+    if (logViewerElement) {
+      logViewerElement.addEventListener("mousedown", (event) => {
+        if (event.target === logViewerElement) closeServiceLogViewer();
+      });
+      logViewerElement.querySelector("[data-service-log-close]")?.addEventListener("click", () => {
+        closeServiceLogViewer();
+      });
+      logViewerElement.querySelector("[data-service-log-apply-range]")?.addEventListener("click", () => {
+        if (serviceLogViewer?.serverSlug) void openServiceLogViewer(serviceLogViewer.serverSlug);
+      });
+      logViewerElement.querySelector("[data-service-log-preset]")?.addEventListener("change", (event) => {
+        const durationMs = Number(event.target.value);
+        if (durationMs > 0) {
+          applyServiceLogRangePreset(durationMs);
+        }
+      });
+      logViewerElement.querySelectorAll("[data-service-log-range]").forEach((input) => {
+        input.addEventListener("input", (event) => {
+          updateServiceLogRangePart(
+            input.getAttribute("data-service-log-range"),
+            input.getAttribute("data-service-log-range-part"),
+            event.target.value,
+          );
+          const preset = logViewerElement.querySelector("[data-service-log-preset]");
+          if (preset) preset.value = "";
+        });
+      });
+      logViewerElement.querySelectorAll("[data-service-log-step]").forEach((button) => {
+        button.addEventListener("click", () => {
+          stepServiceLogMatch(Number(button.getAttribute("data-service-log-step")) || 1);
+        });
+      });
+      logViewerElement.querySelector("[data-service-log-search]")?.addEventListener("input", (event) => {
+        updateServiceLogQuery(event.target.value);
+      });
+      logViewerElement.querySelector("[data-service-log-search]")?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          stepServiceLogMatch(event.shiftKey ? -1 : 1);
+        }
+      });
+      queueMicrotask(() => {
+        applyServiceLogHighlight();
+        const search = shadow.querySelector("[data-service-log-search]");
+        if (search && !search.disabled) {
+          const query = String(serviceLogViewer?.query || "");
+          search.focus();
+          search.setSelectionRange?.(query.length, query.length);
+        }
+      });
+    }
+
     dock.append(toolbar);
+    if (logViewerElement) dock.appendChild(logViewerElement);
     shadow.appendChild(dock);
   };
 
@@ -3996,6 +4797,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   scheduleRouteServerSync();
 
 	  function closeTransientTitlebarPanels() {
+    if (serviceLogViewer) {
+      closeServiceLogViewer();
+      return true;
+    }
 	    if (!titlebarThemeMenuOpen && !releaseNotesOpen) return false;
     if (titlebarThemeMenuOpen) {
       newThemeDraft = null;
@@ -4136,7 +4941,21 @@ mod tests {
         assert!(script.contains("optionIcon(mode.icon)"));
         assert!(script.contains("optionIcon(language.icon)"));
         assert!(script.contains("nextLanguageId()"));
-        assert!(script.contains("M10 16h10"));
+        assert!(script.contains("M8 8h6"));
+        assert!(script.contains("service-log-dialog"));
+        assert!(script.contains("data-service-log-search"));
+        assert!(script.contains("data-service-log-range"));
+        assert!(script.contains("data-service-log-preset"));
+        assert!(!script.contains("data-service-log-quick"));
+        assert!(script.contains("serverLogCustomRange"));
+        assert!(script.contains("serverLogQuick30s"));
+        assert!(script.contains("openServiceLogViewer"));
+        assert!(script.contains("scanLogMatchesInChunks"));
+        assert!(script.contains("data-service-log-content"));
+        assert!(script.contains("data-service-log-highlight"));
+        assert!(!script.contains("getLogMatchSummary"));
+        assert!(!script.contains("renderLogContentHtml"));
+        assert!(!script.contains("matchIndex"));
         assert!(script.contains("titlebar-release-popover"));
         assert!(script.contains("data-titlebar-release-install"));
         assert!(script.contains("releaseNotesOpen = !releaseNotesOpen"));

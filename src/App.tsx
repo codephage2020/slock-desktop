@@ -2,7 +2,9 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   startTransition,
+  useDeferredValue,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -15,6 +17,7 @@ import {
   type CustomThemeSnapshot,
   type DesktopUpdateCheck,
   type ServiceAccountSnapshot,
+  type ServiceLogSnapshot,
   type ThemeDefinition,
   checkDesktopUpdate,
   createCustomTheme,
@@ -79,6 +82,14 @@ const LANGUAGE_OPTIONS = [
 const AUTH_POLL_INTERVAL_MS = 1000
 const AUTH_POLL_MAX_ATTEMPTS = 180
 const AUTH_INTERRUPTED_HINT_MS = 1800
+const DEFAULT_SERVICE_LOG_RANGE_MS = 30 * 60 * 1000
+const SERVICE_LOG_QUICK_RANGES = [
+  { key: 'serverLogQuick30s', durationMs: 30 * 1000 },
+  { key: 'serverLogQuick1m', durationMs: 60 * 1000 },
+  { key: 'serverLogQuick5m', durationMs: 5 * 60 * 1000 },
+  { key: 'serverLogQuick30m', durationMs: DEFAULT_SERVICE_LOG_RANGE_MS },
+  { key: 'serverLogQuick1h', durationMs: 60 * 60 * 1000 },
+] as const
 
 const COPY = {
   'en-US': {
@@ -131,7 +142,28 @@ const COPY = {
     selectedServerPlaceholder: 'Choose a server',
     noServers: 'No servers available on this account yet.',
     refreshServers: 'Refresh Servers',
-    openServerLog: 'View server logs',
+  openServerLog: 'View server logs',
+    serverLogTitle: 'Server logs',
+    serverLogSearch: 'Search logs',
+    serverLogSearching: 'Searching…',
+    serverLogFrom: 'From',
+    serverLogTo: 'To',
+    serverLogRange: 'Range',
+    serverLogCustomRange: 'Custom',
+    serverLogRangeApply: 'Load range',
+    serverLogQuick30s: '30s',
+    serverLogQuick1m: '1m',
+    serverLogQuick5m: '5m',
+    serverLogQuick30m: '30m',
+    serverLogQuick1h: '1h',
+    serverLogLoading: 'Loading logs…',
+    serverLogEmpty: 'Log is empty.',
+    serverLogPath: 'Log file',
+    serverLogTruncated: 'Showing recent log tail',
+    serverLogPreviousMatch: 'Previous match',
+    serverLogNextMatch: 'Next match',
+    serverLogNoMatches: 'No matches',
+    serverLogLines: 'lines',
     refreshingServers: 'Refreshing…',
     loadingServerCatalog: 'Loading server list…',
     syncingServerStatus: 'Checking local server status…',
@@ -177,6 +209,7 @@ const COPY = {
     deletingTheme: 'Deleting…',
     appBootingTitle: 'slock-desktop',
     loginTimeout: 'Sign-in timed out',
+    close: 'Close',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -228,7 +261,28 @@ const COPY = {
     selectedServerPlaceholder: '选择一个 server',
     noServers: '当前账号下还没有可用 server。',
     refreshServers: '刷新 Server 列表',
-    openServerLog: '查看 server 日志',
+  openServerLog: '查看 server 日志',
+    serverLogTitle: 'Server 日志',
+    serverLogSearch: '搜索日志',
+    serverLogSearching: '搜索中…',
+    serverLogFrom: '开始',
+    serverLogTo: '结束',
+    serverLogRange: '范围',
+    serverLogCustomRange: '自定义',
+    serverLogRangeApply: '加载时间范围',
+    serverLogQuick30s: '30秒',
+    serverLogQuick1m: '1分钟',
+    serverLogQuick5m: '5分钟',
+    serverLogQuick30m: '30分钟',
+    serverLogQuick1h: '1小时',
+    serverLogLoading: '正在读取日志…',
+    serverLogEmpty: '日志为空。',
+    serverLogPath: '日志文件',
+    serverLogTruncated: '正在显示最近的日志尾部',
+    serverLogPreviousMatch: '上一条匹配',
+    serverLogNextMatch: '下一条匹配',
+    serverLogNoMatches: '没有匹配项',
+    serverLogLines: '行',
     refreshingServers: '刷新中…',
     loadingServerCatalog: '正在读取 Server 列表…',
     syncingServerStatus: '正在同步本地 Server 状态…',
@@ -274,6 +328,7 @@ const COPY = {
     deletingTheme: '删除中…',
     appBootingTitle: 'slock-desktop',
     loginTimeout: '登录超时',
+    close: '关闭',
   },
 } as const
 
@@ -293,12 +348,48 @@ interface NewThemeDraft {
 
 type RgbChannel = keyof NewThemeDraft['rgbInput']
 
+interface ServiceLogViewerState {
+  loading: boolean
+  snapshot: ServiceLogSnapshot | null
+  serverSlug: string
+  serverName: string
+  query: string
+  rangeStart: string
+  rangeEnd: string
+  rangePresetMs: number | null
+  activeMatchIndex: number
+  error: string | null
+}
+
+interface ServiceLogSearchState {
+  query: string
+  activeMatchIndex: number
+  count: number
+  activeStart: number
+  activeEnd: number
+  searching: boolean
+}
+
+const EMPTY_SERVICE_LOG_SEARCH: ServiceLogSearchState = {
+  query: '',
+  activeMatchIndex: 0,
+  count: 0,
+  activeStart: -1,
+  activeEnd: -1,
+  searching: false,
+}
+
 function App() {
   const [snapshot, setSnapshot] = useState<BootstrapPayload | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [releaseState, setReleaseState] = useState<ReleaseState>(INITIAL_RELEASE_STATE)
   const [serverQuery, setServerQuery] = useState('')
+  const [serviceLogViewer, setServiceLogViewer] =
+    useState<ServiceLogViewerState | null>(null)
+  const [serviceLogSearch, setServiceLogSearch] = useState<ServiceLogSearchState>(
+    EMPTY_SERVICE_LOG_SEARCH,
+  )
   const [workspaceLaunchActive, setWorkspaceLaunchActive] = useState(false)
   const [workspaceLaunchTarget, setWorkspaceLaunchTarget] = useState<string | null>(null)
   const [browserLoginPending, setBrowserLoginPending] = useState(false)
@@ -313,6 +404,8 @@ function App() {
   const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
+  const serviceLogSearchRef = useRef<HTMLInputElement | null>(null)
+  const serviceLogContentRef = useRef<HTMLPreElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
   const authResolvedRef = useRef(false)
   const [initialServiceRefreshDone, setInitialServiceRefreshDone] = useState(false)
@@ -324,6 +417,87 @@ function App() {
   const serviceAuthenticated = snapshot?.service.authenticated ?? false
   const latestUpdate = snapshot?.updates.latest ?? null
   const copy = snapshot ? getCopy(snapshot.language, snapshot.resolvedLanguage) : getCopy('system')
+  const serviceLogContent = serviceLogViewer?.snapshot?.content ?? ''
+  const serviceLogInputQuery = serviceLogViewer?.query ?? ''
+  const serviceLogQuery = useDeferredValue(serviceLogInputQuery.trim())
+  const serviceLogActiveMatchIndex = serviceLogViewer?.activeMatchIndex ?? 0
+  const serviceLogViewerOpen = Boolean(serviceLogViewer)
+  const serviceLogSearchCurrent =
+    serviceLogSearch.query === serviceLogQuery &&
+    serviceLogSearch.activeMatchIndex === serviceLogActiveMatchIndex
+  const serviceLogMatchCount = serviceLogSearchCurrent ? serviceLogSearch.count : 0
+  const serviceLogSearching = Boolean(serviceLogQuery) && (
+    !serviceLogSearchCurrent || serviceLogSearch.searching
+  )
+  const serviceLogLineCount = useMemo(
+    () => countLogLines(serviceLogContent),
+    [serviceLogContent],
+  )
+
+  useEffect(() => {
+    const query = serviceLogQuery
+    const activeMatchIndex = serviceLogActiveMatchIndex
+    if (!serviceLogContent || !query) {
+      setServiceLogSearch(EMPTY_SERVICE_LOG_SEARCH)
+      clearLogHighlight('slock-service-log-active')
+      return
+    }
+
+    let cancelled = false
+    setServiceLogSearch({
+      query,
+      activeMatchIndex,
+      count: 0,
+      activeStart: -1,
+      activeEnd: -1,
+      searching: true,
+    })
+
+    const complete = (result: Omit<ServiceLogSearchState, 'searching'>) => {
+      if (!cancelled) {
+        setServiceLogSearch({ ...result, searching: false })
+      }
+    }
+    const timeout = window.setTimeout(() => {
+      scanLogMatchesInChunks(serviceLogContent, query, activeMatchIndex, complete, () => cancelled)
+    }, 120)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [serviceLogActiveMatchIndex, serviceLogContent, serviceLogQuery])
+
+  useEffect(() => {
+    if (
+      serviceLogSearch.searching ||
+      !serviceLogSearch.query ||
+      serviceLogSearch.activeStart < 0 ||
+      serviceLogSearch.activeEnd <= serviceLogSearch.activeStart
+    ) {
+      clearLogHighlight('slock-service-log-active')
+      return
+    }
+
+    const range = getLogTextRange(
+      serviceLogContentRef.current,
+      serviceLogSearch.activeStart,
+      serviceLogSearch.activeEnd,
+    )
+    if (!range) {
+      clearLogHighlight('slock-service-log-active')
+      return
+    }
+
+    applyLogHighlight('slock-service-log-active', range)
+    scrollLogRangeIntoView(range, serviceLogContentRef.current)
+    return () => clearLogHighlight('slock-service-log-active')
+  }, [
+    serviceLogSearch.activeEnd,
+    serviceLogSearch.activeStart,
+    serviceLogSearch.query,
+    serviceLogSearch.searching,
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -541,6 +715,31 @@ function App() {
       newNameInputRef.current.focus()
     }
   }, [newThemeDraft])
+
+  useEffect(() => {
+    if (!serviceLogViewerOpen) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      serviceLogSearchRef.current?.focus()
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [serviceLogViewerOpen, serviceLogViewer?.serverSlug, serviceLogViewer?.loading])
+
+  useEffect(() => {
+    if (!serviceLogViewer) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setServiceLogViewer(null)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [serviceLogViewer])
 
   useEffect(() => {
     if (!newThemeDraft) {
@@ -944,12 +1143,170 @@ function App() {
   }
 
   async function handleServiceLogOpen(serverSlug: string) {
+    const server =
+      snapshot?.service.servers.find((item) => item.slug === serverSlug) ?? null
+    const serverName = server?.name ?? serverSlug
+    const query = serviceLogViewer?.serverSlug === serverSlug ? serviceLogViewer.query : ''
+    const preservedRange = serviceLogViewer?.serverSlug === serverSlug
+    const defaultRange = getDefaultServiceLogRange()
+    const rangeStart = preservedRange ? serviceLogViewer.rangeStart : defaultRange.start
+    const rangeEnd = preservedRange ? serviceLogViewer.rangeEnd : defaultRange.end
+    const rangePresetMs = preservedRange
+      ? serviceLogViewer.rangePresetMs
+      : DEFAULT_SERVICE_LOG_RANGE_MS
+
+    setServiceLogViewer({
+      loading: true,
+      snapshot: null,
+      serverSlug,
+      serverName,
+      query,
+      rangeStart,
+      rangeEnd,
+      rangePresetMs,
+      activeMatchIndex: 0,
+      error: null,
+    })
+
     try {
       setErrorMessage(null)
-      await openServiceLog(serverSlug)
+      const next = await openServiceLog(serverSlug, {
+        fromEpochMs: datetimeLocalToEpochMs(rangeStart),
+        toEpochMs: datetimeLocalToEpochMs(rangeEnd),
+      })
+      setServiceLogViewer((current) => {
+        if (!current || current.serverSlug !== serverSlug) {
+          return current
+        }
+        return {
+          ...current,
+          loading: false,
+          snapshot: next,
+          serverName,
+          activeMatchIndex: 0,
+          error: null,
+        }
+      })
     } catch (error) {
-      setErrorMessage(getErrorMessage(error))
+      const message = getErrorMessage(error)
+      setServiceLogViewer((current) =>
+        current && current.serverSlug === serverSlug
+          ? { ...current, loading: false, error: message }
+          : current,
+      )
     }
+  }
+
+  function handleServiceLogQueryChange(query: string) {
+    setServiceLogViewer((current) =>
+      current ? { ...current, query, activeMatchIndex: 0 } : current,
+    )
+  }
+
+  function handleServiceLogRangePartChange(
+    field: 'rangeStart' | 'rangeEnd',
+    part: 'date' | 'time',
+    value: string,
+  ) {
+    setServiceLogViewer((current) =>
+      current
+        ? {
+            ...current,
+            [field]: updateDatetimeLocalPart(current[field], part, value),
+            rangePresetMs: null,
+          }
+        : current,
+    )
+  }
+
+  function handleServiceLogRangePresetChange(durationMs: number) {
+    const range = getServiceLogRangeForDuration(durationMs)
+    setServiceLogViewer((current) =>
+      current
+        ? {
+            ...current,
+            rangeStart: range.start,
+            rangeEnd: range.end,
+            rangePresetMs: durationMs,
+          }
+        : current,
+    )
+    if (serviceLogViewer?.serverSlug) {
+      void handleServiceLogOpenWithRange(
+        serviceLogViewer.serverSlug,
+        range.start,
+        range.end,
+        durationMs,
+      )
+    }
+  }
+
+  async function handleServiceLogOpenWithRange(
+    serverSlug: string,
+    rangeStart: string,
+    rangeEnd: string,
+    rangePresetMs: number | null = serviceLogViewer?.rangePresetMs ?? null,
+  ) {
+    setServiceLogViewer((current) =>
+      current && current.serverSlug === serverSlug
+        ? {
+            ...current,
+            loading: true,
+            snapshot: null,
+            rangeStart,
+            rangeEnd,
+            rangePresetMs,
+            error: null,
+          }
+        : current,
+    )
+    try {
+      const next = await openServiceLog(serverSlug, {
+        fromEpochMs: datetimeLocalToEpochMs(rangeStart),
+        toEpochMs: datetimeLocalToEpochMs(rangeEnd),
+      })
+      setServiceLogViewer((current) =>
+        current && current.serverSlug === serverSlug
+          ? {
+              ...current,
+              loading: false,
+              snapshot: next,
+              rangePresetMs,
+              activeMatchIndex: 0,
+              error: null,
+            }
+          : current,
+      )
+    } catch (error) {
+      const message = getErrorMessage(error)
+      setServiceLogViewer((current) =>
+        current && current.serverSlug === serverSlug
+          ? { ...current, loading: false, error: message }
+          : current,
+      )
+    }
+  }
+
+  function handleServiceLogMatchStep(direction: number) {
+    if (serviceLogSearching || serviceLogMatchCount === 0) {
+      return
+    }
+
+    setServiceLogViewer((current) => {
+      if (!current?.snapshot) {
+        return current
+      }
+      return {
+        ...current,
+        activeMatchIndex:
+          (current.activeMatchIndex + direction + serviceLogMatchCount) %
+          serviceLogMatchCount,
+      }
+    })
+  }
+
+  function handleServiceLogClose() {
+    setServiceLogViewer(null)
   }
 
   async function handleSelectedServiceToggle() {
@@ -1102,6 +1459,13 @@ function App() {
   const accountEmailLabel = getAccountEmailLabel(snapshot.service.account, copy)
   const savedAccounts = snapshot.service.accounts
   const currentAccountId = snapshot.service.account?.id ?? ''
+  const serviceLogStatusLabel = serviceLogQuery
+    ? serviceLogSearching
+      ? copy.serverLogSearching
+      : serviceLogMatchCount > 0
+      ? `${Math.min(serviceLogViewer?.activeMatchIndex ?? 0, serviceLogMatchCount - 1) + 1}/${serviceLogMatchCount}`
+      : copy.serverLogNoMatches
+    : `${serviceLogLineCount} ${copy.serverLogLines}`
 
   return (
     <main
@@ -1425,7 +1789,7 @@ function App() {
                       aria-label={`${copy.openServerLog}: ${server.name}`}
                       title={copy.openServerLog}
                     >
-                      <ShellIcon />
+                      <LogsIcon />
                     </button>
                   </div>
                 )
@@ -1646,6 +2010,176 @@ function App() {
           </div>
         </section>
       </section>
+
+      {serviceLogViewer ? (
+        <section
+          className="service-log-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              handleServiceLogClose()
+            }
+          }}
+        >
+          <section
+            className="service-log-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="service-log-title"
+          >
+            <header className="service-log-head">
+              <div className="service-log-heading">
+                <p className="eyebrow">{copy.serverLogTitle}</p>
+                <h2 id="service-log-title">{serviceLogViewer.serverName}</h2>
+                <code
+                  className="service-log-path"
+                  title={serviceLogViewer.snapshot?.path ?? serviceLogViewer.serverSlug}
+                >
+                  {serviceLogViewer.snapshot?.path ?? serviceLogViewer.serverSlug}
+                </code>
+              </div>
+              <button
+                className="icon-action-button compact"
+                type="button"
+                onClick={handleServiceLogClose}
+                aria-label={copy.close}
+                title={copy.close}
+              >
+                <XIcon />
+              </button>
+            </header>
+
+            <div className="service-log-controls">
+              <div className="service-log-timebar">
+                <ServiceLogTimeField
+                  label={copy.serverLogFrom}
+                  value={serviceLogViewer.rangeStart}
+                  disabled={serviceLogViewer.loading}
+                  onChange={(part, value) =>
+                    handleServiceLogRangePartChange('rangeStart', part, value)
+                  }
+                />
+                <ServiceLogTimeField
+                  label={copy.serverLogTo}
+                  value={serviceLogViewer.rangeEnd}
+                  disabled={serviceLogViewer.loading}
+                  onChange={(part, value) =>
+                    handleServiceLogRangePartChange('rangeEnd', part, value)
+                  }
+                />
+                <label className="service-log-range-select">
+                  <ClockIcon />
+                  <select
+                    value={serviceLogViewer.rangePresetMs ?? ''}
+                    onChange={(event) => {
+                      const durationMs = Number(event.target.value)
+                      if (durationMs > 0) {
+                        handleServiceLogRangePresetChange(durationMs)
+                      }
+                    }}
+                    disabled={serviceLogViewer.loading}
+                    aria-label={copy.serverLogRange}
+                    title={copy.serverLogRange}
+                  >
+                    <option value="">{copy.serverLogCustomRange}</option>
+                    {SERVICE_LOG_QUICK_RANGES.map((range) => (
+                      <option key={range.key} value={range.durationMs}>
+                        {copy[range.key]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="icon-action-button compact service-log-range-button"
+                  type="button"
+                  onClick={() =>
+                    void handleServiceLogOpenWithRange(
+                      serviceLogViewer.serverSlug,
+                      serviceLogViewer.rangeStart,
+                      serviceLogViewer.rangeEnd,
+                    )
+                  }
+                  disabled={serviceLogViewer.loading}
+                  aria-label={copy.serverLogRangeApply}
+                  title={copy.serverLogRangeApply}
+                >
+                  <ServiceActionIcon type="refresh" busy={serviceLogViewer.loading} />
+                </button>
+              </div>
+
+              <div className="service-log-toolbar">
+                <label className="server-search service-log-search">
+                  <ServerSearchIcon />
+                  <span className="sr-only">{copy.serverLogSearch}</span>
+                  <input
+                    ref={serviceLogSearchRef}
+                    value={serviceLogViewer.query}
+                    onChange={(event) => handleServiceLogQueryChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        handleServiceLogMatchStep(event.shiftKey ? -1 : 1)
+                      }
+                    }}
+                    placeholder={copy.serverLogSearch}
+                    aria-label={copy.serverLogSearch}
+                    disabled={!serviceLogViewer.snapshot || serviceLogViewer.loading}
+                  />
+                </label>
+                <span className="status-chip service-log-count">
+                  {serviceLogStatusLabel}
+                </span>
+                <div className="service-log-actions">
+                  <button
+                    className="icon-action-button compact"
+                    type="button"
+                    onClick={() => handleServiceLogMatchStep(-1)}
+                    disabled={serviceLogSearching || serviceLogMatchCount === 0}
+                    aria-label={copy.serverLogPreviousMatch}
+                    title={copy.serverLogPreviousMatch}
+                  >
+                    <ChevronIcon direction="up" />
+                  </button>
+                  <button
+                    className="icon-action-button compact"
+                    type="button"
+                    onClick={() => handleServiceLogMatchStep(1)}
+                    disabled={serviceLogSearching || serviceLogMatchCount === 0}
+                    aria-label={copy.serverLogNextMatch}
+                    title={copy.serverLogNextMatch}
+                  >
+                    <ChevronIcon direction="down" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {serviceLogViewer.error ? (
+              <p className="inline-note error service-log-error" role="alert">
+                {serviceLogViewer.error}
+              </p>
+            ) : null}
+
+            <div className="service-log-body">
+              {serviceLogViewer.loading ? (
+                <div className="service-loading-row" role="status" aria-live="polite">
+                  <SpinnerIcon />
+                  <span>{copy.serverLogLoading}</span>
+                </div>
+              ) : serviceLogViewer.snapshot?.content ? (
+                <pre className="service-log-content" ref={serviceLogContentRef} tabIndex={0}>{serviceLogViewer.snapshot.content}</pre>
+              ) : (
+                <p className="inline-note service-log-empty">{copy.serverLogEmpty}</p>
+              )}
+            </div>
+
+            {serviceLogViewer.snapshot?.truncated ? (
+              <p className="inline-note service-log-truncated">
+                {copy.serverLogTruncated}
+              </p>
+            ) : null}
+          </section>
+        </section>
+      ) : null}
     </main>
   )
 }
@@ -1824,6 +2358,45 @@ function ThemeRow(props: ThemeRowProps) {
   )
 }
 
+function ServiceLogTimeField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  value: string
+  disabled: boolean
+  onChange: (part: 'date' | 'time', value: string) => void
+}) {
+  return (
+    <fieldset className="service-log-time-field">
+      <legend>{label}</legend>
+      <label className="service-log-time-input">
+        <CalendarIcon />
+        <input
+          type="date"
+          value={getDatetimeDatePart(value)}
+          onChange={(event) => onChange('date', event.target.value)}
+          disabled={disabled}
+          aria-label={`${label} date`}
+        />
+      </label>
+      <label className="service-log-time-input">
+        <ClockIcon />
+        <input
+          type="time"
+          step={1}
+          value={getDatetimeTimePart(value)}
+          onChange={(event) => onChange('time', event.target.value)}
+          disabled={disabled}
+          aria-label={`${label} time`}
+        />
+      </label>
+    </fieldset>
+  )
+}
+
 function buildShellStyle(theme: ThemeDefinition) {
   if (theme.mode === 'system') {
     return {
@@ -1841,6 +2414,222 @@ function buildShellStyle(theme: ThemeDefinition) {
     '--accent': theme.accent,
     '--accent-soft': theme.accentSoft,
   } as CSSProperties
+}
+
+const LOG_SEARCH_CHUNK_SIZE = 64 * 1024
+
+function getDefaultServiceLogRange() {
+  return getServiceLogRangeForDuration(DEFAULT_SERVICE_LOG_RANGE_MS)
+}
+
+function getServiceLogRangeForDuration(durationMs: number) {
+  const end = new Date()
+  const start = new Date(end.getTime() - durationMs)
+  return {
+    start: toDatetimeLocalValue(start),
+    end: toDatetimeLocalValue(end),
+  }
+}
+
+function toDatetimeLocalValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return [
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+  ].join('T')
+}
+
+function datetimeLocalToEpochMs(value: string) {
+  const parsed = new Date(value)
+  return Number.isFinite(parsed.getTime()) ? parsed.getTime() : null
+}
+
+function getDatetimeDatePart(value: string) {
+  return value.split('T')[0] ?? ''
+}
+
+function getDatetimeTimePart(value: string) {
+  const time = value.split('T')[1] ?? ''
+  return time.length === 5 ? `${time}:00` : time
+}
+
+function updateDatetimeLocalPart(value: string, part: 'date' | 'time', nextValue: string) {
+  const currentDate = getDatetimeDatePart(value) || getDatetimeDatePart(toDatetimeLocalValue(new Date()))
+  const currentTime = getDatetimeTimePart(value) || '00:00:00'
+  return part === 'date'
+    ? `${nextValue || currentDate}T${currentTime}`
+    : `${currentDate}T${normalizeTimeInput(nextValue || currentTime)}`
+}
+
+function normalizeTimeInput(value: string) {
+  return value.length === 5 ? `${value}:00` : value
+}
+
+function countLogLines(content: string) {
+  if (!content) {
+    return 0
+  }
+
+  let lines = 1
+  for (let index = 0; index < content.length; index += 1) {
+    const code = content.charCodeAt(index)
+    if (code === 10) {
+      lines += 1
+    } else if (code === 13) {
+      lines += 1
+      if (content.charCodeAt(index + 1) === 10) {
+        index += 1
+      }
+    }
+  }
+  return lines
+}
+
+function scanLogMatchesInChunks(
+  content: string,
+  query: string,
+  activeMatchIndex: number,
+  onComplete: (result: Omit<ServiceLogSearchState, 'searching'>) => void,
+  isCancelled: () => boolean,
+) {
+  const needle = query.trim().toLowerCase()
+  if (!needle) {
+    onComplete({
+      query: '',
+      activeMatchIndex: 0,
+      count: 0,
+      activeStart: -1,
+      activeEnd: -1,
+    })
+    return
+  }
+
+  let count = 0
+  let scanStart = 0
+  let activeStart = -1
+  let lastMatchStart = -1
+  const needleLength = needle.length
+
+  const scanNextChunk = () => {
+    if (isCancelled()) {
+      return
+    }
+
+    const acceptedEnd = Math.min(content.length, scanStart + LOG_SEARCH_CHUNK_SIZE)
+    const chunkEnd = Math.min(content.length, acceptedEnd + needleLength - 1)
+    const chunk = content.slice(scanStart, chunkEnd).toLowerCase()
+    let cursor = 0
+
+    while (cursor < chunk.length) {
+      const next = chunk.indexOf(needle, cursor)
+      if (next === -1) {
+        break
+      }
+
+      const matchStart = scanStart + next
+      if (matchStart >= acceptedEnd) {
+        break
+      }
+
+      if (count === activeMatchIndex) {
+        activeStart = matchStart
+      }
+      lastMatchStart = matchStart
+      count += 1
+      cursor = next + needleLength
+    }
+
+    scanStart += LOG_SEARCH_CHUNK_SIZE
+    if (scanStart < content.length) {
+      window.setTimeout(scanNextChunk, 0)
+      return
+    }
+
+    const resolvedStart = activeStart >= 0 ? activeStart : lastMatchStart
+    onComplete({
+      query,
+      activeMatchIndex,
+      count,
+      activeStart: resolvedStart,
+      activeEnd: resolvedStart >= 0 ? resolvedStart + needleLength : -1,
+    })
+  }
+
+  scanNextChunk()
+}
+
+function getLogTextRange(container: HTMLElement | null, start: number, end: number) {
+  if (!container || start < 0 || end <= start) {
+    return null
+  }
+
+  const range = document.createRange()
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  let offset = 0
+  let node = walker.nextNode()
+  let started = false
+
+  while (node) {
+    const textLength = node.textContent?.length ?? 0
+    const nextOffset = offset + textLength
+
+    if (!started && start >= offset && start <= nextOffset) {
+      range.setStart(node, start - offset)
+      started = true
+    }
+    if (started && end >= offset && end <= nextOffset) {
+      range.setEnd(node, end - offset)
+      return range
+    }
+
+    offset = nextOffset
+    node = walker.nextNode()
+  }
+
+  return null
+}
+
+function applyLogHighlight(name: string, range: Range) {
+  clearLogHighlight(name)
+  const mark = document.createElement('mark')
+  mark.className = 'active'
+  mark.dataset.logHighlight = name
+  try {
+    range.surroundContents(mark)
+  } catch {
+    const fragment = range.extractContents()
+    mark.append(fragment)
+    range.insertNode(mark)
+  }
+}
+
+function clearLogHighlight(name: string) {
+  document.querySelectorAll(`mark[data-log-highlight="${name}"]`).forEach((mark) => {
+    const parent = mark.parentNode
+    mark.replaceWith(document.createTextNode(mark.textContent ?? ''))
+    parent?.normalize()
+  })
+}
+
+function scrollLogRangeIntoView(range: Range, container: HTMLElement | null) {
+  if (!container) {
+    return
+  }
+
+  const target = container.querySelector('mark[data-log-highlight]')
+  const targetRect = target?.getBoundingClientRect()
+  const rangeRect = targetRect ?? range.getBoundingClientRect()
+  if (rangeRect.height === 0 && rangeRect.width === 0) {
+    return
+  }
+  const containerRect = container.getBoundingClientRect()
+
+  const targetTop =
+    rangeRect.top - containerRect.top + container.scrollTop - container.clientHeight / 2
+  container.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: 'smooth',
+  })
 }
 
 type ServiceActionIconType = 'start' | 'stop' | 'refresh'
@@ -2032,7 +2821,7 @@ function XIcon() {
   )
 }
 
-function ShellIcon() {
+function LogsIcon() {
   return (
     <svg
       className="service-action-icon"
@@ -2044,9 +2833,67 @@ function ShellIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="m4 8 4 4-4 4" />
-      <path d="M10 16h10" />
-      <rect width="20" height="16" x="2" y="4" rx="2" />
+      <rect width="14" height="16" x="4" y="3" rx="2" />
+      <path d="M8 8h6" />
+      <path d="M8 12h4" />
+      <circle cx="16.5" cy="16.5" r="2.5" />
+      <path d="m18.5 18.5 2 2" />
+    </svg>
+  )
+}
+
+function CalendarIcon() {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="16" height="16" x="4" y="5" rx="2" />
+      <path d="M8 3v4" />
+      <path d="M16 3v4" />
+      <path d="M4 10h16" />
+    </svg>
+  )
+}
+
+function ClockIcon() {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v5" />
+      <path d="m12 13 3 2" />
+    </svg>
+  )
+}
+
+function ChevronIcon({ direction }: { direction: 'up' | 'down' }) {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {direction === 'up' ? <path d="m18 15-6-6-6 6" /> : <path d="m6 9 6 6 6-6" />}
     </svg>
   )
 }
