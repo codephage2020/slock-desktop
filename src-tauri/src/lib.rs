@@ -73,6 +73,7 @@ const SERVICE_LOG_MAX_BYTES: u64 = 2 * 1024 * 1024;
 const SERVICE_LOG_DEFAULT_WINDOW_MS: i64 = 30 * 60 * 1000;
 const MESSAGE_REMINDER_RECENT_LIMIT: usize = 200;
 const MESSAGE_REMINDER_RETRY_AFTER_MS: u64 = 30_000;
+const MESSAGE_REMINDER_MUTED_REFRESH_MS: u64 = 30_000;
 #[cfg(debug_assertions)]
 const WORKSPACE_LAUNCH_LOG_PATH: &str = "/tmp/slock-desktop-launch.log";
 
@@ -119,8 +120,10 @@ struct MessageReminderRuntime {
     desired_key: Option<String>,
     status: MessageReminderStatus,
     muted_channel_ids: HashSet<String>,
+    muted_channels_checked_at: Option<Instant>,
     recent_message_ids: VecDeque<String>,
     context: Option<MessageReminderContext>,
+    connection: Option<MessageReminderConnection>,
     last_attempt: Option<Instant>,
 }
 
@@ -130,8 +133,10 @@ impl Default for MessageReminderRuntime {
             desired_key: None,
             status: MessageReminderStatus::Idle,
             muted_channel_ids: HashSet::new(),
+            muted_channels_checked_at: None,
             recent_message_ids: VecDeque::new(),
             context: None,
+            connection: None,
             last_attempt: None,
         }
     }
@@ -429,6 +434,7 @@ struct MessageReminderConnection {
 #[derive(Debug, Clone)]
 struct MessageReminderContext {
     key: String,
+    server_url: String,
     server_id: String,
     server_slug: String,
     server_name: String,
@@ -1703,44 +1709,62 @@ fn sync_message_reminders(
         return;
     };
 
-    let should_start = {
+    let action = {
         let Ok(mut runtime) = state.message_reminders.lock() else {
             log::warn!("[message-reminders] failed to lock runtime");
             return;
         };
 
         if runtime.desired_key.as_deref() == Some(&connection.key) {
-            if matches!(
-                runtime.status,
-                MessageReminderStatus::Connecting | MessageReminderStatus::Connected
-            ) {
-                return;
-            }
-            if runtime
+            runtime.connection = Some(connection.clone());
+            if runtime.status == MessageReminderStatus::Connected {
+                Some(MessageReminderSyncAction::Inject(connection))
+            } else if runtime.status == MessageReminderStatus::Connecting {
+                None
+            } else if runtime
                 .last_attempt
                 .map(|attempt| {
                     attempt.elapsed() < Duration::from_millis(MESSAGE_REMINDER_RETRY_AFTER_MS)
                 })
                 .unwrap_or(false)
             {
-                return;
+                None
+            } else {
+                runtime.status = MessageReminderStatus::Connecting;
+                runtime.last_attempt = Some(Instant::now());
+                Some(MessageReminderSyncAction::Start(connection))
             }
         } else {
             runtime.desired_key = Some(connection.key.clone());
+            runtime.status = MessageReminderStatus::Connecting;
             runtime.muted_channel_ids.clear();
+            runtime.muted_channels_checked_at = None;
             runtime.recent_message_ids.clear();
             runtime.context = None;
+            runtime.connection = Some(connection.clone());
+            runtime.last_attempt = Some(Instant::now());
+            Some(MessageReminderSyncAction::Start(connection))
         }
-
-        runtime.status = MessageReminderStatus::Connecting;
-        runtime.last_attempt = Some(Instant::now());
-        true
     };
 
-    if should_start {
-        let app = app.clone();
-        thread::spawn(move || connect_message_reminder_socket(app, connection));
+    match action {
+        Some(MessageReminderSyncAction::Start(connection)) => {
+            let app = app.clone();
+            thread::spawn(move || connect_message_reminder_socket(app, connection));
+        }
+        Some(MessageReminderSyncAction::Inject(connection)) => {
+            if let Err(err) = inject_message_reminder_bridge(app, &connection) {
+                mark_message_reminders_failed(app, &connection.key, &err);
+                log::warn!("[message-reminders] bridge re-injection failed: {err}");
+            }
+        }
+        None => {}
     }
+}
+
+enum MessageReminderSyncAction {
+    Start(MessageReminderConnection),
+    Inject(MessageReminderConnection),
 }
 
 fn stop_message_reminders(state: &DesktopState) {
@@ -1750,8 +1774,10 @@ fn stop_message_reminders(state: &DesktopState) {
     runtime.desired_key = None;
     runtime.status = MessageReminderStatus::Idle;
     runtime.muted_channel_ids.clear();
+    runtime.muted_channels_checked_at = None;
     runtime.recent_message_ids.clear();
     runtime.context = None;
+    runtime.connection = None;
     runtime.last_attempt = None;
 }
 
@@ -1882,25 +1908,63 @@ fn connect_message_reminder_socket(app: AppHandle, connection: MessageReminderCo
 
     let context = MessageReminderContext {
         key: connection.key.clone(),
+        server_url: connection.server_url.clone(),
         server_id: connection.server_id.clone(),
         server_slug: connection.server_slug.clone(),
         server_name: connection.server_name.clone(),
         identity: connection.identity.clone(),
     };
 
-    mark_message_reminders_connected(&app, &connection.key);
-
     set_message_reminder_context(&app, context);
 
+    if let Err(err) = inject_message_reminder_bridge(&app, &connection) {
+        mark_message_reminders_failed(&app, &connection.key, &err);
+        log::warn!("[message-reminders] bridge injection failed: {err}");
+        return;
+    }
+
+    mark_message_reminders_connected(&app, &connection.key);
+}
+
+fn inject_message_reminder_bridge(
+    app: &AppHandle,
+    connection: &MessageReminderConnection,
+) -> Result<(), String> {
     let Some(window) = app.get_webview_window(MAIN_LABEL) else {
-        mark_message_reminders_failed(&app, &connection.key, "main window unavailable");
+        return Err("main window unavailable".to_string());
+    };
+    let script = message_reminder_bridge_script(connection);
+    window.eval(&script).map_err(|err| err.to_string())
+}
+
+fn inject_message_reminder_bridge_to_webview(
+    webview: &tauri::Webview,
+    connection: &MessageReminderConnection,
+) -> Result<(), String> {
+    let script = message_reminder_bridge_script(connection);
+    webview.eval(&script).map_err(|err| err.to_string())
+}
+
+fn reinject_current_message_reminder_bridge(webview: &tauri::Webview) {
+    let state = webview.state::<DesktopState>();
+    let connection = {
+        let Ok(runtime) = state.message_reminders.lock() else {
+            log::warn!("[message-reminders] failed to lock runtime");
+            return;
+        };
+        if runtime.status != MessageReminderStatus::Connected {
+            return;
+        }
+        runtime.connection.clone()
+    };
+
+    let Some(connection) = connection else {
         return;
     };
 
-    let script = message_reminder_bridge_script(&connection);
-    if let Err(err) = window.eval(&script) {
-        mark_message_reminders_failed(&app, &connection.key, &err.to_string());
-        log::warn!("[message-reminders] bridge injection failed: {err}");
+    if let Err(err) = inject_message_reminder_bridge_to_webview(webview, &connection) {
+        mark_message_reminders_failed_state(&state, &connection.key, &err);
+        log::warn!("[message-reminders] bridge page-load re-injection failed: {err}");
     }
 }
 
@@ -2102,11 +2166,61 @@ fn set_message_reminder_muted_channels(
         return false;
     }
     runtime.muted_channel_ids = muted_channels;
+    runtime.muted_channels_checked_at = Some(Instant::now());
     true
+}
+
+fn mark_message_reminder_muted_channels_checked(app: &AppHandle, key: &str) {
+    let state = app.state::<DesktopState>();
+    let Ok(mut runtime) = state.message_reminders.lock() else {
+        return;
+    };
+    if runtime.desired_key.as_deref() == Some(key) {
+        runtime.muted_channels_checked_at = Some(Instant::now());
+    }
+}
+
+fn refresh_message_reminder_muted_channels_if_stale(
+    app: &AppHandle,
+    context: &MessageReminderContext,
+) {
+    let should_refresh = {
+        let state = app.state::<DesktopState>();
+        let Ok(runtime) = state.message_reminders.lock() else {
+            return;
+        };
+        if runtime.desired_key.as_deref() != Some(&context.key) {
+            return;
+        }
+        runtime
+            .muted_channels_checked_at
+            .map(|checked_at| {
+                checked_at.elapsed() >= Duration::from_millis(MESSAGE_REMINDER_MUTED_REFRESH_MS)
+            })
+            .unwrap_or(true)
+    };
+
+    if !should_refresh {
+        return;
+    }
+
+    match fetch_message_reminder_muted_channels(app, &context.server_url, &context.server_id) {
+        Ok(channels) => {
+            set_message_reminder_muted_channels(app, &context.key, channels);
+        }
+        Err(err) => {
+            mark_message_reminder_muted_channels_checked(app, &context.key);
+            log::warn!("[message-reminders] muted channel refresh failed: {err}");
+        }
+    }
 }
 
 fn mark_message_reminders_failed(app: &AppHandle, key: &str, error: &str) {
     let state = app.state::<DesktopState>();
+    mark_message_reminders_failed_state(&state, key, error);
+}
+
+fn mark_message_reminders_failed_state(state: &DesktopState, key: &str, error: &str) {
     let Ok(mut runtime) = state.message_reminders.lock() else {
         return;
     };
@@ -2326,6 +2440,8 @@ fn should_suppress_message_reminder(
     if sender_matches_identity(reminder, &context.identity) {
         return true;
     }
+
+    refresh_message_reminder_muted_channels_if_stale(app, context);
 
     let state = app.state::<DesktopState>();
     let Ok(mut runtime) = state.message_reminders.lock() else {
@@ -7440,8 +7556,12 @@ pub fn run() {
             message_reminders: Mutex::new(MessageReminderRuntime::default()),
         })
         .on_page_load(|webview, payload| {
-            // Desktop reminder sockets are attached to the workspace webview only.
             if !is_workspace_url(payload.url()) {
+                if webview.label() == MAIN_LABEL
+                    && matches!(payload.event(), PageLoadEvent::Finished)
+                {
+                    reinject_current_message_reminder_bridge(webview);
+                }
                 return;
             }
 
@@ -7538,6 +7658,8 @@ pub fn run() {
             ) {
                 log::error!("failed to apply workspace desktop scripts: {err}");
             }
+
+            reinject_current_message_reminder_bridge(webview);
         })
         .setup(|app| {
             if cfg!(debug_assertions) {
