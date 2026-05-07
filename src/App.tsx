@@ -36,6 +36,7 @@ import {
   fetchDmChannels,
   fetchFollowedThreads,
   fetchThreadMessages,
+  fetchUnreadChannels,
   installDesktopUpdate,
   forgetAccount,
   importThemeStyle,
@@ -553,6 +554,7 @@ function App() {
   // Inbox state
   const [inboxThreads, setInboxThreads] = useState<InboxThread[]>([])
   const [inboxDms, setInboxDms] = useState<InboxDmChannel[]>([])
+  const [inboxUnreadMap, setInboxUnreadMap] = useState<Map<string, number>>(new Map())
   const [inboxLoading, setInboxLoading] = useState(false)
   const [inboxTab, setInboxTab] = useState<'unread' | 'all'>('unread')
   const [inboxSearch, setInboxSearch] = useState('')
@@ -583,7 +585,7 @@ function App() {
       title: t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : 'Thread'),
       subtitle: t.parentChannelName ? `#${t.parentChannelName}` : null,
       lastMessageAt: t.lastMessageAt,
-      unreadCount: t.unreadCount,
+      unreadCount: inboxUnreadMap.get(t.id) ?? 0,
       avatarInitial: '#',
       avatarUrl: null,
       channelId: t.id,
@@ -594,7 +596,7 @@ function App() {
       title: d.displayName ?? d.name,
       subtitle: null,
       lastMessageAt: d.lastMessageAt,
-      unreadCount: d.unreadCount,
+      unreadCount: inboxUnreadMap.get(d.id) ?? 0,
       avatarInitial: (d.displayName ?? d.name).charAt(0).toUpperCase(),
       avatarUrl: d.members[0]?.avatarUrl ?? null,
       channelId: d.id,
@@ -602,7 +604,7 @@ function App() {
     return [...threads, ...dms].sort((a, b) =>
       (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '')
     )
-  }, [inboxThreads, inboxDms])
+  }, [inboxThreads, inboxDms, inboxUnreadMap])
 
   const [messageReminder, setMessageReminder] = useState<MessageReminderToast | null>(null)
   const messageReminderTimerRef = useRef<number | null>(null)
@@ -1144,6 +1146,7 @@ function App() {
     if (!snapshot?.service.authenticated || !snapshot.service.selectedServerSlug || !initialServiceRefreshDone) {
       setInboxThreads([])
       setInboxDms([])
+      setInboxUnreadMap(new Map())
       return
     }
 
@@ -1153,19 +1156,26 @@ function App() {
     async function loadInbox() {
       setInboxLoading(true)
       try {
-        const [threads, dms] = await Promise.all([
+        const [threads, dms, unreadEntries] = await Promise.all([
           fetchFollowedThreads(serverSlug),
           fetchDmChannels(serverSlug),
+          fetchUnreadChannels(serverSlug),
         ])
         if (!cancelled) {
           setInboxThreads(threads)
           setInboxDms(dms)
+          const map = new Map<string, number>()
+          for (const entry of unreadEntries) {
+            map.set(entry.channelId, entry.unreadCount)
+          }
+          setInboxUnreadMap(map)
         }
       } catch {
         // Inbox API may not be available yet, silently fallback to empty
         if (!cancelled) {
           setInboxThreads([])
           setInboxDms([])
+          setInboxUnreadMap(new Map())
         }
       } finally {
         if (!cancelled) {
@@ -1195,8 +1205,16 @@ function App() {
         if (!cancelled) {
           setInboxMessages(resp.messages)
         }
-        // Mark as read
-        void markChannelRead(serverSlug, inboxSelectedId!)
+        // Mark as read and zero out local unread count
+        markChannelRead(serverSlug, inboxSelectedId!).then(() => {
+          if (!cancelled) {
+            setInboxUnreadMap((prev) => {
+              const next = new Map(prev)
+              next.set(inboxSelectedId!, 0)
+              return next
+            })
+          }
+        }).catch(() => { /* ignore */ })
       } catch {
         if (!cancelled) {
           setInboxMessages([])
