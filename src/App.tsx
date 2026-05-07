@@ -2480,7 +2480,7 @@ function App() {
                             key={task.id}
                             type="button"
                             className="dashboard-task-item"
-                            onClick={() => void handleLaunch()}
+                            onClick={() => void handleWorkspaceOpen()}
                             title={copy.dashboardOpenWorkspace}
                           >
                             <span className={`task-dot ${task.status.replace('_', '-')}`} />
@@ -2534,7 +2534,7 @@ function App() {
                             key={task.id}
                             type="button"
                             className="dashboard-task-item"
-                            onClick={() => void handleLaunch()}
+                            onClick={() => void handleWorkspaceOpen()}
                             title={copy.dashboardOpenWorkspace}
                           >
                             <span className={`task-dot ${task.status.replace('_', '-')}`} />
@@ -2645,7 +2645,7 @@ function App() {
                           key={channel.id}
                           type="button"
                           className="dashboard-channel-row"
-                          onClick={() => void handleLaunch()}
+                          onClick={() => void handleWorkspaceOpen()}
                           title={copy.dashboardOpenWorkspace}
                         >
                           <span className="channel-name">#{channel.name}</span>
