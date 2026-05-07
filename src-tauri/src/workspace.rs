@@ -2242,6 +2242,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       --desktop-radius-lg: 16px;
       --desktop-radius-xl: 20px;
       --desktop-radius-pill: 999px;
+      --desktop-danger: #c24141;
       color: var(--desktop-text);
       font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
     }
@@ -2487,10 +2488,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       display: inline-grid;
       place-items: center;
       padding: 0;
-      border: 1px solid color-mix(in srgb, #c24141 38%, var(--desktop-line));
+      border: 1px solid color-mix(in srgb, var(--desktop-danger) 38%, var(--desktop-line));
       border-radius: var(--desktop-radius-pill);
       background: var(--desktop-surface);
-      color: color-mix(in srgb, #c24141 86%, var(--desktop-text));
+      color: color-mix(in srgb, var(--desktop-danger) 86%, var(--desktop-text));
       opacity: 0;
       pointer-events: none;
       transition:
@@ -2835,7 +2836,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .titlebar-version.error {
-      border-color: color-mix(in srgb, #c24141 34%, var(--desktop-line));
+      border-color: color-mix(in srgb, var(--desktop-danger) 34%, var(--desktop-line));
     }
 
     .titlebar-release-popover {
@@ -3745,9 +3746,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 		    }
 
 		    .settings-icon-button.danger:hover {
-		      color: color-mix(in srgb, #c24141 82%, var(--desktop-text));
-		      background: color-mix(in srgb, #c24141 10%, var(--desktop-surface-secondary));
-		      border-color: color-mix(in srgb, #c24141 30%, var(--desktop-line));
+		      color: color-mix(in srgb, var(--desktop-danger) 82%, var(--desktop-text));
+		      background: color-mix(in srgb, var(--desktop-danger) 10%, var(--desktop-surface-secondary));
+		      border-color: color-mix(in srgb, var(--desktop-danger) 30%, var(--desktop-line));
 		    }
 
 	    .settings-icon-button:disabled,
@@ -4389,8 +4390,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .agent-card-button.danger {
-      color: #c24141;
-      border-color: color-mix(in srgb, #c24141 30%, var(--desktop-line));
+      color: var(--desktop-danger);
+      border-color: color-mix(in srgb, var(--desktop-danger) 30%, var(--desktop-line));
     }
 
     .agent-card-button.accent {

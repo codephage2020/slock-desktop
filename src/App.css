@@ -35,6 +35,12 @@ body:has(.loading-shell),
   cursor: default;
 }
 
+.studio-shell {
+  --danger: #ef4444;
+  --success: #22c55e;
+  --warning: #f59e0b;
+}
+
 .studio-shell[aria-busy='true'],
 .studio-shell[aria-busy='true'] * {
   cursor: default !important;
@@ -324,7 +330,7 @@ body:has(.loading-shell),
 }
 
 .titlebar-server-dot.running {
-  background: var(--positive, #22c55e);
+  background: var(--positive, var(--success));
 }
 
 .titlebar-server-panel {
@@ -333,7 +339,7 @@ body:has(.loading-shell),
   left: 0;
   min-width: 280px;
   max-width: 340px;
-  max-height: 360px;
+  max-height: min(360px, 60vh);
   overflow-y: auto;
   padding: 8px;
   border-radius: 12px;
@@ -478,6 +484,12 @@ body:has(.loading-shell),
   min-height: 0;
 }
 
+.dashboard::before,
+.dashboard::after {
+  content: '';
+  flex: 1 1 auto;
+}
+
 .dashboard-loading {
   display: grid;
   place-items: center;
@@ -497,9 +509,9 @@ body:has(.loading-shell),
   padding: 6px 12px;
   margin: 0 0 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, #c24141 8%, var(--surface));
-  border: 1px solid color-mix(in srgb, #c24141 20%, var(--line));
-  color: color-mix(in srgb, #c24141 72%, var(--text));
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 20%, var(--line));
+  color: color-mix(in srgb, var(--danger) 72%, var(--text));
   font-size: 0.76rem;
 }
 
@@ -518,6 +530,20 @@ body:has(.loading-shell),
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface) 90%, var(--canvas));
   border: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+  cursor: pointer;
+  appearance: none;
+  font: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.dashboard-stat-card:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.dashboard-stat-card.has-unread {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
 
 .dashboard-stat-value {
@@ -579,11 +605,11 @@ body:has(.loading-shell),
 }
 
 .task-bar-segment.in-review {
-  background: #f59e0b;
+  background: var(--warning);
 }
 
 .task-bar-segment.done {
-  background: #22c55e;
+  background: var(--success);
 }
 
 .dashboard-task-legend {
@@ -616,11 +642,11 @@ body:has(.loading-shell),
 }
 
 .task-dot.in-review {
-  background: #f59e0b;
+  background: var(--warning);
 }
 
 .task-dot.done {
-  background: #22c55e;
+  background: var(--success);
 }
 
 .dashboard-agent-list {
@@ -782,12 +808,12 @@ body:has(.loading-shell),
 }
 
 .agent-card-button.danger {
-  color: #ef4444;
-  border-color: #ef4444;
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .agent-card-button.danger:hover {
-  background: color-mix(in srgb, #ef4444 10%, var(--surface-strong));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-strong));
 }
 
 .agent-status-dot {
@@ -798,7 +824,7 @@ body:has(.loading-shell),
 }
 
 .agent-status-dot.online {
-  background: #22c55e;
+  background: var(--success);
 }
 
 .agent-status-dot.offline {
@@ -1338,9 +1364,9 @@ body:has(.loading-shell),
 }
 
 .icon-action-button.danger:hover {
-  color: color-mix(in srgb, #c24141 82%, var(--text));
-  background: color-mix(in srgb, #c24141 10%, var(--surface-strong));
-  border-color: color-mix(in srgb, #c24141 30%, var(--line));
+  color: color-mix(in srgb, var(--danger) 82%, var(--text));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--line));
 }
 
 .icon-action-button:disabled {
@@ -2289,9 +2315,9 @@ body:has(.loading-shell),
 }
 
 .status-chip.error {
-  color: color-mix(in srgb, #c24141 82%, var(--text));
-  border-color: color-mix(in srgb, #c24141 30%, var(--line));
-  background: color-mix(in srgb, #c24141 10%, var(--surface-strong));
+  color: color-mix(in srgb, var(--danger) 82%, var(--text));
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--line));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-strong));
 }
 
 .launch-button,

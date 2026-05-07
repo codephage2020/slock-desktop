@@ -261,6 +261,8 @@ const COPY = {
     dashboardRecentTasks: 'Recent Tasks',
     dashboardNoTasks: 'No tasks yet',
     dashboardOpenWorkspace: 'Open in Workspace',
+    dashboardNoChannels: 'No active channels — open the workspace to get started',
+    dashboardNoAgents: 'No agents configured yet',
     taskStatusTodo: 'Todo',
     taskStatusInProgress: 'In Progress',
     taskStatusInReview: 'Review',
@@ -419,6 +421,8 @@ const COPY = {
     dashboardRecentTasks: '近期任务',
     dashboardNoTasks: '暂无任务',
     dashboardOpenWorkspace: '在工作区打开',
+    dashboardNoChannels: '暂无活跃频道 — 打开工作区开始使用',
+    dashboardNoAgents: '暂未配置 Agent',
     taskStatusTodo: '待办',
     taskStatusInProgress: '进行中',
     taskStatusInReview: '审核中',
@@ -2436,28 +2440,28 @@ function App() {
               <p className="dashboard-warning inline-note">{copy.dashboardPartialError}</p>
             ) : null}
             <div className="dashboard-stats">
-              <div className="dashboard-stat-card">
+              <button className="dashboard-stat-card" onClick={() => void handleWorkspaceOpen()}>
                 <span className="dashboard-stat-value">
                   {dashboardData.channels.filter((ch) => !ch.isArchived).length}
                 </span>
                 <span className="dashboard-stat-label">{copy.dashboardChannels}</span>
-              </div>
-              <div className="dashboard-stat-card">
+              </button>
+              <button className={`dashboard-stat-card${dashboardData.unread.reduce((sum, u) => sum + u.unreadCount, 0) > 0 ? ' has-unread' : ''}`} onClick={() => void handleWorkspaceOpen()}>
                 <span className="dashboard-stat-value">
                   {dashboardData.unread.reduce((sum, u) => sum + u.unreadCount, 0)}
                 </span>
                 <span className="dashboard-stat-label">{copy.dashboardUnread}</span>
-              </div>
-              <div className="dashboard-stat-card">
+              </button>
+              <button className="dashboard-stat-card" onClick={() => void handleWorkspaceOpen()}>
                 <span className="dashboard-stat-value">{dashboardData.tasks.length}</span>
                 <span className="dashboard-stat-label">{copy.dashboardTasks}</span>
-              </div>
-              <div className="dashboard-stat-card">
+              </button>
+              <button className="dashboard-stat-card" onClick={() => void handleWorkspaceOpen()}>
                 <span className="dashboard-stat-value">
                   {dashboardData.agents.filter((a) => a.status !== 'offline').length}/{dashboardData.agents.length}
                 </span>
                 <span className="dashboard-stat-label">{copy.dashboardAgents}</span>
-              </div>
+              </button>
             </div>
 
             <div className="dashboard-panels">
@@ -2552,6 +2556,9 @@ function App() {
               {/* Agent status */}
               <div className="dashboard-panel">
                 <p className="eyebrow">{copy.dashboardAgentStatus}</p>
+                {dashboardData.agents.length === 0 ? (
+                  <p className="inline-note">{copy.dashboardNoAgents}</p>
+                ) : (
                 <div className="dashboard-agent-list">
                   {dashboardData.agents.map((agent) => (
                     <div key={agent.id} className="dashboard-agent-row" ref={agentCardTarget?.id === agent.id ? agentCardRef : undefined}>
@@ -2628,34 +2635,42 @@ function App() {
                     </div>
                   ))}
                 </div>
+                )}
               </div>
 
               {/* Active Channels — clickable */}
               <div className="dashboard-panel">
                 <p className="eyebrow">{copy.dashboardActiveChannels}</p>
-                <div className="dashboard-channel-list">
-                  {dashboardData.channels
+                {(() => {
+                  const activeChannels = dashboardData.channels
                     .filter((ch) => !ch.isArchived && ch.lastMessageAt)
                     .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
                     .slice(0, 5)
-                    .map((channel) => {
-                      const unread = dashboardData.unread.find((u) => u.channelId === channel.id)
-                      return (
-                        <button
-                          key={channel.id}
-                          type="button"
-                          className="dashboard-channel-row"
-                          onClick={() => void handleWorkspaceOpen()}
-                          title={copy.dashboardOpenWorkspace}
-                        >
-                          <span className="channel-name">#{channel.name}</span>
-                          {unread && unread.unreadCount > 0 ? (
-                            <span className="channel-unread-badge">{unread.unreadCount}</span>
-                          ) : null}
-                        </button>
-                      )
-                    })}
-                </div>
+                  if (activeChannels.length === 0) {
+                    return <p className="inline-note">{copy.dashboardNoChannels}</p>
+                  }
+                  return (
+                    <div className="dashboard-channel-list">
+                      {activeChannels.map((channel) => {
+                        const unread = dashboardData.unread.find((u) => u.channelId === channel.id)
+                        return (
+                          <button
+                            key={channel.id}
+                            type="button"
+                            className="dashboard-channel-row"
+                            onClick={() => void handleWorkspaceOpen()}
+                            title={copy.dashboardOpenWorkspace}
+                          >
+                            <span className="channel-name">#{channel.name}</span>
+                            {unread && unread.unreadCount > 0 ? (
+                              <span className="channel-unread-badge">{unread.unreadCount}</span>
+                            ) : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           </section>
