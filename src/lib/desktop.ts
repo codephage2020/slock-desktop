@@ -328,9 +328,10 @@ export async function startAgent(serverSlug: string, agentId: string) {
 
 export interface InboxThread {
   id: string
-  channelId: string
-  channelName: string | null
-  parentMessageId: string | null
+  name: string | null
+  parentChannelId: string | null
+  parentChannelName: string | null
+  isDone: boolean
   lastMessageAt: string | null
   unreadCount: number
 }
@@ -353,6 +354,7 @@ export interface InboxDmChannel {
 
 export interface InboxMessage {
   id: string
+  seq: number | null
   channelId: string
   content: string
   senderId: string | null
@@ -364,16 +366,14 @@ export interface InboxMessage {
   updatedAt: string | null
 }
 
+export interface InboxMessagesResponse {
+  messages: InboxMessage[]
+  hasMore: boolean
+}
+
 export interface InboxUnreadEntry {
   channelId: string
   unreadCount: number
-}
-
-export interface SendMessageResponse {
-  id: string
-  channelId: string
-  content: string
-  createdAt: string
 }
 
 export async function fetchFollowedThreads(serverSlug: string) {
@@ -393,7 +393,7 @@ export async function fetchThreadMessages(
   channelId: string,
   options?: { limit?: number; before?: string; after?: string }
 ) {
-  return invoke<InboxMessage[]>('fetch_thread_messages', {
+  return invoke<InboxMessagesResponse>('fetch_thread_messages', {
     serverSlug,
     channelId,
     limit: options?.limit,
@@ -403,7 +403,7 @@ export async function fetchThreadMessages(
 }
 
 export async function sendMessage(serverSlug: string, channelId: string, content: string) {
-  return invoke<SendMessageResponse>('send_message', { serverSlug, channelId, content })
+  return invoke<InboxMessage>('send_message', { serverSlug, channelId, content })
 }
 
 export async function markChannelRead(serverSlug: string, channelId: string) {

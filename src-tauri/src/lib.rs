@@ -488,16 +488,25 @@ struct AgentActivityEntry {
 #[serde(rename_all = "camelCase")]
 struct InboxThread {
     id: String,
-    #[serde(alias = "channel_id")]
-    channel_id: String,
-    #[serde(alias = "channel_name")]
-    channel_name: Option<String>,
-    #[serde(alias = "parent_message_id")]
-    parent_message_id: Option<String>,
+    name: Option<String>,
+    #[serde(alias = "parent_channel_id")]
+    parent_channel_id: Option<String>,
+    #[serde(alias = "parent_channel_name")]
+    parent_channel_name: Option<String>,
+    #[serde(default, alias = "is_done")]
+    is_done: bool,
     #[serde(alias = "last_message_at")]
     last_message_at: Option<String>,
     #[serde(default, alias = "unread_count")]
     unread_count: u32,
+}
+
+/// Envelope returned by GET /api/channels/threads/followed
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FollowedThreadsEnvelope {
+    #[serde(default)]
+    threads: Vec<InboxThread>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -530,6 +539,8 @@ struct InboxDmMember {
 #[serde(rename_all = "camelCase")]
 struct InboxMessage {
     id: String,
+    #[serde(default)]
+    seq: Option<u64>,
     #[serde(alias = "channel_id")]
     channel_id: String,
     content: String,
@@ -549,6 +560,33 @@ struct InboxMessage {
     updated_at: Option<String>,
 }
 
+/// Response returned to the frontend from fetch_thread_messages
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxMessagesResponse {
+    messages: Vec<InboxMessage>,
+    has_more: bool,
+}
+
+/// Envelope returned by GET /api/messages/channel/{channelId}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MessagesEnvelope {
+    #[serde(default)]
+    messages: Vec<InboxMessage>,
+    #[serde(default, alias = "has_more")]
+    has_more: bool,
+}
+
+/// Envelope returned by POST /api/messages
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendMessageEnvelope {
+    #[serde(default, alias = "message_id")]
+    message_id: Option<String>,
+    message: InboxMessage,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct InboxUnreadEntry {
@@ -556,17 +594,6 @@ struct InboxUnreadEntry {
     channel_id: String,
     #[serde(default, alias = "unread_count")]
     unread_count: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SendMessageResponse {
-    id: String,
-    #[serde(alias = "channel_id")]
-    channel_id: String,
-    content: String,
-    #[serde(alias = "created_at")]
-    created_at: String,
 }
 
 #[tauri::command]
@@ -2828,7 +2855,7 @@ fn fetch_followed_threads(
     let server_url = settings.server_url.clone();
     let api_root = api_base_url(&server_url);
 
-    load_authenticated_json::<Vec<InboxThread>>(
+    let envelope = load_authenticated_json::<FollowedThreadsEnvelope>(
         &app,
         &state,
         &server_url,
@@ -2838,7 +2865,9 @@ fn fetch_followed_threads(
                 .header("X-Server-Id", &server_id)
                 .bearer_auth(access_token)
         },
-    )
+    )?;
+
+    Ok(envelope.threads)
 }
 
 #[tauri::command]
@@ -2953,7 +2982,7 @@ fn fetch_thread_messages(
     limit: Option<u32>,
     before: Option<String>,
     after: Option<String>,
-) -> Result<Vec<InboxMessage>, String> {
+) -> Result<InboxMessagesResponse, String> {
     let slug = server_slug.trim();
     if slug.is_empty() {
         return Err("No server selected".to_string());
@@ -2986,7 +3015,7 @@ fn fetch_thread_messages(
     let api_root = api_base_url(&server_url);
     let msg_limit = limit.unwrap_or(50);
 
-    load_authenticated_json::<Vec<InboxMessage>>(
+    let envelope = load_authenticated_json::<MessagesEnvelope>(
         &app,
         &state,
         &server_url,
@@ -3006,7 +3035,12 @@ fn fetch_thread_messages(
 
             req
         },
-    )
+    )?;
+
+    Ok(InboxMessagesResponse {
+        messages: envelope.messages,
+        has_more: envelope.has_more,
+    })
 }
 
 #[tauri::command]
@@ -3016,7 +3050,7 @@ fn send_message(
     server_slug: String,
     channel_id: String,
     content: String,
-) -> Result<SendMessageResponse, String> {
+) -> Result<InboxMessage, String> {
     let slug = server_slug.trim();
     if slug.is_empty() {
         return Err("No server selected".to_string());
@@ -3051,7 +3085,7 @@ fn send_message(
     let server_url = settings.server_url.clone();
     let api_root = api_base_url(&server_url);
 
-    load_authenticated_json::<SendMessageResponse>(
+    let envelope = load_authenticated_json::<SendMessageEnvelope>(
         &app,
         &state,
         &server_url,
@@ -3065,7 +3099,9 @@ fn send_message(
                     "content": content
                 }))
         },
-    )
+    )?;
+
+    Ok(envelope.message)
 }
 
 #[tauri::command]
