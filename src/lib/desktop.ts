@@ -323,3 +323,89 @@ export async function stopAgent(serverSlug: string, agentId: string) {
 export async function startAgent(serverSlug: string, agentId: string) {
   return invoke<void>('start_agent', { serverSlug, agentId })
 }
+
+// Inbox types and commands
+
+export interface InboxThread {
+  id: string
+  channelId: string
+  channelName: string | null
+  parentMessageId: string | null
+  lastMessageAt: string | null
+  unreadCount: number
+}
+
+export interface InboxDmMember {
+  id: string
+  name: string
+  displayName: string | null
+  avatarUrl: string | null
+}
+
+export interface InboxDmChannel {
+  id: string
+  name: string
+  displayName: string | null
+  lastMessageAt: string | null
+  unreadCount: number
+  members: InboxDmMember[]
+}
+
+export interface InboxMessage {
+  id: string
+  channelId: string
+  content: string
+  senderId: string | null
+  senderName: string | null
+  senderType: string | null
+  senderDisplayName: string | null
+  senderAvatarUrl: string | null
+  createdAt: string
+  updatedAt: string | null
+}
+
+export interface InboxUnreadEntry {
+  channelId: string
+  unreadCount: number
+}
+
+export interface SendMessageResponse {
+  id: string
+  channelId: string
+  content: string
+  createdAt: string
+}
+
+export async function fetchFollowedThreads(serverSlug: string) {
+  return invoke<InboxThread[]>('fetch_followed_threads', { serverSlug })
+}
+
+export async function fetchDmChannels(serverSlug: string) {
+  return invoke<InboxDmChannel[]>('fetch_dm_channels', { serverSlug })
+}
+
+export async function fetchUnreadChannels(serverSlug: string) {
+  return invoke<InboxUnreadEntry[]>('fetch_unread_channels', { serverSlug })
+}
+
+export async function fetchThreadMessages(
+  serverSlug: string,
+  channelId: string,
+  options?: { limit?: number; before?: string; after?: string }
+) {
+  return invoke<InboxMessage[]>('fetch_thread_messages', {
+    serverSlug,
+    channelId,
+    limit: options?.limit,
+    before: options?.before,
+    after: options?.after,
+  })
+}
+
+export async function sendMessage(serverSlug: string, channelId: string, content: string) {
+  return invoke<SendMessageResponse>('send_message', { serverSlug, channelId, content })
+}
+
+export async function markChannelRead(serverSlug: string, channelId: string) {
+  return invoke<void>('mark_channel_read', { serverSlug, channelId })
+}

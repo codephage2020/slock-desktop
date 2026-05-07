@@ -482,6 +482,101 @@ struct AgentActivityEntry {
     created_at: String,
 }
 
+// ── Inbox types ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxThread {
+    id: String,
+    #[serde(alias = "channel_id")]
+    channel_id: String,
+    #[serde(alias = "channel_name")]
+    channel_name: Option<String>,
+    #[serde(alias = "parent_message_id")]
+    parent_message_id: Option<String>,
+    #[serde(alias = "last_message_at")]
+    last_message_at: Option<String>,
+    #[serde(default, alias = "unread_count")]
+    unread_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxDmChannel {
+    id: String,
+    name: String,
+    #[serde(default, alias = "display_name")]
+    display_name: Option<String>,
+    #[serde(alias = "last_message_at")]
+    last_message_at: Option<String>,
+    #[serde(default, alias = "unread_count")]
+    unread_count: u32,
+    #[serde(default)]
+    members: Vec<InboxDmMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxDmMember {
+    id: String,
+    name: String,
+    #[serde(default, alias = "display_name")]
+    display_name: Option<String>,
+    #[serde(default, alias = "avatar_url")]
+    avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxMessage {
+    id: String,
+    #[serde(alias = "channel_id")]
+    channel_id: String,
+    content: String,
+    #[serde(alias = "sender_id")]
+    sender_id: Option<String>,
+    #[serde(alias = "sender_name")]
+    sender_name: Option<String>,
+    #[serde(alias = "sender_type")]
+    sender_type: Option<String>,
+    #[serde(alias = "sender_display_name")]
+    sender_display_name: Option<String>,
+    #[serde(alias = "sender_avatar_url")]
+    sender_avatar_url: Option<String>,
+    #[serde(alias = "created_at")]
+    created_at: String,
+    #[serde(default, alias = "updated_at")]
+    updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxUnreadEntry {
+    #[serde(alias = "channel_id")]
+    channel_id: String,
+    #[serde(default, alias = "unread_count")]
+    unread_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendMessageRequest {
+    #[serde(alias = "channel_id")]
+    channel_id: String,
+    content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendMessageResponse {
+    id: String,
+    #[serde(alias = "channel_id")]
+    channel_id: String,
+    content: String,
+    #[serde(alias = "created_at")]
+    created_at: String,
+}
+
 #[tauri::command]
 fn bootstrap(
     app: AppHandle,
@@ -2700,6 +2795,336 @@ fn start_agent(
         let status = response.status();
         let body = response.text().unwrap_or_default();
         return Err(format!("Failed to start agent: {status}: {body}"));
+    }
+
+    Ok(())
+}
+
+// ── Inbox commands ───────────────────────────────────────────────────
+
+#[tauri::command]
+fn fetch_followed_threads(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<Vec<InboxThread>, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    load_authenticated_json::<Vec<InboxThread>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/channels/threads/followed"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+}
+
+#[tauri::command]
+fn fetch_dm_channels(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<Vec<InboxDmChannel>, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    load_authenticated_json::<Vec<InboxDmChannel>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/channels/dm"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+}
+
+#[tauri::command]
+fn fetch_unread_channels(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<Vec<InboxUnreadEntry>, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    // The API returns { channelId: count } object — convert to Vec<InboxUnreadEntry>
+    let map = load_authenticated_json::<std::collections::HashMap<String, u32>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/channels/unread"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )?;
+
+    Ok(map
+        .into_iter()
+        .map(|(channel_id, unread_count)| InboxUnreadEntry {
+            channel_id,
+            unread_count,
+        })
+        .collect())
+}
+
+#[tauri::command]
+fn fetch_thread_messages(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    channel_id: String,
+    limit: Option<u32>,
+    before: Option<String>,
+    after: Option<String>,
+) -> Result<Vec<InboxMessage>, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+    if channel_id.trim().is_empty() {
+        return Err("Channel ID is required".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+    let msg_limit = limit.unwrap_or(50);
+
+    load_authenticated_json::<Vec<InboxMessage>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            let mut req = client
+                .get(format!("{api_root}/messages/channel/{channel_id}"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+                .query(&[("limit", msg_limit.to_string())]);
+
+            if let Some(ref b) = before {
+                req = req.query(&[("before", b.as_str())]);
+            }
+            if let Some(ref a) = after {
+                req = req.query(&[("after", a.as_str())]);
+            }
+
+            req
+        },
+    )
+}
+
+#[tauri::command]
+fn send_message(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    channel_id: String,
+    content: String,
+) -> Result<SendMessageResponse, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+    if channel_id.trim().is_empty() {
+        return Err("Channel ID is required".to_string());
+    }
+    if content.trim().is_empty() {
+        return Err("Message content cannot be empty".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    load_authenticated_json::<SendMessageResponse>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .post(format!("{api_root}/messages"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+                .json(&serde_json::json!({
+                    "channelId": channel_id,
+                    "content": content
+                }))
+        },
+    )
+}
+
+#[tauri::command]
+fn mark_channel_read(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    channel_id: String,
+) -> Result<(), String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+    if channel_id.trim().is_empty() {
+        return Err("Channel ID is required".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    let response = send_authenticated(&app, &state, &server_url, |client, access_token| {
+        client
+            .post(format!("{api_root}/channels/{channel_id}/read"))
+            .header("X-Server-Id", &server_id)
+            .bearer_auth(access_token)
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Failed to mark channel as read: {status}: {body}"));
     }
 
     Ok(())
@@ -7958,7 +8383,13 @@ pub fn run() {
             fetch_dashboard,
             fetch_agent_activity,
             stop_agent,
-            start_agent
+            start_agent,
+            fetch_followed_threads,
+            fetch_dm_channels,
+            fetch_unread_channels,
+            fetch_thread_messages,
+            send_message,
+            mark_channel_read
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
