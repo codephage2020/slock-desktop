@@ -1935,11 +1935,18 @@ body:has(.loading-shell),
   height: 14px;
 }
 
-.message-reminder-toast {
+.message-reminder-stack {
   position: fixed;
   top: 48px;
   right: 18px;
   z-index: 55;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.message-reminder-toast {
   width: min(360px, calc(100vw - 36px));
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1951,6 +1958,19 @@ body:has(.loading-shell),
   box-shadow:
     0 1px 2px color-mix(in srgb, var(--text) 10%, transparent),
     0 24px 60px -40px color-mix(in srgb, var(--text) 60%, transparent);
+  pointer-events: auto;
+  animation: message-reminder-slide-in 0.25s ease-out;
+}
+
+@keyframes message-reminder-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message-reminder-main {

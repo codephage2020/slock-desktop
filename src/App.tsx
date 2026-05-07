@@ -78,6 +78,7 @@ const INITIAL_RELEASE_STATE: ReleaseState = {
 }
 
 const MESSAGE_REMINDER_TOAST_MS = 7000
+const MESSAGE_REMINDER_MAX_VISIBLE = 3
 
 interface MessageReminderToast {
   id: string
@@ -607,8 +608,8 @@ function App() {
     )
   }, [inboxThreads, inboxDms, inboxUnreadMap])
 
-  const [messageReminder, setMessageReminder] = useState<MessageReminderToast | null>(null)
-  const messageReminderTimerRef = useRef<number | null>(null)
+  const [messageReminders, setMessageReminders] = useState<MessageReminderToast[]>([])
+  const messageReminderTimersRef = useRef<Map<string, number>>(new Map())
   const [agentCardTarget, setAgentCardTarget] = useState<DashboardAgent | null>(null)
   const [agentCardActivity, setAgentCardActivity] = useState<AgentActivityEntry[]>([])
   const [agentCardLoading, setAgentCardLoading] = useState(false)
@@ -1057,26 +1058,32 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined
+    const timers = messageReminderTimersRef.current
 
     void listen<MessageReminderToast>('slock-message-reminder', (event) => {
-      setMessageReminder(event.payload)
-      if (messageReminderTimerRef.current !== null) {
-        window.clearTimeout(messageReminderTimerRef.current)
-      }
-      messageReminderTimerRef.current = window.setTimeout(() => {
-        setMessageReminder(null)
-        messageReminderTimerRef.current = null
+      const reminder = event.payload
+      setMessageReminders((prev) => {
+        if (prev.some((r) => r.id === reminder.id)) return prev
+        const next = prev.length >= MESSAGE_REMINDER_MAX_VISIBLE
+          ? [...prev.slice(1), reminder]
+          : [...prev, reminder]
+        return next
+      })
+      const timerId = window.setTimeout(() => {
+        setMessageReminders((prev) => prev.filter((r) => r.id !== reminder.id))
+        timers.delete(reminder.id)
       }, MESSAGE_REMINDER_TOAST_MS)
+      timers.set(reminder.id, timerId)
     }).then((cleanup) => {
       unlisten = cleanup
     })
 
     return () => {
       unlisten?.()
-      if (messageReminderTimerRef.current !== null) {
-        window.clearTimeout(messageReminderTimerRef.current)
-        messageReminderTimerRef.current = null
+      for (const timerId of timers.values()) {
+        window.clearTimeout(timerId)
       }
+      timers.clear()
     }
   }, [])
 
@@ -1534,16 +1541,17 @@ function App() {
     }
   }
 
-  function handleMessageReminderDismiss() {
-    setMessageReminder(null)
-    if (messageReminderTimerRef.current !== null) {
-      window.clearTimeout(messageReminderTimerRef.current)
-      messageReminderTimerRef.current = null
+  function handleMessageReminderDismiss(reminderId: string) {
+    setMessageReminders((prev) => prev.filter((r) => r.id !== reminderId))
+    const timerId = messageReminderTimersRef.current.get(reminderId)
+    if (timerId !== undefined) {
+      window.clearTimeout(timerId)
+      messageReminderTimersRef.current.delete(reminderId)
     }
   }
 
   async function handleMessageReminderOpen(reminder: MessageReminderToast) {
-    handleMessageReminderDismiss()
+    handleMessageReminderDismiss(reminder.id)
     await handleWorkspaceOpen(reminder.serverSlug)
   }
 
@@ -3103,35 +3111,40 @@ function App() {
         document.body
       ) : null}
 
-      {messageReminder ? (
-        <section
-          className="message-reminder-toast"
-          role="status"
-          aria-live="polite"
-          aria-label={copy.messageReminderTitle}
-        >
-          <button
-            type="button"
-            className="message-reminder-main"
-            onClick={() => void handleMessageReminderOpen(messageReminder)}
-            title={`${copy.messageReminderOpen} ${messageReminder.serverName}`}
-          >
-            <span className="message-reminder-kicker">{copy.messageReminderTitle}</span>
-            <span className="message-reminder-title">
-              {messageReminder.senderName} · {messageReminder.serverName}
-            </span>
-            <span className="message-reminder-body">{messageReminder.contentPreview}</span>
-          </button>
-          <button
-            type="button"
-            className="message-reminder-close"
-            onClick={handleMessageReminderDismiss}
-            aria-label={copy.messageReminderDismiss}
-            title={copy.messageReminderDismiss}
-          >
-            ×
-          </button>
-        </section>
+      {messageReminders.length > 0 ? (
+        <div className="message-reminder-stack">
+          {messageReminders.map((reminder) => (
+            <section
+              key={reminder.id}
+              className="message-reminder-toast"
+              role="status"
+              aria-live="polite"
+              aria-label={copy.messageReminderTitle}
+            >
+              <button
+                type="button"
+                className="message-reminder-main"
+                onClick={() => void handleMessageReminderOpen(reminder)}
+                title={`${copy.messageReminderOpen} ${reminder.serverName}`}
+              >
+                <span className="message-reminder-kicker">{copy.messageReminderTitle}</span>
+                <span className="message-reminder-title">
+                  {reminder.senderName} · {reminder.serverName}
+                </span>
+                <span className="message-reminder-body">{reminder.contentPreview}</span>
+              </button>
+              <button
+                type="button"
+                className="message-reminder-close"
+                onClick={() => handleMessageReminderDismiss(reminder.id)}
+                aria-label={copy.messageReminderDismiss}
+                title={copy.messageReminderDismiss}
+              >
+                ×
+              </button>
+            </section>
+          ))}
+        </div>
       ) : null}
 
       {serviceLogViewer ? (
