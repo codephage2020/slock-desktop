@@ -560,14 +560,6 @@ struct InboxUnreadEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SendMessageRequest {
-    #[serde(alias = "channel_id")]
-    channel_id: String,
-    content: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct SendMessageResponse {
     id: String,
     #[serde(alias = "channel_id")]
