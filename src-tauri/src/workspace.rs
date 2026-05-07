@@ -2789,7 +2789,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       max-height: min(640px, calc(100vh - 58px));
       min-height: min(460px, calc(100vh - 58px));
       display: grid;
-      grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
       gap: 0;
       padding: 12px;
       border: 1px solid var(--desktop-line);
