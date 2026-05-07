@@ -75,9 +75,9 @@ body:has(.loading-shell),
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   align-content: stretch;
-  gap: 10px;
+  gap: 0;
 }
 
 .workspace-loading-overlay {
@@ -409,10 +409,62 @@ body:has(.loading-shell),
   z-index: 40;
 }
 
-.launch-button-center {
-  width: 100%;
+.titlebar-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface-strong) 48%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.titlebar-icon-button:hover {
+  background: color-mix(in srgb, var(--surface-strong) 80%, transparent);
+}
+
+.titlebar-icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.titlebar-icon-button.running {
+  color: var(--accent);
+}
+
+.titlebar-icon-button .service-action-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.titlebar-style {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.titlebar-style-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 260px;
   max-width: 320px;
-  margin: 0 auto;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 98%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--text) 12%, transparent),
+    0 24px 48px -24px color-mix(in srgb, var(--text) 24%, transparent);
+  z-index: 40;
 }
 
 /* Dashboard */
@@ -654,9 +706,10 @@ body:has(.loading-shell),
 }
 
 .launch-dock {
-  display: grid;
-  place-items: center;
-  padding: 8px 0;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 20;
 }
 
 .tauri-titlebar-drag {
@@ -2348,7 +2401,7 @@ body:has(.loading-shell),
   .launch-board {
     width: 100%;
     height: auto;
-    grid-template-rows: auto auto;
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .tauri-titlebar {

@@ -180,6 +180,10 @@ export async function openWorkspace(selectedServerSlug?: string) {
   return invoke<BootstrapPayload>('open_workspace', { selectedServerSlug })
 }
 
+export async function exitWorkspace() {
+  return invoke<BootstrapPayload>('exit_workspace')
+}
+
 export async function openLogin() {
   return invoke<BootstrapPayload>('open_login')
 }
