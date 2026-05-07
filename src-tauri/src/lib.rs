@@ -7556,6 +7556,9 @@ pub fn run() {
             message_reminders: Mutex::new(MessageReminderRuntime::default()),
         })
         .on_page_load(|webview, payload| {
+            // Only handle workspace URLs (https://app.slock.ai).
+            // Launcher (tauri://localhost) and other URLs exit early here,
+            // so workspace titlebar/size/scripts are never applied to non-workspace pages.
             if !is_workspace_url(payload.url()) {
                 if webview.label() == MAIN_LABEL
                     && matches!(payload.event(), PageLoadEvent::Finished)
