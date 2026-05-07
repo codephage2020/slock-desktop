@@ -233,6 +233,12 @@ const COPY = {
     dashboardTaskStatus: 'Task Status',
     dashboardAgentStatus: 'Agents',
     dashboardActiveChannels: 'Active Channels',
+    dashboardLabel: 'Server Dashboard',
+    taskStatusTodo: 'Todo',
+    taskStatusInProgress: 'In Progress',
+    taskStatusInReview: 'Review',
+    taskStatusDone: 'Done',
+    dashboardPartialError: 'Some data failed to load',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -369,6 +375,12 @@ const COPY = {
     dashboardTaskStatus: '任务状态',
     dashboardAgentStatus: 'Agents',
     dashboardActiveChannels: '活跃频道',
+    dashboardLabel: 'Server 概览',
+    taskStatusTodo: '待办',
+    taskStatusInProgress: '进行中',
+    taskStatusInReview: '审核中',
+    taskStatusDone: '已完成',
+    dashboardPartialError: '部分数据加载失败',
   },
 } as const
 
@@ -444,7 +456,6 @@ function App() {
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const serverPanelRef = useRef<HTMLDivElement | null>(null)
   const themePanelRef = useRef<HTMLDivElement | null>(null)
-  const themeCardRef = useRef<HTMLElement | null>(null)
   const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
@@ -453,6 +464,7 @@ function App() {
   const serviceLogContentRef = useRef<HTMLPreElement | null>(null)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [dashboardError, setDashboardError] = useState<string | null>(null)
   const initialServiceRefreshRef = useRef(false)
   const authResolvedRef = useRef(false)
   const [initialServiceRefreshDone, setInitialServiceRefreshDone] = useState(false)
@@ -799,7 +811,7 @@ function App() {
       if (!(target instanceof Node)) {
         return
       }
-      if (themeCardRef.current?.contains(target)) {
+      if (themePanelRef.current?.contains(target)) {
         return
       }
       if (themeDraftRef.current?.contains(target)) {
@@ -877,6 +889,12 @@ function App() {
   useEffect(() => {
     if (!snapshot?.service.selectedServerSlug || !snapshot.service.authenticated) {
       setDashboardData(null)
+      setDashboardError(null)
+      return
+    }
+
+    // Wait for initial service refresh to populate cached_servers
+    if (!initialServiceRefreshDone) {
       return
     }
 
@@ -885,14 +903,19 @@ function App() {
 
     async function loadDashboard() {
       setDashboardLoading(true)
+      setDashboardError(null)
       try {
         const data = await fetchDashboard(serverSlug)
         if (!cancelled) {
           setDashboardData(data)
+          setDashboardError(null)
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           setDashboardData(null)
+          setDashboardError(
+            err instanceof Error ? err.message : 'Failed to load dashboard',
+          )
         }
       } finally {
         if (!cancelled) {
@@ -903,7 +926,7 @@ function App() {
 
     void loadDashboard()
     return () => { cancelled = true }
-  }, [snapshot?.service.selectedServerSlug, snapshot?.service.authenticated])
+  }, [snapshot?.service.selectedServerSlug, snapshot?.service.authenticated, initialServiceRefreshDone])
 
   useEffect(() => {
     if (
@@ -2200,7 +2223,10 @@ function App() {
         ) : null}
 
         {dashboardData ? (
-          <section className="dashboard" aria-label="Server Dashboard">
+          <section className="dashboard" aria-label={copy.dashboardLabel}>
+            {dashboardData.warnings && dashboardData.warnings.length > 0 ? (
+              <p className="dashboard-warning inline-note">{copy.dashboardPartialError ?? 'Some data failed to load'}</p>
+            ) : null}
             <div className="dashboard-stats">
               <div className="dashboard-stat-card">
                 <span className="dashboard-stat-value">
@@ -2238,19 +2264,19 @@ function App() {
                     const done = dashboardData.tasks.filter((t) => t.status === 'done').length
                     return (
                       <>
-                        {todo > 0 ? <span className="task-bar-segment todo" style={{ flex: todo / total }} title={`Todo: ${todo}`} /> : null}
-                        {inProgress > 0 ? <span className="task-bar-segment in-progress" style={{ flex: inProgress / total }} title={`In Progress: ${inProgress}`} /> : null}
-                        {inReview > 0 ? <span className="task-bar-segment in-review" style={{ flex: inReview / total }} title={`In Review: ${inReview}`} /> : null}
-                        {done > 0 ? <span className="task-bar-segment done" style={{ flex: done / total }} title={`Done: ${done}`} /> : null}
+                        {todo > 0 ? <span className="task-bar-segment todo" style={{ flex: todo / total }} title={`${copy.taskStatusTodo}: ${todo}`} /> : null}
+                        {inProgress > 0 ? <span className="task-bar-segment in-progress" style={{ flex: inProgress / total }} title={`${copy.taskStatusInProgress}: ${inProgress}`} /> : null}
+                        {inReview > 0 ? <span className="task-bar-segment in-review" style={{ flex: inReview / total }} title={`${copy.taskStatusInReview}: ${inReview}`} /> : null}
+                        {done > 0 ? <span className="task-bar-segment done" style={{ flex: done / total }} title={`${copy.taskStatusDone}: ${done}`} /> : null}
                       </>
                     )
                   })()}
                 </div>
                 <div className="dashboard-task-legend">
-                  <span className="task-legend-item"><span className="task-dot todo" />Todo {dashboardData.tasks.filter((t) => t.status === 'todo').length}</span>
-                  <span className="task-legend-item"><span className="task-dot in-progress" />In Progress {dashboardData.tasks.filter((t) => t.status === 'in_progress').length}</span>
-                  <span className="task-legend-item"><span className="task-dot in-review" />Review {dashboardData.tasks.filter((t) => t.status === 'in_review').length}</span>
-                  <span className="task-legend-item"><span className="task-dot done" />Done {dashboardData.tasks.filter((t) => t.status === 'done').length}</span>
+                  <span className="task-legend-item"><span className="task-dot todo" />{copy.taskStatusTodo} {dashboardData.tasks.filter((t) => t.status === 'todo').length}</span>
+                  <span className="task-legend-item"><span className="task-dot in-progress" />{copy.taskStatusInProgress} {dashboardData.tasks.filter((t) => t.status === 'in_progress').length}</span>
+                  <span className="task-legend-item"><span className="task-dot in-review" />{copy.taskStatusInReview} {dashboardData.tasks.filter((t) => t.status === 'in_review').length}</span>
+                  <span className="task-legend-item"><span className="task-dot done" />{copy.taskStatusDone} {dashboardData.tasks.filter((t) => t.status === 'done').length}</span>
                 </div>
               </div>
 
@@ -2292,6 +2318,10 @@ function App() {
         ) : dashboardLoading ? (
           <div className="dashboard-loading">
             <SpinnerIcon />
+          </div>
+        ) : dashboardError ? (
+          <div className="dashboard-error">
+            <p className="inline-note">{dashboardError}</p>
           </div>
         ) : null}
 

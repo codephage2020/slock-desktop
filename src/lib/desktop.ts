@@ -291,6 +291,7 @@ export interface DashboardData {
   unread: DashboardChannelUnread[]
   tasks: DashboardTask[]
   agents: DashboardAgent[]
+  warnings?: string[]
 }
 
 export async function fetchDashboard(serverSlug: string) {
