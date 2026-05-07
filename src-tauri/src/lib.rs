@@ -1454,7 +1454,7 @@ fn fetch_dashboard(
         .service
         .clone();
 
-    // Find the server ID from cached servers
+    // Find the server ID from cached servers; refresh if cache is empty
     let server_id = {
         let runtime = state
             .service
@@ -1465,7 +1465,25 @@ fn fetch_dashboard(
             .iter()
             .find(|s| s.slug == slug)
             .map(|s| s.id.clone())
-            .ok_or_else(|| format!("Server '{slug}' not found in cached servers"))?
+    };
+    let server_id = match server_id {
+        Some(id) => id,
+        None => {
+            // Cache miss — try refreshing server catalog
+            let refreshed = fetch_service_server_catalog(&app, &state, &settings)
+                .unwrap_or_default();
+            let mut runtime = state
+                .service
+                .lock()
+                .map_err(|_| "Unable to lock service runtime".to_string())?;
+            runtime.cached_servers = refreshed;
+            runtime
+                .cached_servers
+                .iter()
+                .find(|s| s.slug == slug)
+                .map(|s| s.id.clone())
+                .ok_or_else(|| format!("Server '{slug}' not found"))?
+        }
     };
 
     let server_url = settings.server_url.clone();

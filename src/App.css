@@ -63,12 +63,6 @@ body:has(.loading-shell),
   color: var(--accent);
 }
 
-.loading-detail {
-  margin: -8px 0 0;
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
 .studio-shell {
   padding: 38px clamp(8px, 1.2vw, 14px) clamp(8px, 1.2vw, 14px);
   display: grid;
@@ -437,6 +431,14 @@ body:has(.loading-shell),
   place-items: center;
   padding: 24px;
   color: var(--muted);
+}
+
+.dashboard-error {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .dashboard-stats {
@@ -927,12 +929,6 @@ body:has(.loading-shell),
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-}
-
-.service-launch-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .service-toggle-button {
@@ -1924,8 +1920,7 @@ body:has(.loading-shell),
   height: 16px;
 }
 
-.status-chip,
-.mode-chip {
+.status-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1958,12 +1953,6 @@ body:has(.loading-shell),
   background: color-mix(in srgb, #c24141 10%, var(--surface-strong));
 }
 
-.mode-chip {
-  background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  color: var(--muted);
-}
-
 .launch-button,
 .theme-button {
   appearance: none;
@@ -1994,11 +1983,6 @@ body:has(.loading-shell),
   cursor: default;
   opacity: 0.8;
   transform: none;
-}
-
-.theme-button.static-disabled:disabled {
-  cursor: default;
-  opacity: 0.72;
 }
 
 .launch-button {
@@ -2307,23 +2291,9 @@ body:has(.loading-shell),
   color: color-mix(in srgb, var(--accent) 72%, var(--text));
 }
 
-.truncate {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .theme-name {
   font-size: 0.95rem;
   font-weight: 700;
-}
-
-.theme-summary {
-  margin-top: 4px;
-  color: var(--muted);
-  line-height: 1.45;
-  font-size: 0.8rem;
 }
 
 .error-banner {
