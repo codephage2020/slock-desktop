@@ -20,6 +20,9 @@ import {
   type DashboardAgent,
   type DashboardData,
   type DesktopUpdateCheck,
+  type InboxDmChannel,
+  type InboxMessage,
+  type InboxThread,
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
   type ThemeDefinition,
@@ -30,10 +33,14 @@ import {
   deleteCustomTheme,
   fetchAgentActivity,
   fetchDashboard,
+  fetchDmChannels,
+  fetchFollowedThreads,
+  fetchThreadMessages,
   installDesktopUpdate,
   forgetAccount,
   importThemeStyle,
   loadBootstrap,
+  markChannelRead,
   openLogin,
   openServiceLog,
   openWorkspace,
@@ -41,6 +48,7 @@ import {
   refreshServiceServerStatus,
   renameCustomTheme,
   selectServiceServer,
+  sendMessage,
   startAgent,
   startService,
   stopAgent,
@@ -276,6 +284,16 @@ const COPY = {
     agentRestart: 'Restart',
     agentStopping: 'Stopping…',
     agentStarting: 'Starting…',
+    inbox: 'Inbox',
+    inboxUnread: 'Unread',
+    inboxAll: 'All',
+    inboxSearch: 'Search…',
+    inboxEmpty: 'No messages yet',
+    inboxNoUnread: 'All caught up!',
+    inboxSelectThread: 'Select a conversation to view messages',
+    inboxSend: 'Send',
+    inboxReplyPlaceholder: 'Type a message…',
+    inboxSending: 'Sending…',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -436,6 +454,16 @@ const COPY = {
     agentRestart: '重启',
     agentStopping: '停止中…',
     agentStarting: '启动中…',
+    inbox: '收件箱',
+    inboxUnread: '未读',
+    inboxAll: '全部',
+    inboxSearch: '搜索…',
+    inboxEmpty: '暂无消息',
+    inboxNoUnread: '全部已读！',
+    inboxSelectThread: '选择一个会话查看消息',
+    inboxSend: '发送',
+    inboxReplyPlaceholder: '输入消息…',
+    inboxSending: '发送中…',
   },
 } as const
 
@@ -522,6 +550,60 @@ function App() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(false)
   const [dashboardError, setDashboardError] = useState<string | null>(null)
+  // Inbox state
+  const [inboxThreads, setInboxThreads] = useState<InboxThread[]>([])
+  const [inboxDms, setInboxDms] = useState<InboxDmChannel[]>([])
+  const [inboxLoading, setInboxLoading] = useState(false)
+  const [inboxTab, setInboxTab] = useState<'unread' | 'all'>('unread')
+  const [inboxSearch, setInboxSearch] = useState('')
+  const [inboxSelectedId, setInboxSelectedId] = useState<string | null>(null)
+  const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([])
+  const [inboxMessagesLoading, setInboxMessagesLoading] = useState(false)
+  const [inboxReplyText, setInboxReplyText] = useState('')
+  const [inboxSending, setInboxSending] = useState(false)
+  const inboxMessagesEndRef = useRef<HTMLDivElement | null>(null)
+
+  // Unified inbox list combining threads and DMs
+  type InboxListItem = {
+    id: string
+    type: 'thread' | 'dm'
+    title: string
+    subtitle: string | null
+    lastMessageAt: string | null
+    unreadCount: number
+    avatarInitial: string
+    avatarUrl: string | null
+    channelId: string
+  }
+
+  const inboxList = useMemo<InboxListItem[]>(() => {
+    const threads: InboxListItem[] = inboxThreads.map((t) => ({
+      id: t.id,
+      type: 'thread' as const,
+      title: t.channelName ? `#${t.channelName}` : 'Thread',
+      subtitle: t.channelName ? `#${t.channelName}` : null,
+      lastMessageAt: t.lastMessageAt,
+      unreadCount: t.unreadCount,
+      avatarInitial: '#',
+      avatarUrl: null,
+      channelId: t.channelId,
+    }))
+    const dms: InboxListItem[] = inboxDms.map((d) => ({
+      id: d.id,
+      type: 'dm' as const,
+      title: d.displayName ?? d.name,
+      subtitle: null,
+      lastMessageAt: d.lastMessageAt,
+      unreadCount: d.unreadCount,
+      avatarInitial: (d.displayName ?? d.name).charAt(0).toUpperCase(),
+      avatarUrl: d.members[0]?.avatarUrl ?? null,
+      channelId: d.id,
+    }))
+    return [...threads, ...dms].sort((a, b) =>
+      (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '')
+    )
+  }, [inboxThreads, inboxDms])
+
   const [messageReminder, setMessageReminder] = useState<MessageReminderToast | null>(null)
   const messageReminderTimerRef = useRef<number | null>(null)
   const [agentCardTarget, setAgentCardTarget] = useState<DashboardAgent | null>(null)
@@ -1056,6 +1138,79 @@ function App() {
     void loadDashboard()
     return () => { cancelled = true }
   }, [snapshot?.service.selectedServerSlug, snapshot?.service.authenticated, initialServiceRefreshDone])
+
+  // Load inbox items alongside dashboard
+  useEffect(() => {
+    if (!snapshot?.service.authenticated || !snapshot.service.selectedServerSlug || !initialServiceRefreshDone) {
+      setInboxThreads([])
+      setInboxDms([])
+      return
+    }
+
+    const serverSlug = snapshot.service.selectedServerSlug
+    let cancelled = false
+
+    async function loadInbox() {
+      setInboxLoading(true)
+      try {
+        const [threads, dms] = await Promise.all([
+          fetchFollowedThreads(serverSlug),
+          fetchDmChannels(serverSlug),
+        ])
+        if (!cancelled) {
+          setInboxThreads(threads)
+          setInboxDms(dms)
+        }
+      } catch {
+        // Inbox API may not be available yet, silently fallback to empty
+        if (!cancelled) {
+          setInboxThreads([])
+          setInboxDms([])
+        }
+      } finally {
+        if (!cancelled) {
+          setInboxLoading(false)
+        }
+      }
+    }
+
+    void loadInbox()
+    return () => { cancelled = true }
+  }, [snapshot?.service.selectedServerSlug, snapshot?.service.authenticated, initialServiceRefreshDone])
+
+  // Load messages when a conversation is selected
+  useEffect(() => {
+    if (!inboxSelectedId || !snapshot?.service.selectedServerSlug) {
+      setInboxMessages([])
+      return
+    }
+
+    const serverSlug = snapshot.service.selectedServerSlug
+    let cancelled = false
+
+    async function loadMessages() {
+      setInboxMessagesLoading(true)
+      try {
+        const msgs = await fetchThreadMessages(serverSlug, inboxSelectedId!, { limit: 50 })
+        if (!cancelled) {
+          setInboxMessages(msgs)
+        }
+        // Mark as read
+        void markChannelRead(serverSlug, inboxSelectedId!)
+      } catch {
+        if (!cancelled) {
+          setInboxMessages([])
+        }
+      } finally {
+        if (!cancelled) {
+          setInboxMessagesLoading(false)
+        }
+      }
+    }
+
+    void loadMessages()
+    return () => { cancelled = true }
+  }, [inboxSelectedId, snapshot?.service.selectedServerSlug])
 
   useEffect(() => {
     if (
@@ -1691,6 +1846,37 @@ function App() {
     }
   }
 
+  async function handleInboxSend() {
+    const serverSlug = snapshot?.service.selectedServerSlug
+    if (!serverSlug || !inboxSelectedId || !inboxReplyText.trim() || inboxSending) return
+    setInboxSending(true)
+    try {
+      const resp = await sendMessage(serverSlug, inboxSelectedId, inboxReplyText.trim())
+      setInboxReplyText('')
+      // Append the sent message to the list
+      setInboxMessages((prev) => [...prev, {
+        id: resp.id,
+        channelId: resp.channelId,
+        content: resp.content,
+        senderId: snapshot.service.account?.id ?? null,
+        senderName: snapshot.service.account?.displayName ?? 'You',
+        senderType: 'human',
+        senderDisplayName: snapshot.service.account?.displayName ?? null,
+        senderAvatarUrl: snapshot.service.account?.avatarUrl ?? null,
+        createdAt: resp.createdAt,
+        updatedAt: null,
+      }])
+      // Scroll to bottom
+      setTimeout(() => {
+        inboxMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 50)
+    } catch (err) {
+      console.error('Failed to send message', err)
+    } finally {
+      setInboxSending(false)
+    }
+  }
+
   async function handleAgentStop(agent: DashboardAgent) {
     const serverSlug = snapshot?.service.selectedServerSlug
     if (!serverSlug) { return }
@@ -2070,6 +2256,20 @@ function App() {
           ) : null}
         </div>
 
+        <button
+          type="button"
+          className={`titlebar-icon-button titlebar-launch${workspaceLaunching ? ' launching' : ''}`}
+          onClick={() => {
+            launchButtonAccentRef.current = selectedThemeAccent
+            void handleWorkspaceOpen(selectedServiceSlug || undefined)
+          }}
+          disabled={serviceActionBusy}
+          title={stackButtonLabel}
+          aria-label={stackButtonLabel}
+        >
+          {busyAction === 'workspace' ? <SpinnerIcon /> : <EnterIcon />}
+        </button>
+
         <div className="tauri-titlebar-drag" data-tauri-drag-region />
 
         <button
@@ -2434,6 +2634,189 @@ function App() {
           </section>
         ) : null}
 
+        <div className="inbox-layout">
+          {/* Inbox Sidebar */}
+          <aside className="inbox-sidebar" aria-label={copy.inbox}>
+            <div className="inbox-sidebar-header">
+              <input
+                type="search"
+                className="inbox-search"
+                placeholder={copy.inboxSearch}
+                value={inboxSearch}
+                onChange={(e) => setInboxSearch(e.target.value)}
+              />
+              <div className="inbox-tabs" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  className={`inbox-tab${inboxTab === 'unread' ? ' active' : ''}`}
+                  aria-selected={inboxTab === 'unread'}
+                  onClick={() => setInboxTab('unread')}
+                >
+                  {copy.inboxUnread}
+                  {inboxList.filter((i) => i.unreadCount > 0).length > 0 ? (
+                    <span className="inbox-tab-badge">{inboxList.filter((i) => i.unreadCount > 0).length}</span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`inbox-tab${inboxTab === 'all' ? ' active' : ''}`}
+                  aria-selected={inboxTab === 'all'}
+                  onClick={() => setInboxTab('all')}
+                >
+                  {copy.inboxAll}
+                </button>
+              </div>
+            </div>
+            <div className="inbox-list" role="listbox">
+              {(() => {
+                const normalizedSearch = inboxSearch.trim().toLowerCase()
+                const filtered = inboxList
+                  .filter((item) => {
+                    if (inboxTab === 'unread' && item.unreadCount === 0) return false
+                    if (normalizedSearch) {
+                      return item.title.toLowerCase().includes(normalizedSearch)
+                    }
+                    return true
+                  })
+
+                if (inboxLoading) {
+                  return <div className="inbox-list-empty"><SpinnerIcon /></div>
+                }
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="inbox-list-empty">
+                      <p className="inline-note">
+                        {inboxTab === 'unread' ? copy.inboxNoUnread : copy.inboxEmpty}
+                      </p>
+                    </div>
+                  )
+                }
+
+                return filtered.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="option"
+                    className={`inbox-item${inboxSelectedId === item.channelId ? ' selected' : ''}${item.unreadCount > 0 ? ' unread' : ''}`}
+                    aria-selected={inboxSelectedId === item.channelId}
+                    onClick={() => setInboxSelectedId(item.channelId)}
+                  >
+                    <div className="inbox-item-avatar">
+                      {item.avatarUrl ? (
+                        <img src={item.avatarUrl} alt="" className="inbox-avatar-img" />
+                      ) : (
+                        <span className="inbox-avatar-placeholder">
+                          {item.avatarInitial}
+                        </span>
+                      )}
+                    </div>
+                    <div className="inbox-item-body">
+                      <div className="inbox-item-header">
+                        <span className="inbox-item-title">{item.title}</span>
+                        {item.lastMessageAt ? (
+                          <span className="inbox-item-time">{formatRelativeTime(item.lastMessageAt)}</span>
+                        ) : null}
+                      </div>
+                      {item.type === 'thread' && item.subtitle ? (
+                        <span className="inbox-item-subtitle">{item.subtitle}</span>
+                      ) : null}
+                      {item.unreadCount > 0 ? (
+                        <p className="inbox-item-preview">
+                          {item.unreadCount} unread
+                        </p>
+                      ) : null}
+                    </div>
+                    {item.unreadCount > 0 ? (
+                      <span className="inbox-item-unread-dot" aria-label={`${item.unreadCount} unread`} />
+                    ) : null}
+                  </button>
+                ))
+              })()}
+            </div>
+          </aside>
+
+          {/* Content area */}
+          <div className="inbox-content">
+            {inboxSelectedId ? (
+              <div className="inbox-message-view">
+                {/* Message header */}
+                <div className="inbox-message-header">
+                  <span className="inbox-message-title">
+                    {inboxList.find((i) => i.channelId === inboxSelectedId)?.title ?? 'Conversation'}
+                  </span>
+                  <button
+                    type="button"
+                    className="inbox-message-close"
+                    onClick={() => { setInboxSelectedId(null); setInboxMessages([]) }}
+                    aria-label="Close"
+                  >
+                    <XIcon />
+                  </button>
+                </div>
+                {/* Messages list */}
+                <div className="inbox-message-list">
+                  {inboxMessagesLoading ? (
+                    <div className="inbox-list-empty"><SpinnerIcon /></div>
+                  ) : inboxMessages.length === 0 ? (
+                    <div className="inbox-list-empty">
+                      <p className="inline-note">{copy.inboxEmpty}</p>
+                    </div>
+                  ) : (
+                    inboxMessages.map((msg) => (
+                      <div key={msg.id} className={`inbox-msg${msg.senderType === 'agent' ? ' agent' : ''}`}>
+                        <div className="inbox-msg-avatar">
+                          {msg.senderAvatarUrl ? (
+                            <img src={msg.senderAvatarUrl} alt="" className="inbox-avatar-img" />
+                          ) : (
+                            <span className="inbox-avatar-placeholder">
+                              {msg.senderType === 'agent' ? 'A' : (msg.senderName ?? '?').charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="inbox-msg-body">
+                          <div className="inbox-msg-meta">
+                            <span className="inbox-msg-name">{msg.senderDisplayName ?? msg.senderName ?? 'Unknown'}</span>
+                            <span className="inbox-msg-time">{formatRelativeTime(msg.createdAt)}</span>
+                          </div>
+                          <div className="inbox-msg-content">{msg.content}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <div ref={inboxMessagesEndRef} />
+                </div>
+                {/* Reply input */}
+                <div className="inbox-reply-bar">
+                  <textarea
+                    className="inbox-reply-input"
+                    placeholder={copy.inboxReplyPlaceholder}
+                    value={inboxReplyText}
+                    onChange={(e) => setInboxReplyText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        void handleInboxSend()
+                      }
+                    }}
+                    disabled={inboxSending}
+                    rows={1}
+                  />
+                  <button
+                    type="button"
+                    className="inbox-send-button"
+                    onClick={() => void handleInboxSend()}
+                    disabled={inboxSending || !inboxReplyText.trim()}
+                  >
+                    {inboxSending ? copy.inboxSending : copy.inboxSend}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Dashboard as default content when no conversation selected */
+              <>
         {dashboardData ? (
           <section className="dashboard" aria-label={copy.dashboardLabel}>
             {dashboardData.warnings && dashboardData.warnings.length > 0 ? (
@@ -2683,18 +3066,9 @@ function App() {
             <p className="inline-note">{dashboardError}</p>
           </div>
         ) : null}
-
-        <div className="launch-dock">
-          <button
-            className={`launch-button${workspaceLaunching ? ' launching' : ''}`}
-            onClick={() => {
-              launchButtonAccentRef.current = selectedThemeAccent
-              void handleWorkspaceOpen(selectedServiceSlug || undefined)
-            }}
-            disabled={serviceActionBusy}
-          >
-            {busyAction === 'workspace' ? copy.launching : stackButtonLabel}
-          </button>
+              </>
+            )}
+          </div>
         </div>
       </section>
 
@@ -3696,6 +4070,25 @@ function SpinnerIcon() {
     >
       <path d="M21 12a9 9 0 0 1-9 9" />
       <path d="M3 12a9 9 0 0 1 9-9" />
+    </svg>
+  )
+}
+
+function EnterIcon() {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+      <polyline points="10 17 15 12 10 7" />
+      <line x1="15" y1="12" x2="3" y2="12" />
     </svg>
   )
 }
