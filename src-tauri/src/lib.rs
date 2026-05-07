@@ -74,6 +74,7 @@ const SERVICE_LOG_DEFAULT_WINDOW_MS: i64 = 30 * 60 * 1000;
 const MESSAGE_REMINDER_RECENT_LIMIT: usize = 200;
 const MESSAGE_REMINDER_RETRY_AFTER_MS: u64 = 30_000;
 const MESSAGE_REMINDER_MUTED_REFRESH_MS: u64 = 30_000;
+const MESSAGE_REMINDER_MUTED_FAILURE_RETRY_MS: u64 = 5 * 60_000;
 #[cfg(debug_assertions)]
 const WORKSPACE_LAUNCH_LOG_PATH: &str = "/tmp/slock-desktop-launch.log";
 
@@ -121,6 +122,7 @@ struct MessageReminderRuntime {
     status: MessageReminderStatus,
     muted_channel_ids: HashSet<String>,
     muted_channels_checked_at: Option<Instant>,
+    muted_channels_retry_after: Option<Instant>,
     recent_message_ids: VecDeque<String>,
     context: Option<MessageReminderContext>,
     connection: Option<MessageReminderConnection>,
@@ -134,6 +136,7 @@ impl Default for MessageReminderRuntime {
             status: MessageReminderStatus::Idle,
             muted_channel_ids: HashSet::new(),
             muted_channels_checked_at: None,
+            muted_channels_retry_after: None,
             recent_message_ids: VecDeque::new(),
             context: None,
             connection: None,
@@ -1763,6 +1766,7 @@ fn sync_message_reminders(
             runtime.status = MessageReminderStatus::Connecting;
             runtime.muted_channel_ids.clear();
             runtime.muted_channels_checked_at = None;
+            runtime.muted_channels_retry_after = None;
             runtime.recent_message_ids.clear();
             runtime.context = None;
             runtime.connection = Some(connection.clone());
@@ -1799,6 +1803,7 @@ fn stop_message_reminders(state: &DesktopState) {
     runtime.status = MessageReminderStatus::Idle;
     runtime.muted_channel_ids.clear();
     runtime.muted_channels_checked_at = None;
+    runtime.muted_channels_retry_after = None;
     runtime.recent_message_ids.clear();
     runtime.context = None;
     runtime.connection = None;
@@ -1913,21 +1918,22 @@ fn normalize_identity_value(value: &str) -> String {
 }
 
 fn connect_message_reminder_socket(app: AppHandle, connection: MessageReminderConnection) {
-    let muted_channels = match fetch_message_reminder_muted_channels(
+    match fetch_message_reminder_muted_channels(
         &app,
         &connection.server_url,
         &connection.server_id,
     ) {
-        Ok(channels) => channels,
-        Err(err) => {
-            mark_message_reminders_failed(&app, &connection.key, &err);
-            log::warn!("[message-reminders] muted channel sync failed: {err}");
-            return;
+        Ok(channels) => {
+            if !set_message_reminder_muted_channels(&app, &connection.key, channels) {
+                return;
+            }
         }
-    };
-
-    if !set_message_reminder_muted_channels(&app, &connection.key, muted_channels) {
-        return;
+        Err(err) => {
+            mark_message_reminder_muted_channels_retry(&app, &connection.key);
+            log::warn!(
+                "[message-reminders] muted channel sync failed; continuing without muted filter: {err}"
+            );
+        }
     }
 
     let context = MessageReminderContext {
@@ -2191,16 +2197,20 @@ fn set_message_reminder_muted_channels(
     }
     runtime.muted_channel_ids = muted_channels;
     runtime.muted_channels_checked_at = Some(Instant::now());
+    runtime.muted_channels_retry_after = None;
     true
 }
 
-fn mark_message_reminder_muted_channels_checked(app: &AppHandle, key: &str) {
+fn mark_message_reminder_muted_channels_retry(app: &AppHandle, key: &str) {
     let state = app.state::<DesktopState>();
     let Ok(mut runtime) = state.message_reminders.lock() else {
         return;
     };
     if runtime.desired_key.as_deref() == Some(key) {
-        runtime.muted_channels_checked_at = Some(Instant::now());
+        let now = Instant::now();
+        runtime.muted_channels_checked_at = Some(now);
+        runtime.muted_channels_retry_after =
+            Some(now + Duration::from_millis(MESSAGE_REMINDER_MUTED_FAILURE_RETRY_MS));
     }
 }
 
@@ -2215,6 +2225,11 @@ fn refresh_message_reminder_muted_channels_if_stale(
         };
         if runtime.desired_key.as_deref() != Some(&context.key) {
             return;
+        }
+        if let Some(retry_after) = runtime.muted_channels_retry_after {
+            if Instant::now() < retry_after {
+                return;
+            }
         }
         runtime
             .muted_channels_checked_at
@@ -2233,7 +2248,7 @@ fn refresh_message_reminder_muted_channels_if_stale(
             set_message_reminder_muted_channels(app, &context.key, channels);
         }
         Err(err) => {
-            mark_message_reminder_muted_channels_checked(app, &context.key);
+            mark_message_reminder_muted_channels_retry(app, &context.key);
             log::warn!("[message-reminders] muted channel refresh failed: {err}");
         }
     }
