@@ -453,9 +453,11 @@ function App() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [serverPanelOpen, setServerPanelOpen] = useState(false)
   const [themePanelOpen, setThemePanelOpen] = useState(false)
+  const [stylePanelOpen, setStylePanelOpen] = useState(false)
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const serverPanelRef = useRef<HTMLDivElement | null>(null)
   const themePanelRef = useRef<HTMLDivElement | null>(null)
+  const stylePanelRef = useRef<HTMLDivElement | null>(null)
   const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
@@ -884,6 +886,26 @@ function App() {
     document.addEventListener('pointerdown', closeThemePanelOnOutsidePointer)
     return () => document.removeEventListener('pointerdown', closeThemePanelOnOutsidePointer)
   }, [themePanelOpen])
+
+  useEffect(() => {
+    if (!stylePanelOpen) {
+      return
+    }
+
+    const closeStylePanelOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (stylePanelRef.current?.contains(target)) {
+        return
+      }
+      setStylePanelOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeStylePanelOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeStylePanelOnOutsidePointer)
+  }, [stylePanelOpen])
 
   // Fetch dashboard data when selected server changes
   useEffect(() => {
@@ -1888,22 +1910,110 @@ function App() {
 
         <div className="tauri-titlebar-drag" data-tauri-drag-region />
 
+        <button
+          type="button"
+          className={`titlebar-icon-button${selectedServiceRunning ? ' running' : ''}`}
+          onClick={handleSelectedServiceToggle}
+          disabled={!selectedServiceSlug || serviceActionBusy}
+          title={serviceToggleLabel}
+          aria-label={serviceToggleLabel}
+        >
+          <ServiceActionIcon
+            type={selectedServiceRunning ? 'stop' : 'start'}
+            busy={serviceToggleBusy}
+          />
+        </button>
+
+        <button
+          type="button"
+          className="titlebar-icon-button"
+          onClick={() => {
+            if (selectedServiceSlug) {
+              void handleServiceLogOpen(selectedServiceSlug)
+            }
+          }}
+          disabled={!selectedServiceSlug}
+          title={copy.openServerLog}
+          aria-label={copy.openServerLog}
+        >
+          <LogsIcon />
+        </button>
+
+        <div className="titlebar-style" ref={stylePanelRef}>
+          <button
+            type="button"
+            className="titlebar-icon-button"
+            onClick={() => setStylePanelOpen((open) => !open)}
+            aria-expanded={stylePanelOpen}
+            title={copy.themeStyle}
+            aria-label={copy.themeStyle}
+          >
+            <StyleIcon />
+          </button>
+          {stylePanelOpen ? (
+            <div className="titlebar-style-panel" aria-label={copy.themeStyle}>
+              <div className="control-card-head">
+                <p className="eyebrow">{copy.themeStyle}</p>
+                <span className="theme-style-actions">
+                  <button
+                    className="text-action-button"
+                    type="button"
+                    onClick={() => styleImportInputRef.current?.click()}
+                    disabled={busyAction === 'import-style'}
+                  >
+                    {copy.themeImportStyle}
+                  </button>
+                  <button
+                    className="text-action-button"
+                    type="button"
+                    onClick={() => handleExportThemeStyle(activeStyle)}
+                    disabled={!activeStyle}
+                  >
+                    {copy.themeExportStyle}
+                  </button>
+                </span>
+              </div>
+              <input
+                ref={styleImportInputRef}
+                className="sr-only"
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => void handleImportThemeStyleFile(event)}
+              />
+              <ul className="theme-rail theme-style-rail" role="radiogroup" aria-label={copy.themeStyle}>
+                {snapshot.themeStyles.map((style) => (
+                  <li key={style.id}>
+                    <ThemeStyleRow
+                      style={style}
+                      name={getThemeStyleName(style, copy)}
+                      summary={getThemeStyleSummary(style, copy)}
+                      selected={style.id === snapshot.styleScheme || (style.id === 'original' && activeIsOriginal)}
+                      busy={busyAction === `style:${style.id}`}
+                      onSelect={() => handleThemeStyleChange(style.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+
         <div className="titlebar-theme" ref={themePanelRef}>
           <button
             type="button"
             className="titlebar-theme-button"
             onClick={() => setThemePanelOpen((open) => !open)}
             aria-expanded={themePanelOpen}
-            aria-label={copy.appearance}
-            title={copy.appearance}
+            aria-label={copy.themeColor}
+            title={copy.themeColor}
             style={{ '--current-accent': selectedThemeAccent } as CSSProperties}
           >
             <span className="titlebar-theme-swatch" aria-hidden="true" />
           </button>
           {themePanelOpen ? (
-            <div className="titlebar-theme-panel" aria-label={copy.appearance}>
+            <div className="titlebar-theme-panel" aria-label={copy.themeColor}>
               <div className="control-card-head">
-                <p className="eyebrow">{copy.appearance}</p>
+                <p className="eyebrow">{copy.themeColor}</p>
                 <button
                   className="icon-action-button positive theme-add-button"
                   type="button"
@@ -1916,9 +2026,6 @@ function App() {
                 </button>
               </div>
 
-              <div className="theme-section-head">
-                <span>{copy.themeColor}</span>
-              </div>
               <ul className="theme-rail" role="radiogroup" aria-label={copy.themeColor}>
                 {snapshot.themes.map((theme) => {
                   const customTheme = snapshot.customThemes.find((item) => item.id === theme.id)
@@ -1960,49 +2067,6 @@ function App() {
                     <p className="inline-note">{copy.themeEmptyHint}</p>
                   </li>
                 ) : null}
-              </ul>
-
-              <div className="theme-section-head theme-style-head">
-                <span>{copy.themeStyle}</span>
-                <span className="theme-style-actions">
-                  <button
-                    className="text-action-button"
-                    type="button"
-                    onClick={() => styleImportInputRef.current?.click()}
-                    disabled={busyAction === 'import-style'}
-                  >
-                    {copy.themeImportStyle}
-                  </button>
-                  <button
-                    className="text-action-button"
-                    type="button"
-                    onClick={() => handleExportThemeStyle(activeStyle)}
-                    disabled={!activeStyle}
-                  >
-                    {copy.themeExportStyle}
-                  </button>
-                </span>
-              </div>
-              <input
-                ref={styleImportInputRef}
-                className="sr-only"
-                type="file"
-                accept="application/json,.json"
-                onChange={(event) => void handleImportThemeStyleFile(event)}
-              />
-              <ul className="theme-rail theme-style-rail" role="radiogroup" aria-label={copy.themeStyle}>
-                {snapshot.themeStyles.map((style) => (
-                  <li key={style.id}>
-                    <ThemeStyleRow
-                      style={style}
-                      name={getThemeStyleName(style, copy)}
-                      summary={getThemeStyleSummary(style, copy)}
-                      selected={style.id === snapshot.styleScheme || (style.id === 'original' && activeIsOriginal)}
-                      busy={busyAction === `style:${style.id}`}
-                      onSelect={() => handleThemeStyleChange(style.id)}
-                    />
-                  </li>
-                ))}
               </ul>
 
             {newThemeDraft ? (
@@ -2327,7 +2391,7 @@ function App() {
 
         <div className="launch-dock">
           <button
-            className={`launch-button launch-button-center${workspaceLaunching ? ' launching' : ''}`}
+            className={`launch-button${workspaceLaunching ? ' launching' : ''}`}
             onClick={() => {
               launchButtonAccentRef.current = selectedThemeAccent
               void handleWorkspaceOpen(selectedServiceSlug || undefined)
@@ -3192,6 +3256,25 @@ function XIcon() {
     >
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
+    </svg>
+  )
+}
+
+function StyleIcon() {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 2.7 2 7l10 5 10-5-10-4.3Z" />
+      <path d="m2 17 10 5 10-5" />
+      <path d="m2 12 10 5 10-5" />
     </svg>
   )
 }

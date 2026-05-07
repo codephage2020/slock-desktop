@@ -952,6 +952,37 @@ fn open_workspace(
 }
 
 #[tauri::command]
+fn exit_workspace(app: AppHandle, state: State<'_, DesktopState>) -> Result<BootstrapPayload, String> {
+    let window = app
+        .get_webview_window(MAIN_LABEL)
+        .ok_or_else(|| "Main window is unavailable".to_string())?;
+
+    if !window_is_workspace(&window) {
+        return build_bootstrap(&app, &state, false);
+    }
+
+    let (appearance_mode, language) = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        (settings.appearance_mode.clone(), settings.language.clone())
+    };
+
+    apply_window_language(&app, &window, &language, false);
+    apply_launcher_window_theme(&window, &appearance_mode);
+    apply_launcher_titlebar_style(&window);
+    apply_launcher_window_size(&window);
+
+    let launcher_url = "tauri://localhost"
+        .parse::<Url>()
+        .map_err(|err| err.to_string())?;
+    window.navigate(launcher_url).map_err(|err| err.to_string())?;
+
+    build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
 fn open_login(app: AppHandle, state: State<'_, DesktopState>) -> Result<BootstrapPayload, String> {
     let command_started = Instant::now();
     open_login_window(&app, &state, command_started, false)?;
@@ -6795,6 +6826,7 @@ pub fn run() {
             set_language,
             save_session_tokens,
             open_workspace,
+            exit_workspace,
             save_service_settings,
             refresh_service_servers,
             refresh_service_server_status,

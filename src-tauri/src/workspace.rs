@@ -132,6 +132,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     direction === "up"
       ? `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"></path></svg>`
       : `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>`;
+  const backIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>`;
   const normalizeHexColor = (value) => {
     const compact = String(value || "").trim().replace(/^#/, "");
     if (/^[0-9a-fA-F]{3}$/.test(compact)) {
@@ -340,6 +342,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       noReleaseNotes: "No release notes were provided.",
       releaseNotes: "Release notes",
       close: "Close",
+      backToLauncher: "Back to launcher",
       themeNames: {
         default: "Default accent",
         original: "Original",
@@ -441,6 +444,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       noReleaseNotes: "此版本没有提供发布说明。",
       releaseNotes: "发布说明",
       close: "关闭",
+      backToLauncher: "返回启动页",
       themeNames: {
         original: "原主题",
         default: "默认主题色",
@@ -3985,6 +3989,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       <div class="titlebar-drag-strip" data-titlebar-drag data-tauri-drag-region aria-hidden="true"></div>
       <div class="titlebar-tools-inner">
         <button
+          class="titlebar-button titlebar-back"
+          type="button"
+          data-titlebar-back
+          title="${t("backToLauncher")}"
+          aria-label="${t("backToLauncher")}"
+        >${backIcon()}</button>
+        <button
           class="titlebar-button${running ? " live" : ""}"
           type="button"
           data-titlebar-service
@@ -4292,6 +4303,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       if (event.button !== 0) return;
       event.preventDefault();
       void startWindowDrag();
+    });
+    toolbar.querySelector("[data-titlebar-back]")?.addEventListener("click", async () => {
+      try {
+        await invokeDesktop("exit_workspace", {});
+      } catch (err) {
+        console.error("[desktop] exit_workspace failed:", err);
+      }
     });
     toolbar.querySelector("[data-titlebar-service]")?.addEventListener("click", () => {
       void toggleSelectedService();
