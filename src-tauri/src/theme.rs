@@ -536,6 +536,24 @@ fn sanitize_mix(value: u8, fallback: u8) -> u8 {
     }
 }
 
+pub fn sanitize_hex(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let hex = trimmed.strip_prefix('#').unwrap_or(trimmed);
+    if !(hex.len() == 3 || hex.len() == 6) || !hex.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return None;
+    }
+
+    let normalized = if hex.len() == 3 {
+        hex.chars()
+            .flat_map(|ch| [ch.to_ascii_lowercase(), ch.to_ascii_lowercase()])
+            .collect::<String>()
+    } else {
+        hex.to_ascii_lowercase()
+    };
+
+    Some(format!("#{normalized}"))
+}
+
 fn sanitize_palette(value: ThemeStylePalette, fallback: ThemeStylePalette) -> ThemeStylePalette {
     ThemeStylePalette {
         canvas: sanitize_hex(&value.canvas).unwrap_or(fallback.canvas),
@@ -2578,7 +2596,7 @@ impl From<ThemeDefinition> for ThemeMeta {
 
 #[cfg(test)]
 mod tests {
-    use super::{injected_script, resolve_theme, CustomThemeItem, CustomThemeSet};
+    use super::{injected_script, resolve_theme, sanitize_hex, CustomThemeItem, CustomThemeSet};
 
     fn fixture_set() -> CustomThemeSet {
         CustomThemeSet {
@@ -2588,6 +2606,16 @@ mod tests {
                 accent: "#10a37f".to_string(),
             }],
         }
+    }
+
+    #[test]
+    fn sanitize_hex_normalizes_safe_css_hex_values() {
+        assert_eq!(sanitize_hex(" #ABC "), Some("#aabbcc".to_string()));
+        assert_eq!(sanitize_hex("10A37F"), Some("#10a37f".to_string()));
+        assert_eq!(sanitize_hex("#10a37f"), Some("#10a37f".to_string()));
+        assert_eq!(sanitize_hex("color-mix(in srgb, red, blue)"), None);
+        assert_eq!(sanitize_hex("#12"), None);
+        assert_eq!(sanitize_hex("#12345g"), None);
     }
 
     #[test]
