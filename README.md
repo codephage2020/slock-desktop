@@ -1,34 +1,18 @@
-# Slock Desktop
+# Slock Desktop - Landing Page
 
-Tauri desktop shell for Slock. The desktop console opens the original `app.slock.ai` workspace in the main window, injects a persistent theme system, and adds a desktop settings surface inside the workspace page.
+Landing page for the Slock Desktop project.
 
-## Current shape
+## Structure
 
-- `Desktop Console` local launch surface built with React + Vite
-- Main Tauri window navigates directly to `https://app.slock.ai` after launch
-- Five built-in themes: `Default`, `Light`, `Dark`, `Graphite`, `Rose`
-- Theme persistence in the app config directory
-- Runtime theme injection into the workspace page
-- Injected `Desktop Settings` panel for in-workspace theme switching
-- Local service settings, start, stop, and workspace-coupled auto-start
-- GitHub release check panel with one-click release and asset opening
+- `docs/` — Published landing page (GitHub Pages source)
+- `site/` — Landing page source files
+- `public/` — Static assets (favicon)
 
-## Development
+## Pages
 
-```bash
-pnpm install
-pnpm tauri:dev
-```
+- `index.html` — Main landing page
+- `api-docs.html` — API documentation page
 
-## Verification
+## Deployment
 
-```bash
-pnpm test
-```
-
-## Planned next phases
-
-- signed in-app updater flow
-- service health checks and richer stack orchestration
-- release workflow automation
-- OS autostart
+This branch is used for GitHub Pages deployment from the `docs/` directory.
