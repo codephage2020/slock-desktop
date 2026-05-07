@@ -609,6 +609,7 @@ function App() {
   }, [inboxThreads, inboxDms, inboxUnreadMap])
 
   const [messageReminders, setMessageReminders] = useState<MessageReminderToast[]>([])
+  const messageRemindersRef = useRef<MessageReminderToast[]>([])
   const messageReminderTimersRef = useRef<Map<string, number>>(new Map())
   const [agentCardTarget, setAgentCardTarget] = useState<DashboardAgent | null>(null)
   const [agentCardActivity, setAgentCardActivity] = useState<AgentActivityEntry[]>([])
@@ -1060,39 +1061,44 @@ function App() {
     let unlisten: (() => void) | undefined
     const timers = messageReminderTimersRef.current
 
+    function clearReminderTimer(id: string) {
+      const existing = timers.get(id)
+      if (existing !== undefined) {
+        window.clearTimeout(existing)
+        timers.delete(id)
+      }
+    }
+
+    function removeReminder(id: string) {
+      clearReminderTimer(id)
+      const current = messageRemindersRef.current
+      const next = current.filter((r) => r.id !== id)
+      messageRemindersRef.current = next
+      setMessageReminders(next)
+    }
+
     void listen<MessageReminderToast>('slock-message-reminder', (event) => {
       const reminder = event.payload
+      const current = messageRemindersRef.current
 
-      // Helper to clear a single timer
-      function clearReminderTimer(id: string) {
-        const existing = timers.get(id)
-        if (existing !== undefined) {
-          window.clearTimeout(existing)
-          timers.delete(id)
-        }
+      // Deduplicate — skip if already showing
+      if (current.some((r) => r.id === reminder.id)) return
+
+      // Overflow — evict oldest and clean its timer
+      if (current.length >= MESSAGE_REMINDER_MAX_VISIBLE) {
+        clearReminderTimer(current[0].id)
+        current.shift()
       }
 
-      setMessageReminders((prev) => {
-        // Deduplicate — skip if already showing
-        if (prev.some((r) => r.id === reminder.id)) return prev
-        // Overflow — clear timer for evicted toast
-        if (prev.length >= MESSAGE_REMINDER_MAX_VISIBLE) {
-          clearReminderTimer(prev[0].id)
-        }
-        const next = prev.length >= MESSAGE_REMINDER_MAX_VISIBLE
-          ? [...prev.slice(1), reminder]
-          : [...prev, reminder]
-        return next
-      })
+      // Enqueue
+      current.push(reminder)
+      const next = [...current]
+      messageRemindersRef.current = next
+      setMessageReminders(next)
 
-      // Only create a new timer if not a duplicate.
-      // We check the map: if this id already has a timer, it's a duplicate
-      // that was skipped by the state updater above.
-      if (timers.has(reminder.id)) return
-
+      // Create auto-dismiss timer
       const timerId = window.setTimeout(() => {
-        setMessageReminders((prev) => prev.filter((r) => r.id !== reminder.id))
-        timers.delete(reminder.id)
+        removeReminder(reminder.id)
       }, MESSAGE_REMINDER_TOAST_MS)
       timers.set(reminder.id, timerId)
     }).then((cleanup) => {
@@ -1563,12 +1569,14 @@ function App() {
   }
 
   function handleMessageReminderDismiss(reminderId: string) {
-    setMessageReminders((prev) => prev.filter((r) => r.id !== reminderId))
     const timerId = messageReminderTimersRef.current.get(reminderId)
     if (timerId !== undefined) {
       window.clearTimeout(timerId)
       messageReminderTimersRef.current.delete(reminderId)
     }
+    const next = messageRemindersRef.current.filter((r) => r.id !== reminderId)
+    messageRemindersRef.current = next
+    setMessageReminders(next)
   }
 
   async function handleMessageReminderOpen(reminder: MessageReminderToast) {
