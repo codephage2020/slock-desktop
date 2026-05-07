@@ -62,6 +62,20 @@ const INITIAL_RELEASE_STATE: ReleaseState = {
   latest: null,
 }
 
+const MESSAGE_REMINDER_TOAST_MS = 7000
+
+interface MessageReminderToast {
+  id: string
+  channelId: string
+  serverId: string
+  serverSlug: string
+  serverName: string
+  senderName: string
+  senderId?: string
+  senderType?: string
+  contentPreview: string
+}
+
 const DEFAULT_NEW_THEME_ACCENT = '#10a37f'
 const THEME_ACCENT_PRESETS = [
   '#ff3b30',
@@ -121,6 +135,9 @@ const COPY = {
     languageSystem: 'System',
     focusSlock: 'Focus Slock',
     openSlock: 'Enter Slock',
+    messageReminderTitle: 'New message',
+    messageReminderOpen: 'Open',
+    messageReminderDismiss: 'Dismiss',
     launching: 'Launching…',
     launchingTitle: 'Opening Slock',
     launchingDetail: 'Preparing workspace',
@@ -263,6 +280,9 @@ const COPY = {
     languageSystem: '系统',
     focusSlock: '聚焦 Slock',
     openSlock: '进入 Slock',
+    messageReminderTitle: '新消息',
+    messageReminderOpen: '打开',
+    messageReminderDismiss: '关闭',
     launching: '启动中…',
     launchingTitle: '正在进入 Slock',
     launchingDetail: '正在准备工作区',
@@ -467,6 +487,8 @@ function App() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(false)
   const [dashboardError, setDashboardError] = useState<string | null>(null)
+  const [messageReminder, setMessageReminder] = useState<MessageReminderToast | null>(null)
+  const messageReminderTimerRef = useRef<number | null>(null)
   const initialServiceRefreshRef = useRef(false)
   const authResolvedRef = useRef(false)
   const [initialServiceRefreshDone, setInitialServiceRefreshDone] = useState(false)
@@ -907,6 +929,31 @@ function App() {
     return () => document.removeEventListener('pointerdown', closeStylePanelOnOutsidePointer)
   }, [stylePanelOpen])
 
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+
+    void listen<MessageReminderToast>('slock-message-reminder', (event) => {
+      setMessageReminder(event.payload)
+      if (messageReminderTimerRef.current !== null) {
+        window.clearTimeout(messageReminderTimerRef.current)
+      }
+      messageReminderTimerRef.current = window.setTimeout(() => {
+        setMessageReminder(null)
+        messageReminderTimerRef.current = null
+      }, MESSAGE_REMINDER_TOAST_MS)
+    }).then((cleanup) => {
+      unlisten = cleanup
+    })
+
+    return () => {
+      unlisten?.()
+      if (messageReminderTimerRef.current !== null) {
+        window.clearTimeout(messageReminderTimerRef.current)
+        messageReminderTimerRef.current = null
+      }
+    }
+  }, [])
+
   // Fetch dashboard data when selected server changes
   useEffect(() => {
     if (!snapshot?.service.selectedServerSlug || !snapshot.service.authenticated) {
@@ -1250,6 +1297,19 @@ function App() {
     } finally {
       setBusyAction(null)
     }
+  }
+
+  function handleMessageReminderDismiss() {
+    setMessageReminder(null)
+    if (messageReminderTimerRef.current !== null) {
+      window.clearTimeout(messageReminderTimerRef.current)
+      messageReminderTimerRef.current = null
+    }
+  }
+
+  async function handleMessageReminderOpen(reminder: MessageReminderToast) {
+    handleMessageReminderDismiss()
+    await handleWorkspaceOpen(reminder.serverSlug)
   }
 
   async function runBrowserAuthAction(
@@ -2402,6 +2462,37 @@ function App() {
           </button>
         </div>
       </section>
+
+      {messageReminder ? (
+        <section
+          className="message-reminder-toast"
+          role="status"
+          aria-live="polite"
+          aria-label={copy.messageReminderTitle}
+        >
+          <button
+            type="button"
+            className="message-reminder-main"
+            onClick={() => void handleMessageReminderOpen(messageReminder)}
+            title={`${copy.messageReminderOpen} ${messageReminder.serverName}`}
+          >
+            <span className="message-reminder-kicker">{copy.messageReminderTitle}</span>
+            <span className="message-reminder-title">
+              {messageReminder.senderName} · {messageReminder.serverName}
+            </span>
+            <span className="message-reminder-body">{messageReminder.contentPreview}</span>
+          </button>
+          <button
+            type="button"
+            className="message-reminder-close"
+            onClick={handleMessageReminderDismiss}
+            aria-label={copy.messageReminderDismiss}
+            title={copy.messageReminderDismiss}
+          >
+            ×
+          </button>
+        </section>
+      ) : null}
 
       {serviceLogViewer ? (
         <section

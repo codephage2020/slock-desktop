@@ -14,6 +14,7 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
+    collections::{HashSet, VecDeque},
     env, fs,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -42,6 +43,7 @@ const WORKSPACE_URL: &str = "https://app.slock.ai";
 const LOGIN_URL: &str = "https://app.slock.ai/login";
 const DESKTOP_AUTH_CALLBACK_EVENT: &str = "desktop-auth-complete";
 const DESKTOP_AUTH_CANCELLED_EVENT: &str = "desktop-auth-cancelled";
+const MESSAGE_REMINDER_EVENT: &str = "slock-message-reminder";
 const DEFAULT_SERVER_URL: &str = "https://api.slock.ai";
 const DAEMON_PACKAGE: &str = "@slock-ai/daemon@latest";
 const DAEMON_MACHINE_NAME: &str = "Slock Desktop";
@@ -69,6 +71,9 @@ const DESKTOP_UPDATE_CHECK_TIMEOUT: u64 = 8;
 const SERVICE_MACHINE_FETCH_CONCURRENCY_LIMIT: usize = 8;
 const SERVICE_LOG_MAX_BYTES: u64 = 2 * 1024 * 1024;
 const SERVICE_LOG_DEFAULT_WINDOW_MS: i64 = 30 * 60 * 1000;
+const MESSAGE_REMINDER_RECENT_LIMIT: usize = 200;
+const MESSAGE_REMINDER_RETRY_AFTER_MS: u64 = 30_000;
+const MESSAGE_REMINDER_MUTED_REFRESH_MS: u64 = 30_000;
 #[cfg(debug_assertions)]
 const WORKSPACE_LAUNCH_LOG_PATH: &str = "/tmp/slock-desktop-launch.log";
 
@@ -79,6 +84,7 @@ pub struct DesktopState {
     app_close: Mutex<AppCloseRuntime>,
     launch_metrics: Mutex<WorkspaceLaunchMetrics>,
     update_cache: Mutex<Option<DesktopUpdateCheck>>,
+    message_reminders: Mutex<MessageReminderRuntime>,
 }
 
 #[derive(Debug, Serialize)]
@@ -108,6 +114,40 @@ struct ServiceRuntime {
     active_pid: Option<u32>,
     cached_servers: Vec<ServiceServerSnapshot>,
     cached_sync_error: Option<String>,
+}
+
+struct MessageReminderRuntime {
+    desired_key: Option<String>,
+    status: MessageReminderStatus,
+    muted_channel_ids: HashSet<String>,
+    muted_channels_checked_at: Option<Instant>,
+    recent_message_ids: VecDeque<String>,
+    context: Option<MessageReminderContext>,
+    connection: Option<MessageReminderConnection>,
+    last_attempt: Option<Instant>,
+}
+
+impl Default for MessageReminderRuntime {
+    fn default() -> Self {
+        Self {
+            desired_key: None,
+            status: MessageReminderStatus::Idle,
+            muted_channel_ids: HashSet::new(),
+            muted_channels_checked_at: None,
+            recent_message_ids: VecDeque::new(),
+            context: None,
+            connection: None,
+            last_attempt: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MessageReminderStatus {
+    Idle,
+    Connecting,
+    Connected,
+    Failed,
 }
 
 #[derive(Default)]
@@ -377,6 +417,49 @@ struct DashboardAgent {
     status: String,
     #[serde(alias = "updated_at")]
     updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct MessageReminderConnection {
+    key: String,
+    socket_url: String,
+    server_url: String,
+    server_id: String,
+    server_slug: String,
+    server_name: String,
+    access_token: String,
+    identity: MessageReminderIdentity,
+}
+
+#[derive(Debug, Clone)]
+struct MessageReminderContext {
+    key: String,
+    server_url: String,
+    server_id: String,
+    server_slug: String,
+    server_name: String,
+    identity: MessageReminderIdentity,
+}
+
+#[derive(Debug, Clone, Default)]
+struct MessageReminderIdentity {
+    values: HashSet<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MessageReminderPayload {
+    id: String,
+    channel_id: String,
+    server_id: String,
+    server_slug: String,
+    server_name: String,
+    sender_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sender_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sender_type: Option<String>,
+    content_preview: String,
 }
 
 #[tauri::command]
@@ -1615,6 +1698,824 @@ fn fetch_dashboard(
     })
 }
 
+fn sync_message_reminders(
+    app: &AppHandle,
+    state: &DesktopState,
+    settings: &AppSettings,
+    service: &ServiceSnapshot,
+) {
+    let Some(connection) = build_message_reminder_connection(settings, service) else {
+        stop_message_reminders(state);
+        return;
+    };
+
+    let action = {
+        let Ok(mut runtime) = state.message_reminders.lock() else {
+            log::warn!("[message-reminders] failed to lock runtime");
+            return;
+        };
+
+        if runtime.desired_key.as_deref() == Some(&connection.key) {
+            runtime.connection = Some(connection.clone());
+            if runtime.status == MessageReminderStatus::Connected {
+                Some(MessageReminderSyncAction::Inject(connection))
+            } else if runtime.status == MessageReminderStatus::Connecting {
+                None
+            } else if runtime
+                .last_attempt
+                .map(|attempt| {
+                    attempt.elapsed() < Duration::from_millis(MESSAGE_REMINDER_RETRY_AFTER_MS)
+                })
+                .unwrap_or(false)
+            {
+                None
+            } else {
+                runtime.status = MessageReminderStatus::Connecting;
+                runtime.last_attempt = Some(Instant::now());
+                Some(MessageReminderSyncAction::Start(connection))
+            }
+        } else {
+            runtime.desired_key = Some(connection.key.clone());
+            runtime.status = MessageReminderStatus::Connecting;
+            runtime.muted_channel_ids.clear();
+            runtime.muted_channels_checked_at = None;
+            runtime.recent_message_ids.clear();
+            runtime.context = None;
+            runtime.connection = Some(connection.clone());
+            runtime.last_attempt = Some(Instant::now());
+            Some(MessageReminderSyncAction::Start(connection))
+        }
+    };
+
+    match action {
+        Some(MessageReminderSyncAction::Start(connection)) => {
+            let app = app.clone();
+            thread::spawn(move || connect_message_reminder_socket(app, connection));
+        }
+        Some(MessageReminderSyncAction::Inject(connection)) => {
+            if let Err(err) = inject_message_reminder_bridge(app, &connection) {
+                mark_message_reminders_failed(app, &connection.key, &err);
+                log::warn!("[message-reminders] bridge re-injection failed: {err}");
+            }
+        }
+        None => {}
+    }
+}
+
+enum MessageReminderSyncAction {
+    Start(MessageReminderConnection),
+    Inject(MessageReminderConnection),
+}
+
+fn stop_message_reminders(state: &DesktopState) {
+    let Ok(mut runtime) = state.message_reminders.lock() else {
+        return;
+    };
+    runtime.desired_key = None;
+    runtime.status = MessageReminderStatus::Idle;
+    runtime.muted_channel_ids.clear();
+    runtime.muted_channels_checked_at = None;
+    runtime.recent_message_ids.clear();
+    runtime.context = None;
+    runtime.connection = None;
+    runtime.last_attempt = None;
+}
+
+fn build_message_reminder_connection(
+    settings: &AppSettings,
+    service: &ServiceSnapshot,
+) -> Option<MessageReminderConnection> {
+    if !service.authenticated {
+        return None;
+    }
+
+    let selected_slug = service.selected_server_slug.trim();
+    if selected_slug.is_empty() {
+        return None;
+    }
+
+    let selected_server = service
+        .servers
+        .iter()
+        .find(|server| server.slug == selected_slug)
+        .or_else(|| service.servers.iter().find(|server| server.selected))?;
+    let access_token = settings.session.access_token.trim();
+    if access_token.is_empty() {
+        return None;
+    }
+
+    let server_url = sanitize_service_server_url(&settings.service.server_url);
+    let key = format!(
+        "{}|{}|{}",
+        server_url,
+        selected_server.id,
+        token_account_id(access_token)
+    );
+
+    Some(MessageReminderConnection {
+        key,
+        socket_url: message_reminder_socket_url(&server_url),
+        server_url,
+        server_id: selected_server.id.clone(),
+        server_slug: selected_server.slug.clone(),
+        server_name: selected_server.name.clone(),
+        access_token: access_token.to_string(),
+        identity: message_reminder_identity(settings),
+    })
+}
+
+fn message_reminder_socket_url(server_url: &str) -> String {
+    let sanitized = sanitize_service_server_url(server_url);
+    if let Some(rest) = sanitized.strip_prefix("https://") {
+        format!("wss://{rest}")
+    } else if let Some(rest) = sanitized.strip_prefix("http://") {
+        format!("ws://{rest}")
+    } else {
+        sanitized
+    }
+}
+
+fn message_reminder_identity(settings: &AppSettings) -> MessageReminderIdentity {
+    let mut values = HashSet::new();
+    insert_identity_value(&mut values, &settings.session.display_name);
+    insert_identity_value(&mut values, &settings.session.email);
+    insert_identity_value(
+        &mut values,
+        session_account_id(
+            &settings.session.access_token,
+            Some(&settings.session.display_name),
+            Some(&settings.session.email),
+        ),
+    );
+
+    if let Some(claims) = jwt_claims(&settings.session.access_token) {
+        for key in [
+            "sub",
+            "id",
+            "userId",
+            "user_id",
+            "email",
+            "emailAddress",
+            "email_address",
+            "displayName",
+            "display_name",
+            "name",
+            "username",
+        ] {
+            if let Some(value) = first_claim_string(&claims, &[key]) {
+                insert_identity_value(&mut values, value);
+            }
+        }
+    }
+
+    MessageReminderIdentity { values }
+}
+
+fn jwt_claims(access_token: &str) -> Option<serde_json::Value> {
+    let payload = access_token.split('.').nth(1)?;
+    let decoded = decode_base64_url(payload)?;
+    serde_json::from_slice::<serde_json::Value>(&decoded).ok()
+}
+
+fn insert_identity_value(values: &mut HashSet<String>, value: impl AsRef<str>) {
+    let normalized = normalize_identity_value(value.as_ref());
+    if !normalized.is_empty() {
+        values.insert(normalized);
+    }
+}
+
+fn normalize_identity_value(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
+fn connect_message_reminder_socket(app: AppHandle, connection: MessageReminderConnection) {
+    let muted_channels = match fetch_message_reminder_muted_channels(
+        &app,
+        &connection.server_url,
+        &connection.server_id,
+    ) {
+        Ok(channels) => channels,
+        Err(err) => {
+            mark_message_reminders_failed(&app, &connection.key, &err);
+            log::warn!("[message-reminders] muted channel sync failed: {err}");
+            return;
+        }
+    };
+
+    if !set_message_reminder_muted_channels(&app, &connection.key, muted_channels) {
+        return;
+    }
+
+    let context = MessageReminderContext {
+        key: connection.key.clone(),
+        server_url: connection.server_url.clone(),
+        server_id: connection.server_id.clone(),
+        server_slug: connection.server_slug.clone(),
+        server_name: connection.server_name.clone(),
+        identity: connection.identity.clone(),
+    };
+
+    set_message_reminder_context(&app, context);
+
+    if let Err(err) = inject_message_reminder_bridge(&app, &connection) {
+        mark_message_reminders_failed(&app, &connection.key, &err);
+        log::warn!("[message-reminders] bridge injection failed: {err}");
+        return;
+    }
+
+    mark_message_reminders_connected(&app, &connection.key);
+}
+
+fn inject_message_reminder_bridge(
+    app: &AppHandle,
+    connection: &MessageReminderConnection,
+) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(MAIN_LABEL) else {
+        return Err("main window unavailable".to_string());
+    };
+    let script = message_reminder_bridge_script(connection);
+    window.eval(&script).map_err(|err| err.to_string())
+}
+
+fn inject_message_reminder_bridge_to_webview(
+    webview: &tauri::Webview,
+    connection: &MessageReminderConnection,
+) -> Result<(), String> {
+    let script = message_reminder_bridge_script(connection);
+    webview.eval(&script).map_err(|err| err.to_string())
+}
+
+fn reinject_current_message_reminder_bridge(webview: &tauri::Webview) {
+    let state = webview.state::<DesktopState>();
+    let connection = {
+        let Ok(runtime) = state.message_reminders.lock() else {
+            log::warn!("[message-reminders] failed to lock runtime");
+            return;
+        };
+        if runtime.status != MessageReminderStatus::Connected {
+            return;
+        }
+        runtime.connection.clone()
+    };
+
+    let Some(connection) = connection else {
+        return;
+    };
+
+    if let Err(err) = inject_message_reminder_bridge_to_webview(webview, &connection) {
+        mark_message_reminders_failed_state(&state, &connection.key, &err);
+        log::warn!("[message-reminders] bridge page-load re-injection failed: {err}");
+    }
+}
+
+fn message_reminder_bridge_script(connection: &MessageReminderConnection) -> String {
+    let key = serde_json::to_string(&connection.key).unwrap_or_else(|_| "null".to_string());
+    let socket_url =
+        serde_json::to_string(&connection.socket_url).unwrap_or_else(|_| "null".to_string());
+    let access_token =
+        serde_json::to_string(&connection.access_token).unwrap_or_else(|_| "null".to_string());
+    let server_id =
+        serde_json::to_string(&connection.server_id).unwrap_or_else(|_| "null".to_string());
+
+    format!(
+        r#"(() => {{
+  const KEY = {key};
+  const SOCKET_URL = {socket_url};
+  const TOKEN = {access_token};
+  const SERVER_ID = {server_id};
+  const STATE_KEY = "__slockDesktopMessageReminderBridge";
+  const pushEvent = (event) => {{
+    if (!event || typeof event !== "object") return;
+    try {{
+      window.__TAURI__?.core?.invoke("enqueue_message_reminder_event", {{ key: KEY, event }});
+    }} catch (_) {{}}
+  }};
+  const previous = window[STATE_KEY];
+  if (previous && previous.key === KEY && previous.socket && previous.socket.connected) {{
+    return;
+  }}
+  if (previous && previous.socket && typeof previous.socket.disconnect === "function") {{
+    try {{ previous.socket.disconnect(); }} catch (_) {{}}
+  }}
+  window[STATE_KEY] = {{ key: KEY, socket: null }};
+
+  const bindSocket = (ioFactory) => {{
+    if (window[STATE_KEY]?.key !== KEY) return;
+    const socket = ioFactory(SOCKET_URL, {{
+      transports: ["websocket"],
+      auth: {{ token: TOKEN }},
+      forceNew: true,
+      reconnection: true,
+    }});
+    window[STATE_KEY] = {{ key: KEY, socket }};
+    const joinServer = () => {{
+      try {{ socket.emit("join:channel", {{ serverId: SERVER_ID }}); }} catch (_) {{}}
+    }};
+    socket.on("connect", joinServer);
+    socket.on("reconnect", joinServer);
+    socket.on("message:new", pushEvent);
+  }};
+
+  if (typeof window.io === "function") {{
+    bindSocket(window.io);
+    return;
+  }}
+
+  const existing = document.querySelector('script[data-slock-desktop-socketio="1"]');
+  const script = existing || document.createElement("script");
+  script.dataset.slockDesktopSocketio = "1";
+  script.async = true;
+  script.src = "https://cdn.socket.io/4.8.1/socket.io.min.js";
+  script.onload = () => {{
+    if (typeof window.io === "function") bindSocket(window.io);
+  }};
+  script.onerror = () => console.warn("[Slock Desktop] Socket.IO client failed to load");
+  if (!existing) document.head.appendChild(script);
+}})();"#,
+    )
+}
+
+fn set_message_reminder_context(app: &AppHandle, context: MessageReminderContext) {
+    let state = app.state::<DesktopState>();
+    let Ok(mut runtime) = state.message_reminders.lock() else {
+        return;
+    };
+    if runtime.desired_key.as_deref() == Some(&context.key) {
+        runtime.context = Some(context);
+    }
+}
+
+fn mark_message_reminders_connected(app: &AppHandle, key: &str) {
+    let state = app.state::<DesktopState>();
+    let Ok(mut runtime) = state.message_reminders.lock() else {
+        return;
+    };
+    if runtime.desired_key.as_deref() == Some(key) {
+        runtime.status = MessageReminderStatus::Connected;
+    }
+}
+
+#[tauri::command]
+fn enqueue_message_reminder_event(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    key: String,
+    event: serde_json::Value,
+) -> Result<(), String> {
+    let context = {
+        let runtime = state
+            .message_reminders
+            .lock()
+            .map_err(|_| "Unable to lock message reminders".to_string())?;
+        if runtime.desired_key.as_deref() != Some(key.as_str()) {
+            return Ok(());
+        }
+        runtime
+            .context
+            .clone()
+            .ok_or_else(|| "Message reminder context is unavailable".to_string())?
+    };
+
+    handle_message_reminder_value(&app, &context, event);
+    Ok(())
+}
+
+fn fetch_message_reminder_muted_channels(
+    app: &AppHandle,
+    server_url: &str,
+    server_id: &str,
+) -> Result<HashSet<String>, String> {
+    let state = app.state::<DesktopState>();
+    let api_root = api_base_url(server_url);
+    let payload = load_authenticated_json::<serde_json::Value>(
+        app,
+        &state,
+        server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/channels/muted"))
+                .header("X-Server-Id", server_id)
+                .bearer_auth(access_token)
+        },
+    )?;
+    Ok(parse_muted_channel_ids(&payload))
+}
+
+fn parse_muted_channel_ids(payload: &serde_json::Value) -> HashSet<String> {
+    let mut ids = HashSet::new();
+    collect_muted_channel_ids(payload, &mut ids);
+    ids
+}
+
+fn collect_muted_channel_ids(payload: &serde_json::Value, ids: &mut HashSet<String>) {
+    match payload {
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_muted_channel_ids(item, ids);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            if let Some(channel_id) =
+                first_json_string(payload, &["channelId", "channel_id", "id", "slug"])
+            {
+                insert_channel_id(ids, &channel_id);
+            }
+            if let Some(channel) = map.get("channel") {
+                collect_muted_channel_ids(channel, ids);
+            }
+            for key in [
+                "channels",
+                "muted",
+                "mutedChannels",
+                "data",
+                "items",
+                "results",
+            ] {
+                if let Some(value) = map.get(key) {
+                    collect_muted_channel_ids(value, ids);
+                }
+            }
+            for (key, value) in map {
+                if value.as_bool() == Some(true) {
+                    insert_channel_id(ids, key);
+                }
+            }
+        }
+        serde_json::Value::String(channel_id) => insert_channel_id(ids, channel_id),
+        _ => {}
+    }
+}
+
+fn insert_channel_id(ids: &mut HashSet<String>, channel_id: &str) {
+    let channel_id = channel_id.trim();
+    if !channel_id.is_empty() {
+        ids.insert(channel_id.to_string());
+    }
+}
+
+fn set_message_reminder_muted_channels(
+    app: &AppHandle,
+    key: &str,
+    muted_channels: HashSet<String>,
+) -> bool {
+    let state = app.state::<DesktopState>();
+    let Ok(mut runtime) = state.message_reminders.lock() else {
+        return false;
+    };
+    if runtime.desired_key.as_deref() != Some(key) {
+        return false;
+    }
+    runtime.muted_channel_ids = muted_channels;
+    runtime.muted_channels_checked_at = Some(Instant::now());
+    true
+}
+
+fn mark_message_reminder_muted_channels_checked(app: &AppHandle, key: &str) {
+    let state = app.state::<DesktopState>();
+    let Ok(mut runtime) = state.message_reminders.lock() else {
+        return;
+    };
+    if runtime.desired_key.as_deref() == Some(key) {
+        runtime.muted_channels_checked_at = Some(Instant::now());
+    }
+}
+
+fn refresh_message_reminder_muted_channels_if_stale(
+    app: &AppHandle,
+    context: &MessageReminderContext,
+) {
+    let should_refresh = {
+        let state = app.state::<DesktopState>();
+        let Ok(runtime) = state.message_reminders.lock() else {
+            return;
+        };
+        if runtime.desired_key.as_deref() != Some(&context.key) {
+            return;
+        }
+        runtime
+            .muted_channels_checked_at
+            .map(|checked_at| {
+                checked_at.elapsed() >= Duration::from_millis(MESSAGE_REMINDER_MUTED_REFRESH_MS)
+            })
+            .unwrap_or(true)
+    };
+
+    if !should_refresh {
+        return;
+    }
+
+    match fetch_message_reminder_muted_channels(app, &context.server_url, &context.server_id) {
+        Ok(channels) => {
+            set_message_reminder_muted_channels(app, &context.key, channels);
+        }
+        Err(err) => {
+            mark_message_reminder_muted_channels_checked(app, &context.key);
+            log::warn!("[message-reminders] muted channel refresh failed: {err}");
+        }
+    }
+}
+
+fn mark_message_reminders_failed(app: &AppHandle, key: &str, error: &str) {
+    let state = app.state::<DesktopState>();
+    mark_message_reminders_failed_state(&state, key, error);
+}
+
+fn mark_message_reminders_failed_state(state: &DesktopState, key: &str, error: &str) {
+    let Ok(mut runtime) = state.message_reminders.lock() else {
+        return;
+    };
+    if runtime.desired_key.as_deref() == Some(key) {
+        runtime.status = MessageReminderStatus::Failed;
+    }
+    if !error.trim().is_empty() {
+        log::warn!("[message-reminders] connection failed: {error}");
+    }
+}
+
+fn handle_message_reminder_value(
+    app: &AppHandle,
+    context: &MessageReminderContext,
+    value: serde_json::Value,
+) {
+    let Some(reminder) = message_reminder_from_value(value, context) else {
+        return;
+    };
+    if should_suppress_message_reminder(app, context, &reminder) {
+        return;
+    }
+
+    if let Err(err) = show_message_reminder_notification(app, &reminder) {
+        log::warn!("[message-reminders] failed to show notification: {err}");
+    }
+    if let Err(err) = app.emit(MESSAGE_REMINDER_EVENT, reminder) {
+        log::debug!("[message-reminders] failed to emit in-app reminder: {err}");
+    }
+}
+
+fn message_reminder_from_value(
+    value: serde_json::Value,
+    context: &MessageReminderContext,
+) -> Option<MessageReminderPayload> {
+    let event_server_id = first_json_string(&value, &["serverId", "server_id"])
+        .or_else(|| nested_json_string(&value, "server", &["id"]));
+    if event_server_id
+        .as_deref()
+        .map(|server_id| server_id != context.server_id)
+        .unwrap_or(false)
+    {
+        return None;
+    }
+
+    let channel_id = first_json_string(
+        &value,
+        &[
+            "channelId",
+            "channel_id",
+            "targetChannelId",
+            "target_channel_id",
+        ],
+    )
+    .or_else(|| nested_json_string(&value, "channel", &["id", "channelId", "channel_id"]))?;
+    let id = first_json_string(&value, &["id", "messageId", "message_id"])
+        .unwrap_or_else(|| fallback_message_id(&value, &channel_id));
+    let sender_id = first_json_string(
+        &value,
+        &[
+            "senderId",
+            "sender_id",
+            "userId",
+            "user_id",
+            "authorId",
+            "author_id",
+        ],
+    )
+    .or_else(|| nested_json_string(&value, "sender", &["id", "userId", "user_id"]))
+    .or_else(|| nested_json_string(&value, "author", &["id", "userId", "user_id"]));
+    let sender_name = first_json_string(
+        &value,
+        &[
+            "senderName",
+            "sender_name",
+            "authorName",
+            "author_name",
+            "userName",
+            "user_name",
+            "name",
+        ],
+    )
+    .or_else(|| nested_json_string(&value, "sender", &["name", "displayName", "display_name"]))
+    .or_else(|| nested_json_string(&value, "author", &["name", "displayName", "display_name"]))
+    .unwrap_or_else(|| "Slock".to_string());
+    let sender_type = first_json_string(&value, &["senderType", "sender_type", "type"]);
+    let content_preview =
+        message_content_preview(&value).unwrap_or_else(|| "New message".to_string());
+
+    Some(MessageReminderPayload {
+        id,
+        channel_id,
+        server_id: context.server_id.clone(),
+        server_slug: context.server_slug.clone(),
+        server_name: context.server_name.clone(),
+        sender_name,
+        sender_id,
+        sender_type,
+        content_preview,
+    })
+}
+
+fn fallback_message_id(payload: &serde_json::Value, channel_id: &str) -> String {
+    let timestamp = first_json_string(
+        payload,
+        &[
+            "createdAt",
+            "created_at",
+            "timestamp",
+            "time",
+            "updatedAt",
+            "updated_at",
+        ],
+    )
+    .unwrap_or_default();
+    let sender = first_json_string(
+        payload,
+        &["senderId", "sender_id", "senderName", "sender_name"],
+    )
+    .unwrap_or_default();
+    let content = message_content_preview(payload).unwrap_or_default();
+    format!("{channel_id}:{sender}:{timestamp}:{content}")
+}
+
+fn first_json_string(payload: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = payload.get(*key).and_then(json_value_to_string) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn nested_json_string(
+    payload: &serde_json::Value,
+    object_key: &str,
+    keys: &[&str],
+) -> Option<String> {
+    payload
+        .get(object_key)
+        .and_then(|value| first_json_string(value, keys))
+}
+
+fn json_value_to_string(value: &serde_json::Value) -> Option<String> {
+    let text = match value {
+        serde_json::Value::String(value) => value.clone(),
+        serde_json::Value::Number(value) => value.to_string(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        _ => return None,
+    };
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn message_content_preview(payload: &serde_json::Value) -> Option<String> {
+    let content = first_json_string(payload, &["content", "text", "body", "message", "preview"])
+        .or_else(|| {
+            nested_json_string(
+                payload,
+                "content",
+                &["text", "plainText", "plain_text", "markdown", "html"],
+            )
+        })
+        .or_else(|| nested_json_string(payload, "message", &["content", "text", "body"]));
+    content.and_then(|content| {
+        let preview = truncate_message_preview(&plain_message_text(&content), 100);
+        if preview.is_empty() {
+            None
+        } else {
+            Some(preview)
+        }
+    })
+}
+
+fn plain_message_text(content: &str) -> String {
+    let mut output = String::with_capacity(content.len());
+    let mut in_tag = false;
+    for character in content.chars() {
+        match character {
+            '<' => in_tag = true,
+            '>' => {
+                in_tag = false;
+                output.push(' ');
+            }
+            _ if !in_tag => output.push(character),
+            _ => {}
+        }
+    }
+    output.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_message_preview(content: &str, max_chars: usize) -> String {
+    let mut output = String::new();
+    let mut truncated = false;
+    for (index, character) in content.chars().enumerate() {
+        if index >= max_chars {
+            truncated = true;
+            break;
+        }
+        output.push(character);
+    }
+    if truncated {
+        output.push('…');
+    }
+    output
+}
+
+fn should_suppress_message_reminder(
+    app: &AppHandle,
+    context: &MessageReminderContext,
+    reminder: &MessageReminderPayload,
+) -> bool {
+    if sender_matches_identity(reminder, &context.identity) {
+        return true;
+    }
+
+    refresh_message_reminder_muted_channels_if_stale(app, context);
+
+    let state = app.state::<DesktopState>();
+    let Ok(mut runtime) = state.message_reminders.lock() else {
+        return true;
+    };
+    if runtime.desired_key.as_deref() != Some(&context.key) {
+        return true;
+    }
+    if runtime.muted_channel_ids.contains(&reminder.channel_id) {
+        return true;
+    }
+    if runtime
+        .recent_message_ids
+        .iter()
+        .any(|id| id == &reminder.id)
+    {
+        return true;
+    }
+    runtime.recent_message_ids.push_back(reminder.id.clone());
+    while runtime.recent_message_ids.len() > MESSAGE_REMINDER_RECENT_LIMIT {
+        runtime.recent_message_ids.pop_front();
+    }
+    false
+}
+
+fn sender_matches_identity(
+    reminder: &MessageReminderPayload,
+    identity: &MessageReminderIdentity,
+) -> bool {
+    reminder
+        .sender_id
+        .as_deref()
+        .map(|value| identity.values.contains(&normalize_identity_value(value)))
+        .unwrap_or(false)
+        || identity
+            .values
+            .contains(&normalize_identity_value(&reminder.sender_name))
+}
+
+fn show_message_reminder_notification(
+    app: &AppHandle,
+    reminder: &MessageReminderPayload,
+) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(MAIN_LABEL) else {
+        return Ok(());
+    };
+    let title = if reminder.sender_name.trim().is_empty() {
+        reminder.server_name.clone()
+    } else {
+        format!("{} · {}", reminder.sender_name, reminder.server_name)
+    };
+    let title = serde_json::to_string(&title).unwrap_or_else(|_| "\"Slock\"".to_string());
+    let body = serde_json::to_string(&reminder.content_preview)
+        .unwrap_or_else(|_| "\"New message\"".to_string());
+    let script = format!(
+        r#"(() => {{
+  try {{
+    if (!("Notification" in window)) return;
+    const show = () => new Notification({title}, {{ body: {body}, tag: "slock-message" }});
+    if (Notification.permission === "granted") {{
+      show();
+    }} else if (Notification.permission !== "denied") {{
+      Notification.requestPermission().then((permission) => {{
+        if (permission === "granted") show();
+      }});
+    }}
+  }} catch (error) {{
+    console.warn("[Slock Desktop] notification failed", error);
+  }}
+}})();"#
+    );
+    window.eval(script).map_err(|err| err.to_string())
+}
+
 #[tauri::command]
 fn open_service_log(
     app: AppHandle,
@@ -1777,6 +2678,7 @@ fn handle_app_exit_requested(app: &AppHandle, state: &DesktopState) -> bool {
 }
 
 fn handle_app_exit(app: &AppHandle, state: &DesktopState) {
+    stop_message_reminders(state);
     if current_close_app_behavior(state) == CloseAppServiceBehavior::Stop {
         if take_app_close_service_stop_completed(state) {
             return;
@@ -2280,6 +3182,7 @@ fn build_bootstrap_with_service_options(
         refresh_service,
         detect_service_process,
     )?;
+    sync_message_reminders(app, state, &settings, &service);
     let appearance_mode = theme::normalize_mode(&settings.appearance_mode).to_string();
     let latest = state
         .update_cache
@@ -6650,9 +7553,15 @@ pub fn run() {
             app_close: Mutex::new(AppCloseRuntime::default()),
             launch_metrics: Mutex::new(WorkspaceLaunchMetrics::default()),
             update_cache: Mutex::new(None),
+            message_reminders: Mutex::new(MessageReminderRuntime::default()),
         })
         .on_page_load(|webview, payload| {
             if !is_workspace_url(payload.url()) {
+                if webview.label() == MAIN_LABEL
+                    && matches!(payload.event(), PageLoadEvent::Finished)
+                {
+                    reinject_current_message_reminder_bridge(webview);
+                }
                 return;
             }
 
@@ -6749,6 +7658,8 @@ pub fn run() {
             ) {
                 log::error!("failed to apply workspace desktop scripts: {err}");
             }
+
+            reinject_current_message_reminder_bridge(webview);
         })
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -6840,6 +7751,7 @@ pub fn run() {
             start_window_drag,
             check_desktop_update,
             install_desktop_update,
+            enqueue_message_reminder_event,
             open_login,
             open_login_browser,
             switch_account,
