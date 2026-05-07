@@ -13,9 +13,10 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
   try {
     if (window.location.origin !== "https://app.slock.ai") return;
 
-    const SERVER_SLUG = __SLOCK_DESKTOP_AGENT_CARD_SERVER_SLUG__;
+    const FALLBACK_SERVER_SLUG = __SLOCK_DESKTOP_AGENT_CARD_SERVER_SLUG__;
     const LOCALE = __SLOCK_DESKTOP_AGENT_CARD_LOCALE__;
     const INJECT_ATTR = "data-slock-desktop-agent-card-injected";
+    const SLUG_REGEX = /^\/s\/([^/?#]+)/;
 
     const TRANSLATIONS = {
       "en-US": {
@@ -69,18 +70,27 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return tauriInvoke(cmd, args);
     }
 
-    // --- Agent data cache ---
+    // --- Dynamic server slug ---
+    function getCurrentServerSlug() {
+      const match = window.location.pathname.match(SLUG_REGEX);
+      return (match && match[1]) || FALLBACK_SERVER_SLUG || "";
+    }
+
+    // --- Agent data cache (keyed by server slug) ---
     let cachedAgents = [];
+    let cachedSlug = "";
     let lastFetchMs = 0;
     const CACHE_TTL = 30000;
 
     async function getAgents() {
+      const slug = getCurrentServerSlug();
+      if (!slug) return [];
       const now = Date.now();
-      if (now - lastFetchMs < CACHE_TTL && cachedAgents.length) return cachedAgents;
-      if (!SERVER_SLUG) return cachedAgents;
+      if (slug === cachedSlug && now - lastFetchMs < CACHE_TTL && cachedAgents.length) return cachedAgents;
       try {
-        const data = await invoke("fetch_dashboard", { serverSlug: SERVER_SLUG });
+        const data = await invoke("fetch_dashboard", { serverSlug: slug });
         cachedAgents = data.agents || [];
+        cachedSlug = slug;
         lastFetchMs = Date.now();
       } catch (e) {
         console.warn("[Slock Desktop] agent card: fetch_dashboard failed", e);
@@ -89,10 +99,11 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
     }
 
     async function getAgentActivity(agentId) {
-      if (!SERVER_SLUG || !agentId) return [];
+      const slug = getCurrentServerSlug();
+      if (!slug || !agentId) return [];
       try {
         return await invoke("fetch_agent_activity", {
-          serverSlug: SERVER_SLUG,
+          serverSlug: slug,
           agentId: agentId,
         });
       } catch (e) {
