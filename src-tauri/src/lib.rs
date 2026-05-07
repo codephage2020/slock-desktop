@@ -583,7 +583,7 @@ struct MessagesEnvelope {
 #[serde(rename_all = "camelCase")]
 struct SendMessageEnvelope {
     #[serde(default, alias = "message_id")]
-    message_id: Option<String>,
+    _message_id: Option<String>,
     message: InboxMessage,
 }
 
