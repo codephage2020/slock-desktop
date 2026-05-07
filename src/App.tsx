@@ -296,6 +296,10 @@ const COPY = {
     inboxSend: 'Send',
     inboxReplyPlaceholder: 'Type a message…',
     inboxSending: 'Sending…',
+    inboxThread: 'Thread',
+    inboxConversation: 'Conversation',
+    inboxUnreadLabel: 'unread',
+    inboxUnknownSender: 'Unknown',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -466,6 +470,10 @@ const COPY = {
     inboxSend: '发送',
     inboxReplyPlaceholder: '输入消息…',
     inboxSending: '发送中…',
+    inboxThread: '话题',
+    inboxConversation: '会话',
+    inboxUnreadLabel: '条未读',
+    inboxUnknownSender: '未知',
   },
 } as const
 
@@ -570,7 +578,7 @@ function App() {
   type InboxListItem = {
     id: string
     type: 'thread' | 'dm'
-    title: string
+    title: string | null
     subtitle: string | null
     lastMessageAt: string | null
     unreadCount: number
@@ -583,7 +591,7 @@ function App() {
     const threads: InboxListItem[] = inboxThreads.map((t) => ({
       id: t.id,
       type: 'thread' as const,
-      title: t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : 'Thread'),
+      title: t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : null),
       subtitle: t.parentChannelName ? `#${t.parentChannelName}` : null,
       lastMessageAt: t.lastMessageAt,
       unreadCount: inboxUnreadMap.get(t.id) ?? 0,
@@ -2699,7 +2707,7 @@ function App() {
                   .filter((item) => {
                     if (inboxTab === 'unread' && item.unreadCount === 0) return false
                     if (normalizedSearch) {
-                      return item.title.toLowerCase().includes(normalizedSearch)
+                      return (item.title ?? '').toLowerCase().includes(normalizedSearch)
                     }
                     return true
                   })
@@ -2738,7 +2746,7 @@ function App() {
                     </div>
                     <div className="inbox-item-body">
                       <div className="inbox-item-header">
-                        <span className="inbox-item-title">{item.title}</span>
+                        <span className="inbox-item-title">{item.title ?? copy.inboxThread}</span>
                         {item.lastMessageAt ? (
                           <span className="inbox-item-time">{formatRelativeTime(item.lastMessageAt)}</span>
                         ) : null}
@@ -2748,12 +2756,12 @@ function App() {
                       ) : null}
                       {item.unreadCount > 0 ? (
                         <p className="inbox-item-preview">
-                          {item.unreadCount} unread
+                          {item.unreadCount} {copy.inboxUnreadLabel}
                         </p>
                       ) : null}
                     </div>
                     {item.unreadCount > 0 ? (
-                      <span className="inbox-item-unread-dot" aria-label={`${item.unreadCount} unread`} />
+                      <span className="inbox-item-unread-dot" aria-label={`${item.unreadCount} ${copy.inboxUnreadLabel}`} />
                     ) : null}
                   </button>
                 ))
@@ -2768,7 +2776,7 @@ function App() {
                 {/* Message header */}
                 <div className="inbox-message-header">
                   <span className="inbox-message-title">
-                    {inboxList.find((i) => i.channelId === inboxSelectedId)?.title ?? 'Conversation'}
+                    {inboxList.find((i) => i.channelId === inboxSelectedId)?.title ?? copy.inboxConversation}
                   </span>
                   <button
                     type="button"
@@ -2801,7 +2809,7 @@ function App() {
                         </div>
                         <div className="inbox-msg-body">
                           <div className="inbox-msg-meta">
-                            <span className="inbox-msg-name">{msg.senderDisplayName ?? msg.senderName ?? 'Unknown'}</span>
+                            <span className="inbox-msg-name">{msg.senderDisplayName ?? msg.senderName ?? copy.inboxUnknownSender}</span>
                             <span className="inbox-msg-time">{formatRelativeTime(msg.createdAt)}</span>
                           </div>
                           <div className="inbox-msg-content">{msg.content}</div>
