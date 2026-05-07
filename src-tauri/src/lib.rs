@@ -3819,10 +3819,12 @@ fn apply_workspace_scripts_to_window(
     window
         .eval(workspace::settings_overlay_script(
             active_theme_id,
+            active_style_id,
             active_theme_mode,
             active_language,
             resolved_language,
             &color_catalog(active_theme_mode, active_style_id, custom_theme, custom_style),
+            &style_catalog(active_theme_mode, active_theme_id, custom_theme, custom_style),
         ))
         .map_err(|err| err.to_string())?;
     window

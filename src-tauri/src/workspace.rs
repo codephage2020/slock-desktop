@@ -2,14 +2,19 @@ use crate::theme;
 
 pub fn settings_overlay_script(
     active_theme_id: &str,
+    active_style_id: &str,
     active_theme_mode: &str,
     active_language: &str,
     resolved_language: &str,
     themes: &[theme::ThemeMeta],
+    styles: &[theme::ThemeStyleMeta],
 ) -> String {
     let themes = serde_json::to_string(themes).unwrap_or_else(|_| "[]".into());
+    let styles = serde_json::to_string(styles).unwrap_or_else(|_| "[]".into());
     let active_theme =
         serde_json::to_string(active_theme_id).unwrap_or_else(|_| "\"default\"".into());
+    let active_style =
+        serde_json::to_string(active_style_id).unwrap_or_else(|_| "\"default\"".into());
     let active_mode =
         serde_json::to_string(active_theme_mode).unwrap_or_else(|_| "\"system\"".into());
     let active_language =
@@ -19,7 +24,9 @@ pub fn settings_overlay_script(
 
     WORKSPACE_SETTINGS_SCRIPT
         .replace("__SLOCK_DESKTOP_THEMES__", &themes)
+        .replace("__SLOCK_DESKTOP_STYLES__", &styles)
         .replace("__SLOCK_DESKTOP_ACTIVE_THEME__", &active_theme)
+        .replace("__SLOCK_DESKTOP_ACTIVE_STYLE__", &active_style)
         .replace("__SLOCK_DESKTOP_ACTIVE_MODE__", &active_mode)
         .replace("__SLOCK_DESKTOP_ACTIVE_LANGUAGE__", &active_language)
         .replace("__SLOCK_DESKTOP_RESOLVED_LANGUAGE__", &resolved_language)
@@ -29,12 +36,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 (() => {
   const hostId = "slock-desktop-settings-host";
   const themes = __SLOCK_DESKTOP_THEMES__;
+  const styles = __SLOCK_DESKTOP_STYLES__;
   const initialThemeId = __SLOCK_DESKTOP_ACTIVE_THEME__;
+  const initialStyleId = __SLOCK_DESKTOP_ACTIVE_STYLE__;
   const initialMode = __SLOCK_DESKTOP_ACTIVE_MODE__;
   const initialLanguage = __SLOCK_DESKTOP_ACTIVE_LANGUAGE__;
   const initialResolvedLanguage = __SLOCK_DESKTOP_RESOLVED_LANGUAGE__;
   let serviceSnapshot = window.__slockDesktopServiceSnapshot || null;
   let themeCatalog = window.__slockDesktopThemeCatalog || themes;
+  let styleCatalog = window.__slockDesktopStyleCatalog || styles;
   let updateSnapshot = window.__slockDesktopUpdateSnapshot || null;
   let serviceLogViewer = window.__slockDesktopServiceLogViewer || null;
   let serviceLogSearchTimer = null;
@@ -69,7 +79,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   let updateBusyAction = null;
   let titlebarThemeMenuOpen = false;
   let titlebarThemeWheelOpen = false;
+  let titlebarStyleMenuOpen = false;
   let releaseNotesOpen = false;
+  let agentCardTarget = null;
+  let agentCardActivity = [];
+  let agentCardLoading = false;
+  let agentCardAction = null;
+  let dashboardAgents = window.__slockDesktopDashboardAgents || [];
   const waitForNextPaint = () => new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   });
@@ -134,6 +150,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       : `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>`;
   const backIcon = () =>
     `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>`;
+  const styleIcon = () =>
+    `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7 2 7l10 5 10-5-10-4.3Z"></path><path d="m2 17 10 5 10-5"></path><path d="m2 12 10 5 10-5"></path></svg>`;
+  const spinnerIcon = () =>
+    `<svg class="option-icon spin" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>`;
   const normalizeHexColor = (value) => {
     const compact = String(value || "").trim().replace(/^#/, "");
     if (/^[0-9a-fA-F]{3}$/.test(compact)) {
@@ -343,6 +363,23 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       releaseNotes: "Release notes",
       close: "Close",
       backToLauncher: "Back to launcher",
+      themeStyle: "Style",
+      themeStyleOriginalName: "Original style",
+      themeStyleOriginalSummary: "Current web UI without desktop overrides.",
+      themeStyleDefaultName: "Default style",
+      themeStyleDefaultSummary: "Desktop refined style.",
+      themeImportStyle: "Import style",
+      themeExportStyle: "Export style",
+      themeImportInvalid: "Invalid style file.",
+      agentNoDescription: "No description",
+      agentActivity: "Recent Activity",
+      agentNoActivity: "No recent activity",
+      agentStop: "Stop",
+      agentStart: "Start",
+      agentRestart: "Restart",
+      agentStopping: "Stopping\u2026",
+      agentStarting: "Starting\u2026",
+      agents: "Agents",
       themeNames: {
         default: "Default accent",
         original: "Original",
@@ -445,6 +482,23 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       releaseNotes: "发布说明",
       close: "关闭",
       backToLauncher: "返回启动页",
+      themeStyle: "样式",
+      themeStyleOriginalName: "原样式",
+      themeStyleOriginalSummary: "保留当前 Web UI 原始样式。",
+      themeStyleDefaultName: "默认样式",
+      themeStyleDefaultSummary: "Desktop 整理后的样式。",
+      themeImportStyle: "导入样式",
+      themeExportStyle: "导出样式",
+      themeImportInvalid: "样式文件无效。",
+      agentNoDescription: "无描述",
+      agentActivity: "最近活动",
+      agentNoActivity: "暂无活动记录",
+      agentStop: "停止",
+      agentStart: "启动",
+      agentRestart: "重启",
+      agentStopping: "停止中\u2026",
+      agentStarting: "启动中\u2026",
+      agents: "Agent",
       themeNames: {
         original: "原主题",
         default: "默认主题色",
@@ -476,6 +530,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
   const shadow = host.shadowRoot || host.attachShadow({ mode: "open" });
   let activeThemeId = initialThemeId;
+  let activeStyleId = initialStyleId;
   let activeMode = initialMode;
   let activeLanguage = initialLanguage;
   const resolveLanguage = () => {
@@ -770,12 +825,17 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       themeCatalog = payload.themes;
       window.__slockDesktopThemeCatalog = themeCatalog;
     }
+    if (payload.themeStyles) {
+      styleCatalog = payload.themeStyles;
+      window.__slockDesktopStyleCatalog = styleCatalog;
+    }
     if (payload.updates) {
       updateSnapshot = payload.updates;
       window.__slockDesktopUpdateSnapshot = updateSnapshot;
       hydrateReleaseStateFromUpdateSnapshot();
     }
     if (payload.colorScheme) activeThemeId = payload.colorScheme;
+    if (payload.styleScheme) activeStyleId = payload.styleScheme;
     if (payload.appearanceMode) activeMode = payload.appearanceMode;
     if (payload.language) activeLanguage = payload.language;
     serviceError = null;
@@ -906,6 +966,170 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       appearanceBusyAction = null;
       render();
     }
+  };
+  const setThemeStyle = async (styleId) => {
+    appearanceBusyAction = `style:${styleId}`;
+    render();
+    try {
+      const payload = await invokeDesktop("set_theme_style", { styleId });
+      syncAppearancePayload(payload);
+    } catch (error) {
+      console.warn("[Slock Desktop] set theme style failed", error);
+    } finally {
+      appearanceBusyAction = null;
+      render();
+    }
+  };
+  const importThemeStyle = async (config) => {
+    appearanceBusyAction = "import-style";
+    render();
+    try {
+      const payload = await invokeDesktop("import_theme_style", { config });
+      syncAppearancePayload(payload);
+    } catch (error) {
+      console.warn("[Slock Desktop] import theme style failed", error);
+    } finally {
+      appearanceBusyAction = null;
+      render();
+    }
+  };
+  const readThemeStyleConfig = (parsed) => {
+    if (parsed && typeof parsed === "object") {
+      if (parsed.style && typeof parsed.style === "object") return parsed.style;
+      if (parsed.config && typeof parsed.config === "object") return parsed.config;
+      if (parsed.id || parsed.name) return parsed;
+    }
+    throw new Error("Invalid style file");
+  };
+  const exportThemeStyleFile = (style) => {
+    if (!style) return;
+    const payload = { schema: "slock-desktop.theme-style.v1", style: style.config };
+    const blob = new Blob([JSON.stringify(payload, null, 2) + "\n"], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const slug = (style.name || style.id || "style").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    link.href = url;
+    link.download = `${slug}.slock-style.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+  const getThemeStyleName = (style) => {
+    if (style.id === "original") return t("themeStyleOriginalName");
+    if (style.id === "default") return t("themeStyleDefaultName");
+    return style.name || style.id;
+  };
+  const getThemeStyleSummary = (style) => {
+    if (style.id === "original") return t("themeStyleOriginalSummary");
+    if (style.id === "default") return t("themeStyleDefaultSummary");
+    return style.summary || "";
+  };
+  const selectedStyle = () => {
+    return styleCatalog.find((s) => s.id === activeStyleId) || styleCatalog[0] || null;
+  };
+  const fetchDashboardAgents = async () => {
+    const service = serviceSnapshot;
+    const slug = service?.selectedServerSlug || "";
+    if (!slug) return;
+    try {
+      const data = await invokeDesktop("fetch_dashboard", { serverSlug: slug });
+      if (data && data.agents) {
+        dashboardAgents = data.agents;
+        window.__slockDesktopDashboardAgents = dashboardAgents;
+        render();
+      }
+    } catch (error) {
+      console.warn("[Slock Desktop] fetch dashboard agents failed", error);
+    }
+  };
+  const handleAgentCardOpen = async (agent) => {
+    if (agentCardTarget?.id === agent.id) {
+      agentCardTarget = null;
+      render();
+      return;
+    }
+    agentCardTarget = agent;
+    agentCardActivity = [];
+    agentCardLoading = true;
+    render();
+    try {
+      const slug = serviceSnapshot?.selectedServerSlug || "";
+      if (slug) {
+        const activity = await invokeDesktop("fetch_agent_activity", { serverSlug: slug, agentId: agent.id });
+        agentCardActivity = (activity || []).slice(0, 5);
+      }
+    } catch {
+      // Activity load failure is non-critical
+    } finally {
+      agentCardLoading = false;
+      render();
+    }
+  };
+  const handleAgentStop = async (agent) => {
+    const slug = serviceSnapshot?.selectedServerSlug || "";
+    if (!slug) return;
+    try {
+      agentCardAction = "stop";
+      render();
+      await invokeDesktop("stop_agent", { serverSlug: slug, agentId: agent.id });
+      agentCardTarget = null;
+      await fetchDashboardAgents();
+    } catch (error) {
+      console.warn("[Slock Desktop] agent stop failed", error);
+    } finally {
+      agentCardAction = null;
+      render();
+    }
+  };
+  const handleAgentStart = async (agent) => {
+    const slug = serviceSnapshot?.selectedServerSlug || "";
+    if (!slug) return;
+    try {
+      agentCardAction = "start";
+      render();
+      await invokeDesktop("start_agent", { serverSlug: slug, agentId: agent.id });
+      agentCardTarget = null;
+      await fetchDashboardAgents();
+    } catch (error) {
+      console.warn("[Slock Desktop] agent start failed", error);
+    } finally {
+      agentCardAction = null;
+      render();
+    }
+  };
+  const handleAgentRestart = async (agent) => {
+    const slug = serviceSnapshot?.selectedServerSlug || "";
+    if (!slug) return;
+    try {
+      agentCardAction = "restart";
+      render();
+      await invokeDesktop("stop_agent", { serverSlug: slug, agentId: agent.id });
+      await invokeDesktop("start_agent", { serverSlug: slug, agentId: agent.id });
+      agentCardTarget = null;
+      await fetchDashboardAgents();
+    } catch (error) {
+      console.warn("[Slock Desktop] agent restart failed", error);
+    } finally {
+      agentCardAction = null;
+      render();
+    }
+  };
+  const formatRelativeTime = (dateStr) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      const now = Date.now();
+      const diff = Math.max(0, now - d.getTime());
+      const s = Math.floor(diff / 1000);
+      if (s < 60) return `${s}s`;
+      const m = Math.floor(s / 60);
+      if (m < 60) return `${m}m`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h`;
+      const days = Math.floor(h / 24);
+      return `${days}d`;
+    } catch { return ""; }
   };
   const slockMenuCopy = {
     "en-US": {
@@ -2162,7 +2386,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .titlebar-theme-button {
-      width: 30px;
+      width: 28px;
       height: 26px;
       display: inline-grid;
       place-items: center;
@@ -2178,27 +2402,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         color 150ms ease;
     }
 
-    .titlebar-theme-trigger {
-      display: inline-grid;
-      place-items: center;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-    }
-
-    .titlebar-theme-icon {
-      width: 14px;
-      height: 14px;
-      color: var(--theme-accent, var(--desktop-accent));
-    }
-
     .titlebar-theme-swatch {
-      position: absolute;
-      right: 5px;
-      bottom: 4px;
-      width: 6px;
-      height: 6px;
-      border: 1px solid var(--desktop-surface);
+      width: 12px;
+      height: 12px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
       border-radius: var(--desktop-radius-pill);
       background: var(--theme-accent, var(--desktop-accent));
       box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 34%, transparent);
@@ -3875,6 +4082,327 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       }
     }
 
+    .titlebar-style-wrap {
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+    }
+
+    .titlebar-style-panel {
+      position: absolute;
+      top: 32px;
+      right: 0;
+      z-index: 5;
+      width: min(320px, calc(100vw - 20px));
+      max-height: min(400px, calc(100vh - 60px));
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-md);
+      background: var(--desktop-surface);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+    }
+
+    .titlebar-style-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .titlebar-style-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--desktop-muted);
+    }
+
+    .titlebar-style-head-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .text-action-button {
+      appearance: none;
+      border: none;
+      background: none;
+      color: var(--desktop-accent);
+      font: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .text-action-button:hover {
+      text-decoration: underline;
+    }
+
+    .text-action-button:disabled {
+      opacity: 0.5;
+      cursor: default;
+      text-decoration: none;
+    }
+
+    .titlebar-style-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .titlebar-style-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: var(--desktop-radius-sm);
+      cursor: pointer;
+      transition: background 150ms ease;
+    }
+
+    .titlebar-style-row:hover {
+      background: var(--desktop-surface-secondary);
+    }
+
+    .titlebar-style-row.selected {
+      background: var(--desktop-selection);
+    }
+
+    .titlebar-style-preview {
+      display: flex;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .titlebar-style-preview span {
+      width: 10px;
+      height: 22px;
+      border-radius: 3px;
+    }
+
+    .titlebar-style-copy {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .titlebar-style-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--desktop-text);
+    }
+
+    .titlebar-style-summary {
+      font-size: 11px;
+      color: var(--desktop-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .titlebar-style-actions {
+      flex-shrink: 0;
+      width: 14px;
+      height: 14px;
+    }
+
+    .spin {
+      animation: spin-anim 1s linear infinite;
+    }
+
+    @keyframes spin-anim {
+      to { transform: rotate(360deg); }
+    }
+
+    .titlebar-agent-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      margin-left: 2px;
+      padding-left: 8px;
+      border-left: 1px solid color-mix(in srgb, var(--desktop-line) 50%, transparent);
+    }
+
+    .titlebar-agent-list {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .titlebar-agent-row {
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+    }
+
+    .agent-avatar-button {
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 58%, transparent);
+      border-radius: var(--desktop-radius-pill);
+      background: color-mix(in srgb, var(--desktop-surface-secondary) 64%, transparent);
+      cursor: pointer;
+      transition: background 150ms ease, border-color 150ms ease;
+    }
+
+    .agent-avatar-button:hover {
+      background: var(--desktop-surface-secondary);
+      border-color: var(--desktop-line);
+    }
+
+    .agent-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: var(--desktop-radius-pill);
+      background: #10a37f;
+    }
+
+    .agent-status-dot.offline {
+      background: var(--desktop-muted);
+    }
+
+    .agent-status-dot.online {
+      background: #10a37f;
+    }
+
+    .agent-card {
+      position: absolute;
+      top: 30px;
+      right: 0;
+      z-index: 6;
+      width: min(280px, calc(100vw - 20px));
+      padding: 12px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-md);
+      background: var(--desktop-surface);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+    }
+
+    .agent-card-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .agent-card-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--desktop-text);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .agent-card-status {
+      font-size: 11px;
+      color: var(--desktop-muted);
+      text-transform: capitalize;
+    }
+
+    .agent-card-description {
+      font-size: 11px;
+      color: var(--desktop-muted);
+      margin: 0 0 8px;
+      line-height: 1.4;
+    }
+
+    .agent-card-activity {
+      margin-bottom: 10px;
+    }
+
+    .agent-card-activity-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--desktop-muted);
+      margin: 0 0 4px;
+    }
+
+    .agent-card-activity-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .agent-card-activity-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+    }
+
+    .activity-text {
+      color: var(--desktop-text);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .activity-time {
+      color: var(--desktop-muted);
+      flex-shrink: 0;
+    }
+
+    .inline-note {
+      font-size: 11px;
+      color: var(--desktop-muted);
+      margin: 0;
+    }
+
+    .agent-card-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .agent-card-button {
+      appearance: none;
+      flex: 1;
+      padding: 4px 8px;
+      border: 1px solid var(--desktop-line);
+      border-radius: var(--desktop-radius-sm);
+      background: var(--desktop-surface-secondary);
+      color: var(--desktop-text);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 150ms ease;
+    }
+
+    .agent-card-button:hover {
+      background: color-mix(in srgb, var(--desktop-surface-secondary) 80%, var(--desktop-line));
+    }
+
+    .agent-card-button.danger {
+      color: #c24141;
+      border-color: color-mix(in srgb, #c24141 30%, var(--desktop-line));
+    }
+
+    .agent-card-button.accent {
+      color: var(--desktop-accent);
+      border-color: color-mix(in srgb, var(--desktop-accent) 30%, var(--desktop-line));
+    }
+
+    .agent-card-button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
 	    @media (prefers-reduced-motion: reduce) {
 	      .language-option,
 	      .mode-option,
@@ -4011,6 +4539,83 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const releaseNote = escapeHtml(releaseNotesText());
     const releaseVersion = latestReleaseVersion();
 
+    const activeStyle = selectedStyle();
+    const activeIsOriginal = activeStyleId === "original" || !activeStyleId;
+    const styleOptions = styleCatalog
+      .map((style) => {
+        const sel = style.id === activeStyleId || (style.id === "original" && activeIsOriginal);
+        const busy = appearanceBusyAction === `style:${style.id}`;
+        const name = getThemeStyleName(style);
+        const summary = getThemeStyleSummary(style);
+        return `
+          <div class="titlebar-style-row${sel ? " selected" : ""}" role="radio" aria-checked="${sel}" tabindex="0" data-titlebar-style-option="${escapeHtml(style.id)}">
+            <span class="titlebar-style-preview" aria-hidden="true">
+              ${(style.preview || []).map((color) => `<span style="background:${escapeHtml(color)}"></span>`).join("")}
+            </span>
+            <span class="titlebar-style-copy">
+              <span class="titlebar-style-name">${escapeHtml(name)}</span>
+              <span class="titlebar-style-summary">${escapeHtml(summary)}</span>
+            </span>
+            <span class="titlebar-style-actions">${busy ? spinnerIcon() : ""}</span>
+          </div>
+        `;
+      })
+      .join("");
+
+    const agentItems = dashboardAgents
+      .map((agent) => {
+        const isTarget = agentCardTarget?.id === agent.id;
+        const isOnline = agent.status !== "offline";
+        const displayName = agent.displayName || agent.name;
+        let cardHtml = "";
+        if (isTarget) {
+          let activityHtml;
+          if (agentCardLoading) {
+            activityHtml = spinnerIcon();
+          } else if (agentCardActivity.length > 0) {
+            activityHtml = `<ul class="agent-card-activity-list">${agentCardActivity.map((e) => `<li><span class="activity-text">${escapeHtml(e.activity)}</span><span class="activity-time">${formatRelativeTime(e.createdAt)}</span></li>`).join("")}</ul>`;
+          } else {
+            activityHtml = `<p class="inline-note">${t("agentNoActivity")}</p>`;
+          }
+          let actionsHtml;
+          if (isOnline) {
+            actionsHtml = `
+              <button class="agent-card-button danger" type="button" data-titlebar-agent-stop="${escapeHtml(agent.id)}" ${agentCardAction ? "disabled" : ""}>${agentCardAction === "stop" ? t("agentStopping") : t("agentStop")}</button>
+              <button class="agent-card-button" type="button" data-titlebar-agent-restart="${escapeHtml(agent.id)}" ${agentCardAction ? "disabled" : ""}>${agentCardAction === "restart" ? t("agentStarting") : t("agentRestart")}</button>
+            `;
+          } else {
+            actionsHtml = `
+              <button class="agent-card-button accent" type="button" data-titlebar-agent-start="${escapeHtml(agent.id)}" ${agentCardAction ? "disabled" : ""}>${agentCardAction === "start" ? t("agentStarting") : t("agentStart")}</button>
+            `;
+          }
+          cardHtml = `
+            <div class="agent-card" role="dialog" aria-label="${escapeHtml(displayName)}">
+              <div class="agent-card-header">
+                <span class="agent-status-dot ${isOnline ? "online" : "offline"}"></span>
+                <span class="agent-card-name">${escapeHtml(displayName)}</span>
+                <span class="agent-card-status">${escapeHtml(agent.status)}</span>
+              </div>
+              <p class="agent-card-description">${escapeHtml(agent.description || t("agentNoDescription"))}</p>
+              <div class="agent-card-activity">
+                <p class="agent-card-activity-title">${t("agentActivity")}</p>
+                ${activityHtml}
+              </div>
+              <div class="agent-card-actions">${actionsHtml}</div>
+            </div>
+          `;
+        }
+        return `
+          <div class="titlebar-agent-row">
+            <button class="agent-avatar-button" type="button" data-titlebar-agent-card="${escapeHtml(agent.id)}" title="${escapeHtml(displayName)}">
+              <span class="agent-status-dot ${isOnline ? "online" : "offline"}"></span>
+            </button>
+            ${cardHtml}
+          </div>
+        `;
+      })
+      .join("");
+    const hasAgents = dashboardAgents.length > 0;
+
     return `
       <div class="titlebar-drag-strip" data-titlebar-drag data-tauri-drag-region aria-hidden="true"></div>
       <button
@@ -4037,12 +4642,32 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           aria-label="${t("openServerLog")}"
           ${!selectedSlug ? "disabled" : ""}
         >${logIcon()}</button>
+        <div class="titlebar-style-wrap">
+          <button
+            class="titlebar-button"
+            type="button"
+            data-titlebar-style-toggle
+            title="${t("themeStyle")}"
+            aria-label="${t("themeStyle")}"
+            aria-expanded="${titlebarStyleMenuOpen}"
+          >${styleIcon()}</button>
+          ${titlebarStyleMenuOpen ? `<div class="titlebar-style-panel" aria-label="${t("themeStyle")}" data-titlebar-style-panel>
+            <div class="titlebar-style-head">
+              <span class="titlebar-style-eyebrow">${t("themeStyle")}</span>
+              <span class="titlebar-style-head-actions">
+                <button class="text-action-button" type="button" data-titlebar-style-import ${appearanceBusyAction === "import-style" ? "disabled" : ""}>${t("themeImportStyle")}</button>
+                <button class="text-action-button" type="button" data-titlebar-style-export ${!activeStyle ? "disabled" : ""}>${t("themeExportStyle")}</button>
+              </span>
+            </div>
+            <input class="sr-only" type="file" accept="application/json,.json" data-titlebar-style-file-input>
+            <div class="titlebar-style-list" role="radiogroup" aria-label="${t("themeStyle")}">
+              ${styleOptions}
+            </div>
+          </div>` : ""}
+        </div>
         <div class="titlebar-theme-wrap" style="--theme-accent:${escapeHtml(themeAccent)}">
           <button class="titlebar-theme-button" type="button" data-titlebar-theme-toggle title="${escapeHtml(themeLabel)}" aria-label="${t("theme")}">
-          <span class="titlebar-theme-trigger" aria-hidden="true">
-            ${paletteIcon()}
             <span class="titlebar-theme-swatch"></span>
-          </span>
           </button>
           ${titlebarThemeMenuOpen ? `<div class="titlebar-theme-menu" role="menu" aria-label="${t("theme")}" data-titlebar-theme-menu>
             ${themeOptions}
@@ -4084,6 +4709,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
             <div class="titlebar-release-body">${releaseNote}</div>
             <div class="titlebar-release-actions">
               <button class="service-open-button" type="button" data-titlebar-release-install ${installing ? "disabled" : ""}>${installing ? t("installingUpdate") : t("installUpdate")}</button>
+            </div>
+          </div>
+        ` : ""}
+        ${hasAgents ? `
+          <div class="titlebar-agent-wrap">
+            <div class="titlebar-agent-list" data-titlebar-agent-list>
+              ${agentItems}
             </div>
           </div>
         ` : ""}
@@ -4346,6 +4978,46 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     toolbar.querySelector("[data-titlebar-log]")?.addEventListener("click", () => {
       void openSelectedServiceLog();
     });
+    toolbar.querySelector("[data-titlebar-style-toggle]")?.addEventListener("click", () => {
+      titlebarStyleMenuOpen = !titlebarStyleMenuOpen;
+      titlebarThemeMenuOpen = false;
+      releaseNotesOpen = false;
+      newThemeDraft = null;
+      titlebarThemeWheelOpen = false;
+      render();
+    });
+    toolbar.querySelectorAll("[data-titlebar-style-option]").forEach((row) => {
+      const handler = () => {
+        const styleId = row.getAttribute("data-titlebar-style-option");
+        titlebarStyleMenuOpen = false;
+        if (styleId) setThemeStyle(styleId);
+      };
+      row.addEventListener("click", handler);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handler(); }
+      });
+    });
+    toolbar.querySelector("[data-titlebar-style-import]")?.addEventListener("click", () => {
+      const fileInput = shadow.querySelector("[data-titlebar-style-file-input]");
+      if (fileInput) fileInput.click();
+    });
+    shadow.querySelector("[data-titlebar-style-file-input]")?.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const config = readThemeStyleConfig(parsed);
+        await importThemeStyle(config);
+      } catch {
+        console.warn("[Slock Desktop] invalid style file");
+      }
+    });
+    toolbar.querySelector("[data-titlebar-style-export]")?.addEventListener("click", () => {
+      const style = selectedStyle();
+      exportThemeStyleFile(style);
+    });
     toolbar.querySelector("[data-titlebar-theme-toggle]")?.addEventListener("click", () => {
       const nextOpen = !titlebarThemeMenuOpen;
       titlebarThemeMenuOpen = nextOpen;
@@ -4353,6 +5025,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         newThemeDraft = null;
         titlebarThemeWheelOpen = false;
       }
+      titlebarStyleMenuOpen = false;
       releaseNotesOpen = false;
       render();
     });
@@ -4515,6 +5188,35 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         releaseNotesOpen = false;
         checkDesktopRelease();
       }
+    });
+
+    toolbar.querySelectorAll("[data-titlebar-agent-card]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const agentId = button.getAttribute("data-titlebar-agent-card");
+        const agent = dashboardAgents.find((a) => a.id === agentId);
+        if (agent) handleAgentCardOpen(agent);
+      });
+    });
+    toolbar.querySelectorAll("[data-titlebar-agent-stop]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const agentId = button.getAttribute("data-titlebar-agent-stop");
+        const agent = dashboardAgents.find((a) => a.id === agentId);
+        if (agent) handleAgentStop(agent);
+      });
+    });
+    toolbar.querySelectorAll("[data-titlebar-agent-start]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const agentId = button.getAttribute("data-titlebar-agent-start");
+        const agent = dashboardAgents.find((a) => a.id === agentId);
+        if (agent) handleAgentStart(agent);
+      });
+    });
+    toolbar.querySelectorAll("[data-titlebar-agent-restart]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const agentId = button.getAttribute("data-titlebar-agent-restart");
+        const agent = dashboardAgents.find((a) => a.id === agentId);
+        if (agent) handleAgentRestart(agent);
+      });
     });
 
     const logViewerContainer = document.createElement("div");
@@ -4852,13 +5554,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       closeServiceLogViewer();
       return true;
     }
-	    if (!titlebarThemeMenuOpen && !releaseNotesOpen) return false;
+	    if (!titlebarThemeMenuOpen && !titlebarStyleMenuOpen && !releaseNotesOpen && !agentCardTarget) return false;
     if (titlebarThemeMenuOpen) {
       newThemeDraft = null;
       titlebarThemeWheelOpen = false;
     }
     titlebarThemeMenuOpen = false;
+    titlebarStyleMenuOpen = false;
     releaseNotesOpen = false;
+    agentCardTarget = null;
     render();
     return true;
   }
@@ -4895,6 +5599,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         refreshServiceSnapshot();
       })();
     }, 1500);
+  }
+
+  if (!window.__slockDesktopAgentsPrefetched) {
+    window.__slockDesktopAgentsPrefetched = true;
+    setTimeout(() => {
+      fetchDashboardAgents();
+    }, 2500);
   }
 
 })();
