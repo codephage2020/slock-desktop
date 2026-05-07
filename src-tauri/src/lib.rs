@@ -403,7 +403,7 @@ fn set_theme(
         let styles = custom_style_set(&settings.custom_styles);
         if theme_id == "original" {
             settings.color_scheme = theme::default_color_scheme().to_string();
-            settings.style_scheme = theme::default_style_scheme().to_string();
+            settings.style_scheme = "original".to_string();
         } else {
             let theme = resolve_theme_with_style(
                 &theme_id,
@@ -6413,11 +6413,7 @@ fn normalize_app_settings(settings: AppSettings) -> AppSettings {
     let custom_styles = sanitize_custom_styles(settings.custom_styles);
     let legacy_original_theme = settings.color_scheme == "original";
     let inferred_style_scheme = if legacy_original_theme {
-        theme::default_style_scheme().to_string()
-    } else if settings.style_scheme == theme::default_style_scheme()
-        && settings.color_scheme != theme::default_color_scheme()
-    {
-        "default".to_string()
+        "original".to_string()
     } else {
         settings.style_scheme.clone()
     };
@@ -6878,7 +6874,7 @@ mod tests {
         clear_desktop_session_settings, close_app_behavior_from_action, close_app_behavior_from_id,
         close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
         desktop_session_expired_message, mark_app_close_service_stop_completed,
-        prepare_runtime_for_service_target, process_entries_from_ps_output,
+        normalize_app_settings, prepare_runtime_for_service_target, process_entries_from_ps_output,
         process_tree_pids_from_entries, resolve_service_command_from_dirs, sanitize_saved_accounts,
         sanitize_service_settings, select_existing_machine,
         selected_service_daemon_process_from_cached_output,
@@ -6899,6 +6895,7 @@ mod tests {
     use crate::config::{
         AppSettings, SavedAccountSettings, ServiceMachineBinding, ServiceSettings, SessionSettings,
     };
+    use crate::theme;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::{
@@ -6930,6 +6927,37 @@ mod tests {
             "slock-desktop-{name}-{}-{suffix}",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn missing_style_scheme_defaults_to_desktop_default_style() {
+        let settings: AppSettings = serde_json::from_str(r#"{"colorScheme":"default"}"#).unwrap();
+        let normalized = normalize_app_settings(settings);
+
+        assert_eq!(theme::default_style_scheme(), "default");
+        assert_eq!(normalized.color_scheme, "default");
+        assert_eq!(normalized.style_scheme, "default");
+    }
+
+    #[test]
+    fn legacy_original_color_scheme_migrates_to_original_style() {
+        let settings: AppSettings = serde_json::from_str(r#"{"activeTheme":"original"}"#).unwrap();
+        let normalized = normalize_app_settings(settings);
+
+        assert_eq!(normalized.color_scheme, "default");
+        assert_eq!(normalized.style_scheme, "original");
+    }
+
+    #[test]
+    fn explicit_original_style_scheme_is_preserved() {
+        let settings: AppSettings = serde_json::from_str(
+            r#"{"colorScheme":"default","styleScheme":"original"}"#,
+        )
+        .unwrap();
+        let normalized = normalize_app_settings(settings);
+
+        assert_eq!(normalized.color_scheme, "default");
+        assert_eq!(normalized.style_scheme, "original");
     }
 
     #[test]
