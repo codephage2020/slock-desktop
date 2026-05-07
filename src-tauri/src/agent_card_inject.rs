@@ -73,7 +73,8 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
     // --- Dynamic server slug ---
     function getCurrentServerSlug() {
       const match = window.location.pathname.match(SLUG_REGEX);
-      return (match && match[1]) || FALLBACK_SERVER_SLUG || "";
+      if (!match) return FALLBACK_SERVER_SLUG || "";
+      try { return decodeURIComponent(match[1]); } catch (_) { return match[1]; }
     }
 
     // --- Agent data cache (keyed by server slug) ---
@@ -87,6 +88,12 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       if (!slug) return [];
       const now = Date.now();
       if (slug === cachedSlug && now - lastFetchMs < CACHE_TTL && cachedAgents.length) return cachedAgents;
+      // Slug changed — clear stale cache before fetching
+      if (slug !== cachedSlug) {
+        cachedAgents = [];
+        cachedSlug = slug;
+        lastFetchMs = 0;
+      }
       try {
         const data = await invoke("fetch_dashboard", { serverSlug: slug });
         cachedAgents = data.agents || [];
