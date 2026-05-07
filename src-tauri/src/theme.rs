@@ -165,7 +165,7 @@ pub fn default_color_scheme() -> &'static str {
 }
 
 pub fn default_style_scheme() -> &'static str {
-    "original"
+    "default"
 }
 
 fn default_light_palette() -> ThemeStylePalette {
@@ -302,12 +302,12 @@ pub fn style_catalog(
 }
 
 pub fn resolve_style(id: &str, custom_styles: &CustomStyleSet) -> ThemeStyleConfig {
-    if id == "default" {
-        return default_style_config();
+    if id == "original" {
+        return original_style_config();
     }
 
-    if id == "original" || id.is_empty() {
-        return original_style_config();
+    if id == "default" || id.is_empty() {
+        return default_style_config();
     }
 
     custom_styles
@@ -315,7 +315,7 @@ pub fn resolve_style(id: &str, custom_styles: &CustomStyleSet) -> ThemeStyleConf
         .iter()
         .find(|item| item.id == id)
         .cloned()
-        .unwrap_or_else(original_style_config)
+        .unwrap_or_else(default_style_config)
 }
 
 pub fn resolve_theme(id: &str, mode: &str, custom: &CustomThemeSet) -> ThemeDefinition {
