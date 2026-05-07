@@ -580,13 +580,13 @@ function App() {
     const threads: InboxListItem[] = inboxThreads.map((t) => ({
       id: t.id,
       type: 'thread' as const,
-      title: t.channelName ? `#${t.channelName}` : 'Thread',
-      subtitle: t.channelName ? `#${t.channelName}` : null,
+      title: t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : 'Thread'),
+      subtitle: t.parentChannelName ? `#${t.parentChannelName}` : null,
       lastMessageAt: t.lastMessageAt,
       unreadCount: t.unreadCount,
       avatarInitial: '#',
       avatarUrl: null,
-      channelId: t.channelId,
+      channelId: t.id,
     }))
     const dms: InboxListItem[] = inboxDms.map((d) => ({
       id: d.id,
@@ -1191,9 +1191,9 @@ function App() {
     async function loadMessages() {
       setInboxMessagesLoading(true)
       try {
-        const msgs = await fetchThreadMessages(serverSlug, inboxSelectedId!, { limit: 50 })
+        const resp = await fetchThreadMessages(serverSlug, inboxSelectedId!, { limit: 50 })
         if (!cancelled) {
-          setInboxMessages(msgs)
+          setInboxMessages(resp.messages)
         }
         // Mark as read
         void markChannelRead(serverSlug, inboxSelectedId!)
@@ -1853,19 +1853,8 @@ function App() {
     try {
       const resp = await sendMessage(serverSlug, inboxSelectedId, inboxReplyText.trim())
       setInboxReplyText('')
-      // Append the sent message to the list
-      setInboxMessages((prev) => [...prev, {
-        id: resp.id,
-        channelId: resp.channelId,
-        content: resp.content,
-        senderId: snapshot.service.account?.id ?? null,
-        senderName: snapshot.service.account?.displayName ?? 'You',
-        senderType: 'human',
-        senderDisplayName: snapshot.service.account?.displayName ?? null,
-        senderAvatarUrl: snapshot.service.account?.avatarUrl ?? null,
-        createdAt: resp.createdAt,
-        updatedAt: null,
-      }])
+      // Append the sent message directly (resp is a full InboxMessage)
+      setInboxMessages((prev) => [...prev, resp])
       // Scroll to bottom
       setTimeout(() => {
         inboxMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
