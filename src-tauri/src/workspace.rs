@@ -2785,13 +2785,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .service-log-dialog {
-      width: min(900px, calc(100vw - 24px));
+      width: min(860px, calc(100vw - 24px));
       max-height: min(640px, calc(100vh - 58px));
       min-height: min(460px, calc(100vh - 58px));
       display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr) auto;
-      gap: 7px;
-      padding: 10px;
+      grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+      gap: 0;
+      padding: 12px;
       border: 1px solid var(--desktop-line);
       border-radius: var(--desktop-radius-lg);
       background: var(--desktop-surface);
@@ -2810,12 +2810,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     .service-log-head {
       justify-content: space-between;
       gap: 10px;
+      padding-bottom: 8px;
     }
 
     .service-log-title {
       min-width: 0;
       display: grid;
-      gap: 1px;
+      gap: 2px;
     }
 
     .service-log-title strong {
@@ -2841,29 +2842,30 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       min-width: 0;
       display: grid;
       grid-template-columns: 1fr;
-      gap: 7px;
-      padding: 6px;
+      gap: 6px;
+      padding: 8px;
+      margin-bottom: 8px;
       border: 1px solid var(--desktop-line);
       border-radius: var(--desktop-radius-md);
       background: color-mix(in srgb, var(--desktop-surface-secondary) 70%, transparent);
     }
 
     .service-log-toolbar {
-      display: grid;
-      grid-template-columns: 1fr auto auto;
+      display: flex;
       align-items: center;
-      gap: 7px;
+      gap: 6px;
     }
 
     .service-log-timebar {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto 28px;
+      display: flex;
       align-items: end;
-      gap: 5px;
+      gap: 6px;
+      flex-wrap: wrap;
     }
 
     .service-log-time-field {
       min-width: 0;
+      flex: 1 1 auto;
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 0.72fr);
       gap: 4px;
@@ -2918,7 +2920,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .service-log-range-select {
-      grid-column: auto;
       min-width: 82px;
       height: 28px;
       display: grid;
@@ -2930,6 +2931,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       border-radius: var(--desktop-radius-sm);
       background: var(--desktop-surface-secondary);
       color: var(--desktop-muted);
+      flex-shrink: 0;
+      align-self: end;
     }
 
     .service-log-range-select .option-icon {
@@ -2959,23 +2962,26 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     .service-log-range-button {
       align-self: end;
+      flex-shrink: 0;
       width: 28px;
       height: 28px;
       color: var(--desktop-accent);
     }
 
     .service-log-search {
-      grid-column: 1 / -1;
+      flex: 1 1 0;
       min-width: 0;
     }
 
     .service-log-count {
-      min-width: 68px;
+      min-width: 54px;
       justify-content: center;
+      flex-shrink: 0;
     }
 
     .service-log-actions {
-      gap: 4px;
+      gap: 2px;
+      flex-shrink: 0;
     }
 
     .service-log-body {
@@ -2988,14 +2994,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       margin: 0;
       min-height: 0;
       overflow: auto;
-      padding: 10px;
+      padding: 10px 12px;
       border: 1px solid var(--desktop-line);
       border-radius: var(--desktop-radius-md);
       background: var(--desktop-surface-secondary);
       color: var(--desktop-text);
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 11px;
-      line-height: 1.55;
+      line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
       outline: none;
@@ -3932,30 +3938,21 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         grid-template-columns: minmax(0, 1fr);
       }
 
-      .service-log-toolbar {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-      }
-
       .service-log-timebar {
-        grid-template-columns: minmax(0, 1fr) 28px;
+        flex-direction: column;
+        align-items: stretch;
       }
 
       .service-log-time-field {
-        grid-column: 1 / -1;
+        width: 100%;
       }
 
       .service-log-range-select {
-        grid-column: 1;
-      }
-
-      .service-log-range-button {
-        grid-column: 2;
-        grid-row: 3;
+        align-self: stretch;
       }
 
       .service-log-search {
-        grid-column: 1 / -1;
+        min-width: 0;
       }
     }
 
@@ -4537,18 +4534,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
             <button class="settings-icon-button compact" type="button" data-service-log-close title="${t("close")}" aria-label="${t("close")}">${closeIcon()}</button>
           </header>
           <div class="service-log-controls">
-            <div class="service-log-toolbar">
-              <label class="server-search service-log-search">
-                ${searchIcon()}
-                <span class="sr-only">${t("serverLogSearch")}</span>
-                <input data-service-log-search value="${escapeHtml(viewer.query || "")}" placeholder="${t("serverLogSearch")}" aria-label="${t("serverLogSearch")}" ${viewer.loading || !viewer.snapshot ? "disabled" : ""}>
-              </label>
-              <span class="service-chip service-log-count" data-service-log-count>${escapeHtml(status)}</span>
-              <div class="service-log-actions">
-                <button class="settings-icon-button compact" type="button" data-service-log-step="-1" title="${t("serverLogPreviousMatch")}" aria-label="${t("serverLogPreviousMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("up")}</button>
-                <button class="settings-icon-button compact" type="button" data-service-log-step="1" title="${t("serverLogNextMatch")}" aria-label="${t("serverLogNextMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("down")}</button>
-              </div>
-            </div>
             <div class="service-log-timebar">
               <fieldset class="service-log-time-field">
                 <legend>${t("serverLogFrom")}</legend>
@@ -4562,6 +4547,18 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
               </fieldset>
               <label class="service-log-range-select">${clockIcon()}<select data-service-log-preset aria-label="${t("serverLogRange")}" title="${t("serverLogRange")}" ${viewer.loading ? "disabled" : ""}>${rangeOptions}</select></label>
               <button class="settings-icon-button compact service-log-range-button" type="button" data-service-log-apply-range title="${t("serverLogRangeApply")}" aria-label="${t("serverLogRangeApply")}" ${viewer.loading ? "disabled" : ""}>${actionIcon("refresh", viewer.loading)}</button>
+            </div>
+            <div class="service-log-toolbar">
+              <label class="server-search service-log-search">
+                ${searchIcon()}
+                <span class="sr-only">${t("serverLogSearch")}</span>
+                <input data-service-log-search value="${escapeHtml(viewer.query || "")}" placeholder="${t("serverLogSearch")}" aria-label="${t("serverLogSearch")}" ${viewer.loading || !viewer.snapshot ? "disabled" : ""}>
+              </label>
+              <span class="service-chip service-log-count" data-service-log-count>${escapeHtml(status)}</span>
+              <div class="service-log-actions">
+                <button class="settings-icon-button compact" type="button" data-service-log-step="-1" title="${t("serverLogPreviousMatch")}" aria-label="${t("serverLogPreviousMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("up")}</button>
+                <button class="settings-icon-button compact" type="button" data-service-log-step="1" title="${t("serverLogNextMatch")}" aria-label="${t("serverLogNextMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("down")}</button>
+              </div>
             </div>
           </div>
           ${viewer.error ? `<p class="service-empty service-log-error" role="alert">${escapeHtml(viewer.error)}</p>` : ""}
