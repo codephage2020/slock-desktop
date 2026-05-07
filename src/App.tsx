@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { listen } from '@tauri-apps/api/event'
 import './App.css'
 import './Settings.css'
@@ -528,6 +529,7 @@ function App() {
   const [agentCardActivity, setAgentCardActivity] = useState<AgentActivityEntry[]>([])
   const [agentCardLoading, setAgentCardLoading] = useState(false)
   const [agentCardAction, setAgentCardAction] = useState<string | null>(null)
+  const [agentCardPosition, setAgentCardPosition] = useState<{ top: number; left: number } | null>(null)
   const agentCardRef = useRef<HTMLDivElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
   const authResolvedRef = useRef(false)
@@ -1670,10 +1672,24 @@ function App() {
     }
   }
 
-  async function handleAgentCardOpen(agent: DashboardAgent) {
+  async function handleAgentCardOpen(agent: DashboardAgent, triggerElement?: HTMLElement) {
     if (agentCardTarget?.id === agent.id) {
       setAgentCardTarget(null)
+      setAgentCardPosition(null)
       return
+    }
+    if (triggerElement) {
+      const rect = triggerElement.getBoundingClientRect()
+      const cardWidth = 320
+      const cardHeight = 300
+      const left = Math.min(rect.left, window.innerWidth - cardWidth - 8)
+      const spaceBelow = window.innerHeight - rect.bottom
+      const top = spaceBelow >= cardHeight
+        ? rect.bottom + 4
+        : Math.max(8, rect.top - cardHeight - 4)
+      setAgentCardPosition({ top, left: Math.max(8, left) })
+    } else {
+      setAgentCardPosition(null)
     }
     setAgentCardTarget(agent)
     setAgentCardActivity([])
@@ -2561,77 +2577,17 @@ function App() {
                 ) : (
                 <div className="dashboard-agent-list">
                   {dashboardData.agents.map((agent) => (
-                    <div key={agent.id} className="dashboard-agent-row" ref={agentCardTarget?.id === agent.id ? agentCardRef : undefined}>
+                    <div key={agent.id} className="dashboard-agent-row">
                       <button
                         type="button"
                         className="agent-avatar-button"
-                        onClick={() => void handleAgentCardOpen(agent)}
+                        onClick={(e) => void handleAgentCardOpen(agent, e.currentTarget)}
                         title={agent.displayName ?? agent.name}
                       >
                         <span className={`agent-status-dot ${agent.status === 'offline' ? 'offline' : 'online'}`} />
                       </button>
                       <span className="agent-name">{agent.displayName ?? agent.name}</span>
                       <span className="agent-status-label">{agent.status}</span>
-                      {agentCardTarget?.id === agent.id ? (
-                        <div className="agent-card" role="dialog" aria-label={agent.name}>
-                          <div className="agent-card-header">
-                            <span className={`agent-status-dot ${agent.status === 'offline' ? 'offline' : 'online'}`} />
-                            <span className="agent-card-name">{agent.displayName ?? agent.name}</span>
-                            <span className="agent-card-status">{agent.status}</span>
-                          </div>
-                          <p className="agent-card-description">
-                            {agent.description || copy.agentNoDescription}
-                          </p>
-                          <div className="agent-card-activity">
-                            <p className="agent-card-activity-title">{copy.agentActivity}</p>
-                            {agentCardLoading ? (
-                              <SpinnerIcon />
-                            ) : agentCardActivity.length > 0 ? (
-                              <ul className="agent-card-activity-list">
-                                {agentCardActivity.map((entry) => (
-                                  <li key={entry.id}>
-                                    <span className="activity-text">{entry.activity}</span>
-                                    <span className="activity-time">{formatRelativeTime(entry.createdAt)}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p className="inline-note">{copy.agentNoActivity}</p>
-                            )}
-                          </div>
-                          <div className="agent-card-actions">
-                            {agent.status !== 'offline' ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="agent-card-button danger"
-                                  onClick={() => void handleAgentStop(agent)}
-                                  disabled={agentCardAction !== null}
-                                >
-                                  {agentCardAction === 'stop' ? copy.agentStopping : copy.agentStop}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="agent-card-button"
-                                  onClick={() => void handleAgentRestart(agent)}
-                                  disabled={agentCardAction !== null}
-                                >
-                                  {agentCardAction === 'restart' ? copy.agentStarting : copy.agentRestart}
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                className="agent-card-button accent"
-                                onClick={() => void handleAgentStart(agent)}
-                                disabled={agentCardAction !== null}
-                              >
-                                {agentCardAction === 'start' ? copy.agentStarting : copy.agentStart}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -2697,6 +2653,74 @@ function App() {
           </button>
         </div>
       </section>
+
+      {agentCardTarget && agentCardPosition ? createPortal(
+        <div
+          ref={agentCardRef}
+          className="agent-card"
+          role="dialog"
+          aria-label={agentCardTarget.name}
+          style={{ top: agentCardPosition.top, left: agentCardPosition.left }}
+        >
+          <div className="agent-card-header">
+            <span className={`agent-status-dot ${agentCardTarget.status === 'offline' ? 'offline' : 'online'}`} />
+            <span className="agent-card-name">{agentCardTarget.displayName ?? agentCardTarget.name}</span>
+            <span className="agent-card-status">{agentCardTarget.status}</span>
+          </div>
+          <p className="agent-card-description">
+            {agentCardTarget.description || copy.agentNoDescription}
+          </p>
+          <div className="agent-card-activity">
+            <p className="agent-card-activity-title">{copy.agentActivity}</p>
+            {agentCardLoading ? (
+              <SpinnerIcon />
+            ) : agentCardActivity.length > 0 ? (
+              <ul className="agent-card-activity-list">
+                {agentCardActivity.map((entry) => (
+                  <li key={entry.id}>
+                    <span className="activity-text">{entry.activity}</span>
+                    <span className="activity-time">{formatRelativeTime(entry.createdAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="inline-note">{copy.agentNoActivity}</p>
+            )}
+          </div>
+          <div className="agent-card-actions">
+            {agentCardTarget.status !== 'offline' ? (
+              <>
+                <button
+                  type="button"
+                  className="agent-card-button danger"
+                  onClick={() => void handleAgentStop(agentCardTarget)}
+                  disabled={agentCardAction !== null}
+                >
+                  {agentCardAction === 'stop' ? copy.agentStopping : copy.agentStop}
+                </button>
+                <button
+                  type="button"
+                  className="agent-card-button"
+                  onClick={() => void handleAgentRestart(agentCardTarget)}
+                  disabled={agentCardAction !== null}
+                >
+                  {agentCardAction === 'restart' ? copy.agentStarting : copy.agentRestart}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="agent-card-button accent"
+                onClick={() => void handleAgentStart(agentCardTarget)}
+                disabled={agentCardAction !== null}
+              >
+                {agentCardAction === 'start' ? copy.agentStarting : copy.agentStart}
+              </button>
+            )}
+          </div>
+        </div>,
+        document.body
+      ) : null}
 
       {messageReminder ? (
         <section
