@@ -2077,6 +2077,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       user-select: none;
     }
 
+    .titlebar-back {
+      pointer-events: auto;
+      position: absolute;
+      top: 4px;
+      left: 10px;
+      z-index: 1;
+    }
+
     .titlebar-tools-inner {
       pointer-events: auto;
       position: absolute;
@@ -3779,6 +3787,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 		    }
 
     @media (max-width: 520px) {
+      .titlebar-back {
+        left: 8px;
+      }
+
       .titlebar-tools-inner {
         right: 8px;
         gap: 4px;
@@ -3987,14 +3999,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     return `
       <div class="titlebar-drag-strip" data-titlebar-drag data-tauri-drag-region aria-hidden="true"></div>
+      <button
+        class="titlebar-button titlebar-back"
+        type="button"
+        data-titlebar-back
+        title="${t("backToLauncher")}"
+        aria-label="${t("backToLauncher")}"
+      >${backIcon()}</button>
       <div class="titlebar-tools-inner">
-        <button
-          class="titlebar-button titlebar-back"
-          type="button"
-          data-titlebar-back
-          title="${t("backToLauncher")}"
-          aria-label="${t("backToLauncher")}"
-        >${backIcon()}</button>
         <button
           class="titlebar-button${running ? " live" : ""}"
           type="button"

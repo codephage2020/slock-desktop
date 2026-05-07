@@ -1972,19 +1972,6 @@ function App() {
                       : `${snapshot.service.servers.length}`}
                   </span>
                   <button
-                    className={`service-toggle-button${selectedServiceRunning ? ' running' : ''}`}
-                    type="button"
-                    onClick={handleSelectedServiceToggle}
-                    disabled={!selectedServiceSlug || serviceActionBusy}
-                    title={serviceToggleLabel}
-                    aria-label={serviceToggleLabel}
-                  >
-                    <ServiceActionIcon
-                      type={selectedServiceRunning ? 'stop' : 'start'}
-                      busy={serviceToggleBusy}
-                    />
-                  </button>
-                  <button
                     className="icon-action-button"
                     onClick={handleServiceRefresh}
                     disabled={serviceRefreshing}
@@ -2045,38 +2032,20 @@ function App() {
                   )
 
                   return (
-                    <div
+                    <button
                       key={server.id}
                       className={`service-server-row${selected ? ' selected' : ''}${running ? ' running' : ''}`}
-                      data-disabled={serverSelectionDisabled}
+                      type="button"
+                      aria-pressed={selected}
+                      disabled={serverSelectionDisabled}
+                      onClick={() => handleServiceServerSelect(server.slug)}
+                      title={server.name}
                     >
-                      <button
-                        className="service-server-select-button"
-                        type="button"
-                        aria-pressed={selected}
-                        disabled={serverSelectionDisabled}
-                        onClick={() => handleServiceServerSelect(server.slug)}
-                      >
-                        <span className="service-server-copy">
-                          <span className="service-server-name-line">
-                            <span className="service-server-name">{server.name}</span>
-                            <span className="service-server-slug">{server.slug}</span>
-                          </span>
-                        </span>
-                        <span className={`status-chip${running ? ' live' : ''}`}>
-                          {selecting ? copy.saving : serverStatusLabel}
-                        </span>
-                      </button>
-                      <button
-                        className="icon-action-button compact service-server-log-button"
-                        type="button"
-                        onClick={() => handleServiceLogOpen(server.slug)}
-                        aria-label={`${copy.openServerLog}: ${server.name}`}
-                        title={copy.openServerLog}
-                      >
-                        <LogsIcon />
-                      </button>
-                    </div>
+                      <span className="service-server-name">{server.name}</span>
+                      <span className={`status-chip${running ? ' live' : ''}`}>
+                        {selecting ? copy.saving : serverStatusLabel}
+                      </span>
+                    </button>
                   )
                 })}
                 {snapshot.service.servers.length > 0 && filteredServiceServers.length === 0 ? (

@@ -1075,6 +1075,13 @@ fn exit_workspace(app: AppHandle, state: State<'_, DesktopState>) -> Result<Boot
     apply_launcher_titlebar_style(&window);
     apply_launcher_window_size(&window);
 
+    // Navigate back to the launcher frontend.
+    // In dev mode, use the Vite dev server URL; in production, use the embedded asset URL.
+    #[cfg(debug_assertions)]
+    let launcher_url = "http://localhost:1420"
+        .parse::<Url>()
+        .map_err(|err| err.to_string())?;
+    #[cfg(not(debug_assertions))]
     let launcher_url = "tauri://localhost"
         .parse::<Url>()
         .map_err(|err| err.to_string())?;

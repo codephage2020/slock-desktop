@@ -1302,69 +1302,61 @@ body:has(.loading-shell),
 
 .service-server-row {
   width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  appearance: none;
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  border-radius: 12px;
+  padding: 7px 10px;
+  border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
   background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
   color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
   transition:
     border-color 160ms ease,
-    background 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease;
+    background 160ms ease;
 }
 
 .service-server-row:hover {
-  transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--accent) 20%, var(--line));
   background: color-mix(in srgb, var(--accent) 6%, var(--surface-strong));
 }
 
-.service-server-row[data-disabled='true'] {
+.service-server-row:disabled {
   opacity: 0.78;
-  transform: none;
+  cursor: default;
 }
 
-.service-server-row:focus-within {
+.service-server-row:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: 0;
 }
 
 .service-server-row.selected {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
   background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .service-server-row.running {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
 }
 
-.service-server-select-button {
-  appearance: none;
+.service-server-name {
+  font-weight: 700;
+  color: var(--text);
+  flex: 1 1 auto;
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.service-server-select-button:disabled {
-  cursor: default;
-}
-
-.service-server-select-button:focus-visible {
-  outline: 0;
+.service-server-row .status-chip {
+  flex: 0 0 auto;
 }
 
 .server-count-pill {
@@ -1433,51 +1425,6 @@ body:has(.loading-shell),
 .server-search-icon {
   width: 14px;
   height: 14px;
-}
-
-.service-server-copy {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.service-server-name-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.service-server-name {
-  font-weight: 700;
-  color: var(--text);
-}
-
-.service-server-slug {
-  color: var(--muted);
-  font-family: 'Space Mono', monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.03em;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.service-server-select-button .status-chip {
-  grid-column: 2;
-}
-
-.service-server-log-button {
-  grid-column: 2;
-  width: 30px;
-  height: 30px;
-  opacity: 0.72;
-}
-
-.service-server-row:hover .service-server-log-button,
-.service-server-row:focus-within .service-server-log-button {
-  opacity: 1;
 }
 
 .message-reminder-toast {
@@ -1556,6 +1503,7 @@ body:has(.loading-shell),
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--text);
 }
+
 
 .service-log-backdrop {
   position: fixed;
@@ -2684,24 +2632,6 @@ body:has(.loading-shell),
     width: 100%;
     min-width: 0;
     justify-self: stretch;
-  }
-
-  .service-server-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .service-server-select-button {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .service-server-select-button .status-chip {
-    grid-column: 1 / -1;
-    justify-self: start;
-  }
-
-  .service-server-log-button {
-    grid-column: 2;
-    grid-row: 1;
   }
 
   .service-log-backdrop {
