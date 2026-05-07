@@ -1,3 +1,4 @@
+mod agent_card_inject;
 mod agent_env_import;
 mod config;
 mod theme;
@@ -3885,6 +3886,7 @@ fn enter_workspace_in_main_window(
         language,
         custom_theme,
         custom_style,
+        selected_server_slug,
         &target_url,
     )
 }
@@ -3898,6 +3900,7 @@ fn enter_workspace_url_in_main_window(
     language: &str,
     custom_theme: &CustomThemeSet,
     custom_style: &CustomStyleSet,
+    server_slug: &str,
     target_url: &str,
 ) -> Result<(), String> {
     let theme = resolve_theme_with_style(theme_id, style_id, theme_mode, custom_theme, custom_style);
@@ -3928,6 +3931,7 @@ fn enter_workspace_url_in_main_window(
             theme_mode,
             language,
             resolved_language,
+            server_slug,
             custom_theme,
             custom_style,
         );
@@ -4049,6 +4053,12 @@ fn apply_theme_to_workspace(
     custom_theme: &CustomThemeSet,
     custom_style: &CustomStyleSet,
 ) -> Result<(), String> {
+    let server_slug = app
+        .state::<DesktopState>()
+        .settings
+        .lock()
+        .map(|s| s.service.selected_server_slug.clone())
+        .unwrap_or_default();
     if let Some(window) = app.get_webview_window(MAIN_LABEL) {
         apply_window_language(app, &window, language, window_is_workspace(&window));
         if window_is_workspace(&window) {
@@ -4063,6 +4073,7 @@ fn apply_theme_to_workspace(
                 theme_mode,
                 language,
                 resolve_desktop_language(language),
+                &server_slug,
                 custom_theme,
                 custom_style,
             )?;
@@ -4263,6 +4274,7 @@ fn apply_workspace_scripts_to_window(
     active_theme_mode: &str,
     active_language: &str,
     resolved_language: &str,
+    server_slug: &str,
     custom_theme: &CustomThemeSet,
     custom_style: &CustomStyleSet,
 ) -> Result<(), String> {
@@ -4282,6 +4294,9 @@ fn apply_workspace_scripts_to_window(
         .map_err(|err| err.to_string())?;
     window
         .eval(agent_env_import::agent_env_import_script(resolved_language))
+        .map_err(|err| err.to_string())?;
+    window
+        .eval(agent_card_inject::agent_card_inject_script(server_slug, resolved_language))
         .map_err(|err| err.to_string())?;
     Ok(())
 }
@@ -4318,6 +4333,7 @@ fn apply_workspace_scripts_to_webview(
     active_theme_mode: &str,
     active_language: &str,
     resolved_language: &str,
+    server_slug: &str,
     custom_theme: &CustomThemeSet,
     custom_style: &CustomStyleSet,
 ) -> Result<(), String> {
@@ -4337,6 +4353,9 @@ fn apply_workspace_scripts_to_webview(
         .map_err(|err| err.to_string())?;
     webview
         .eval(agent_env_import::agent_env_import_script(resolved_language))
+        .map_err(|err| err.to_string())?;
+    webview
+        .eval(agent_card_inject::agent_card_inject_script(server_slug, resolved_language))
         .map_err(|err| err.to_string())?;
     Ok(())
 }
@@ -8260,7 +8279,7 @@ pub fn run() {
                 log::warn!("failed to seed workspace session: {err}");
             }
 
-            let (color_scheme, style_scheme, appearance_mode, custom_themes, custom_styles, language) = webview
+            let (color_scheme, style_scheme, appearance_mode, custom_themes, custom_styles, language, server_slug) = webview
                 .state::<DesktopState>()
                 .settings
                 .lock()
@@ -8272,6 +8291,7 @@ pub fn run() {
                         settings.custom_themes.clone(),
                         settings.custom_styles.clone(),
                         settings.language.clone(),
+                        settings.service.selected_server_slug.clone(),
                     )
                 })
                 .unwrap_or_else(|_| {
@@ -8282,6 +8302,7 @@ pub fn run() {
                         Vec::<CustomThemeSettings>::new(),
                         Vec::<ThemeStyleConfig>::new(),
                         "system".to_string(),
+                        String::new(),
                     )
                 });
             let custom = custom_theme_set(&custom_themes);
@@ -8302,6 +8323,7 @@ pub fn run() {
                 &appearance_mode,
                 &language,
                 resolve_desktop_language(&language),
+                &server_slug,
                 &custom,
                 &styles,
             ) {
