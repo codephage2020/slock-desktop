@@ -1062,13 +1062,34 @@ function App() {
 
     void listen<MessageReminderToast>('slock-message-reminder', (event) => {
       const reminder = event.payload
+
+      // Helper to clear a single timer
+      function clearReminderTimer(id: string) {
+        const existing = timers.get(id)
+        if (existing !== undefined) {
+          window.clearTimeout(existing)
+          timers.delete(id)
+        }
+      }
+
       setMessageReminders((prev) => {
+        // Deduplicate — skip if already showing
         if (prev.some((r) => r.id === reminder.id)) return prev
+        // Overflow — clear timer for evicted toast
+        if (prev.length >= MESSAGE_REMINDER_MAX_VISIBLE) {
+          clearReminderTimer(prev[0].id)
+        }
         const next = prev.length >= MESSAGE_REMINDER_MAX_VISIBLE
           ? [...prev.slice(1), reminder]
           : [...prev, reminder]
         return next
       })
+
+      // Only create a new timer if not a duplicate.
+      // We check the map: if this id already has a timer, it's a duplicate
+      // that was skipped by the state updater above.
+      if (timers.has(reminder.id)) return
+
       const timerId = window.setTimeout(() => {
         setMessageReminders((prev) => prev.filter((r) => r.id !== reminder.id))
         timers.delete(reminder.id)
