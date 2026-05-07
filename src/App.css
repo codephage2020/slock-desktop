@@ -661,7 +661,6 @@ body:has(.loading-shell),
   gap: 6px;
   padding: 3px 0;
   font-size: 0.75rem;
-  position: relative;
 }
 
 .agent-avatar-button {
@@ -681,10 +680,8 @@ body:has(.loading-shell),
 }
 
 .agent-card {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 100;
+  position: fixed;
+  z-index: 1000;
   min-width: 240px;
   max-width: 320px;
   padding: 12px;
