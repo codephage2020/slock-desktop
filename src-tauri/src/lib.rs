@@ -478,7 +478,6 @@ struct AgentActivityEntry {
     #[serde(alias = "created_at")]
     created_at: String,
 }
-}
 
 #[tauri::command]
 fn bootstrap(
