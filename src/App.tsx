@@ -14,8 +14,10 @@ import './App.css'
 import './Settings.css'
 import {
   activateAccount,
+  type AgentActivityEntry,
   type BootstrapPayload,
   type CustomThemeSnapshot,
+  type DashboardAgent,
   type DashboardData,
   type DesktopUpdateCheck,
   type ServiceAccountSnapshot,
@@ -26,6 +28,7 @@ import {
   checkDesktopUpdate,
   createCustomTheme,
   deleteCustomTheme,
+  fetchAgentActivity,
   fetchDashboard,
   installDesktopUpdate,
   forgetAccount,
@@ -38,7 +41,9 @@ import {
   refreshServiceServerStatus,
   renameCustomTheme,
   selectServiceServer,
+  startAgent,
   startService,
+  stopAgent,
   stopService,
   switchAccount,
   updateCustomThemeAccent,
@@ -256,6 +261,14 @@ const COPY = {
     taskStatusInReview: 'Review',
     taskStatusDone: 'Done',
     dashboardPartialError: 'Some data failed to load',
+    agentNoDescription: 'No description',
+    agentActivity: 'Recent Activity',
+    agentNoActivity: 'No recent activity',
+    agentStop: 'Stop',
+    agentStart: 'Start',
+    agentRestart: 'Restart',
+    agentStopping: 'Stopping…',
+    agentStarting: 'Starting…',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -401,6 +414,14 @@ const COPY = {
     taskStatusInReview: '审核中',
     taskStatusDone: '已完成',
     dashboardPartialError: '部分数据加载失败',
+    agentNoDescription: '无描述',
+    agentActivity: '最近活动',
+    agentNoActivity: '暂无活动记录',
+    agentStop: '停止',
+    agentStart: '启动',
+    agentRestart: '重启',
+    agentStopping: '停止中…',
+    agentStarting: '启动中…',
   },
 } as const
 
@@ -489,6 +510,11 @@ function App() {
   const [dashboardError, setDashboardError] = useState<string | null>(null)
   const [messageReminder, setMessageReminder] = useState<MessageReminderToast | null>(null)
   const messageReminderTimerRef = useRef<number | null>(null)
+  const [agentCardTarget, setAgentCardTarget] = useState<DashboardAgent | null>(null)
+  const [agentCardActivity, setAgentCardActivity] = useState<AgentActivityEntry[]>([])
+  const [agentCardLoading, setAgentCardLoading] = useState(false)
+  const [agentCardAction, setAgentCardAction] = useState<string | null>(null)
+  const agentCardRef = useRef<HTMLDivElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
   const authResolvedRef = useRef(false)
   const [initialServiceRefreshDone, setInitialServiceRefreshDone] = useState(false)
@@ -953,6 +979,26 @@ function App() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!agentCardTarget) {
+      return
+    }
+
+    const closeAgentCardOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (agentCardRef.current?.contains(target)) {
+        return
+      }
+      setAgentCardTarget(null)
+    }
+
+    document.addEventListener('pointerdown', closeAgentCardOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeAgentCardOnOutsidePointer)
+  }, [agentCardTarget])
 
   // Fetch dashboard data when selected server changes
   useEffect(() => {
@@ -1610,6 +1656,79 @@ function App() {
     }
   }
 
+  async function handleAgentCardOpen(agent: DashboardAgent) {
+    if (agentCardTarget?.id === agent.id) {
+      setAgentCardTarget(null)
+      return
+    }
+    setAgentCardTarget(agent)
+    setAgentCardActivity([])
+    setAgentCardLoading(true)
+    try {
+      const serverSlug = snapshot?.service.selectedServerSlug
+      if (serverSlug) {
+        const activity = await fetchAgentActivity(serverSlug, agent.id)
+        setAgentCardActivity(activity.slice(0, 5))
+      }
+    } catch {
+      // Activity load failure is non-critical
+    } finally {
+      setAgentCardLoading(false)
+    }
+  }
+
+  async function handleAgentStop(agent: DashboardAgent) {
+    const serverSlug = snapshot?.service.selectedServerSlug
+    if (!serverSlug) { return }
+    try {
+      setAgentCardAction('stop')
+      await stopAgent(serverSlug, agent.id)
+      // Refresh dashboard to get updated agent status
+      const data = await fetchDashboard(serverSlug)
+      startTransition(() => setDashboardData(data))
+      setAgentCardTarget(null)
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setAgentCardAction(null)
+    }
+  }
+
+  async function handleAgentStart(agent: DashboardAgent) {
+    const serverSlug = snapshot?.service.selectedServerSlug
+    if (!serverSlug) { return }
+    try {
+      setAgentCardAction('start')
+      await startAgent(serverSlug, agent.id)
+      // Refresh dashboard to get updated agent status
+      const data = await fetchDashboard(serverSlug)
+      startTransition(() => setDashboardData(data))
+      setAgentCardTarget(null)
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setAgentCardAction(null)
+    }
+  }
+
+  async function handleAgentRestart(agent: DashboardAgent) {
+    const serverSlug = snapshot?.service.selectedServerSlug
+    if (!serverSlug) { return }
+    try {
+      setAgentCardAction('restart')
+      await stopAgent(serverSlug, agent.id)
+      await startAgent(serverSlug, agent.id)
+      // Refresh dashboard to get updated agent status
+      const data = await fetchDashboard(serverSlug)
+      startTransition(() => setDashboardData(data))
+      setAgentCardTarget(null)
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setAgentCardAction(null)
+    }
+  }
+
   async function handleDesktopUpdateInstall() {
     try {
       setReleaseState((current) => ({
@@ -2255,46 +2374,32 @@ function App() {
         </div>
 
         <div className="titlebar-settings" aria-label={`${copy.mode} / ${copy.language}`}>
-          <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.mode}>
-            {THEME_MODES.map((mode) => {
-              const selected = mode.id === snapshot.appearanceMode
-              return (
-                <button
-                  key={mode.id}
-                  className={`icon-option${selected ? ' selected' : ''}`}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  title={copy[mode.labelKey]}
-                  onClick={() => handleThemeModeChange(mode.id)}
-                  disabled={busyAction === `mode:${mode.id}`}
-                >
-                  <OptionIcon type={mode.icon} />
-                  <span className="sr-only">{copy[mode.labelKey]}</span>
-                </button>
-              )
-            })}
-          </div>
-          <div className="icon-segment compact-icons" role="radiogroup" aria-label={copy.language}>
-            {LANGUAGE_OPTIONS.map((language) => {
-              const selected = language.id === snapshot.language
-              return (
-                <button
-                  key={language.id}
-                  className={`icon-option${selected ? ' selected' : ''}`}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  title={copy[language.labelKey]}
-                  onClick={() => handleLanguageChange(language.id)}
-                  disabled={busyAction === `language:${language.id}`}
-                >
-                  <OptionIcon type={language.icon} />
-                  <span className="sr-only">{copy[language.labelKey]}</span>
-                </button>
-              )
-            })}
-          </div>
+          <button
+            type="button"
+            className="titlebar-cycle-button"
+            title={copy[THEME_MODES.find((m) => m.id === snapshot.appearanceMode)?.labelKey ?? 'modeSystem']}
+            onClick={() => {
+              const currentIndex = THEME_MODES.findIndex((m) => m.id === snapshot.appearanceMode)
+              const nextIndex = (currentIndex + 1) % THEME_MODES.length
+              void handleThemeModeChange(THEME_MODES[nextIndex].id)
+            }}
+            disabled={busyAction?.startsWith('mode:')}
+          >
+            <OptionIcon type={THEME_MODES.find((m) => m.id === snapshot.appearanceMode)?.icon ?? 'display'} />
+          </button>
+          <button
+            type="button"
+            className="titlebar-cycle-button"
+            title={copy[LANGUAGE_OPTIONS.find((l) => l.id === snapshot.language)?.labelKey ?? 'languageSystem']}
+            onClick={() => {
+              const currentIndex = LANGUAGE_OPTIONS.findIndex((l) => l.id === snapshot.language)
+              const nextIndex = (currentIndex + 1) % LANGUAGE_OPTIONS.length
+              void handleLanguageChange(LANGUAGE_OPTIONS[nextIndex].id)
+            }}
+            disabled={busyAction?.startsWith('language:')}
+          >
+            <OptionIcon type={LANGUAGE_OPTIONS.find((l) => l.id === snapshot.language)?.icon ?? 'globe'} />
+          </button>
         </div>
         {snapshot.workspaceOpen ? (
           <span className="status-pill live">{copy.workspaceActive}</span>
@@ -2408,10 +2513,77 @@ function App() {
                 <p className="eyebrow">{copy.dashboardAgentStatus ?? 'Agents'}</p>
                 <div className="dashboard-agent-list">
                   {dashboardData.agents.map((agent) => (
-                    <div key={agent.id} className="dashboard-agent-row">
-                      <span className={`agent-status-dot ${agent.status === 'offline' ? 'offline' : 'online'}`} />
-                      <span className="agent-name">{agent.name}</span>
+                    <div key={agent.id} className="dashboard-agent-row" ref={agentCardTarget?.id === agent.id ? agentCardRef : undefined}>
+                      <button
+                        type="button"
+                        className="agent-avatar-button"
+                        onClick={() => void handleAgentCardOpen(agent)}
+                        title={agent.displayName ?? agent.name}
+                      >
+                        <span className={`agent-status-dot ${agent.status === 'offline' ? 'offline' : 'online'}`} />
+                      </button>
+                      <span className="agent-name">{agent.displayName ?? agent.name}</span>
                       <span className="agent-status-label">{agent.status}</span>
+                      {agentCardTarget?.id === agent.id ? (
+                        <div className="agent-card" role="dialog" aria-label={agent.name}>
+                          <div className="agent-card-header">
+                            <span className={`agent-status-dot ${agent.status === 'offline' ? 'offline' : 'online'}`} />
+                            <span className="agent-card-name">{agent.displayName ?? agent.name}</span>
+                            <span className="agent-card-status">{agent.status}</span>
+                          </div>
+                          <p className="agent-card-description">
+                            {agent.description || copy.agentNoDescription}
+                          </p>
+                          <div className="agent-card-activity">
+                            <p className="agent-card-activity-title">{copy.agentActivity}</p>
+                            {agentCardLoading ? (
+                              <SpinnerIcon />
+                            ) : agentCardActivity.length > 0 ? (
+                              <ul className="agent-card-activity-list">
+                                {agentCardActivity.map((entry) => (
+                                  <li key={entry.id}>
+                                    <span className="activity-text">{entry.activity}</span>
+                                    <span className="activity-time">{formatRelativeTime(entry.createdAt)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="inline-note">{copy.agentNoActivity}</p>
+                            )}
+                          </div>
+                          <div className="agent-card-actions">
+                            {agent.status !== 'offline' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="agent-card-button danger"
+                                  onClick={() => void handleAgentStop(agent)}
+                                  disabled={agentCardAction !== null}
+                                >
+                                  {agentCardAction === 'stop' ? copy.agentStopping : copy.agentStop}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="agent-card-button"
+                                  onClick={() => void handleAgentRestart(agent)}
+                                  disabled={agentCardAction !== null}
+                                >
+                                  {agentCardAction === 'restart' ? copy.agentStarting : copy.agentRestart}
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                className="agent-card-button accent"
+                                onClick={() => void handleAgentStart(agent)}
+                                disabled={agentCardAction !== null}
+                              >
+                                {agentCardAction === 'start' ? copy.agentStarting : copy.agentStart}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -3897,6 +4069,21 @@ function getErrorMessage(error: unknown) {
   }
 
   return typeof error === 'string' ? error : 'Unknown desktop error'
+}
+
+function formatRelativeTime(isoString: string): string {
+  const now = Date.now()
+  const then = new Date(isoString).getTime()
+  const diffMs = now - then
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHour / 24)
+
+  if (diffSec < 60) { return '<1m' }
+  if (diffMin < 60) { return `${diffMin}m` }
+  if (diffHour < 24) { return `${diffHour}h` }
+  return `${diffDay}d`
 }
 
 function waitForNextPaint() {

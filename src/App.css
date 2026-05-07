@@ -635,6 +635,159 @@ body:has(.loading-shell),
   gap: 6px;
   padding: 3px 0;
   font-size: 0.75rem;
+  position: relative;
+}
+
+.agent-avatar-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transition: background 120ms ease;
+}
+
+.agent-avatar-button:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.agent-card {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  min-width: 240px;
+  max-width: 320px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--text) 12%, transparent),
+    0 1px 3px color-mix(in srgb, var(--text) 8%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-card-name {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--text);
+  flex: 1 1 auto;
+}
+
+.agent-card-status {
+  font-size: 0.65rem;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.agent-card-description {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.agent-card-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-card-activity-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.agent-card-activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-card-activity-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.68rem;
+  color: var(--text);
+}
+
+.agent-card-activity-list .activity-text {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-card-activity-list .activity-time {
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  color: var(--muted);
+}
+
+.agent-card-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.agent-card-button {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.agent-card-button:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+  border-color: var(--accent);
+}
+
+.agent-card-button:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.agent-card-button.accent {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.agent-card-button.danger {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+.agent-card-button.danger:hover {
+  background: color-mix(in srgb, #ef4444 10%, var(--surface-strong));
 }
 
 .agent-status-dot {
@@ -725,6 +878,38 @@ body:has(.loading-shell),
   padding: 0;
   border-radius: 999px;
   background: transparent;
+}
+
+.titlebar-cycle-button {
+  appearance: none;
+  border: 0;
+  background: color-mix(in srgb, var(--surface-strong) 48%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  width: 28px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  transition: background 120ms ease, transform 100ms ease;
+}
+
+.titlebar-cycle-button:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-strong));
+}
+
+.titlebar-cycle-button:active {
+  transform: scale(0.92);
+}
+
+.titlebar-cycle-button:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.titlebar-cycle-button .option-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .tauri-titlebar .icon-segment {

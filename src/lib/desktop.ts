@@ -286,8 +286,18 @@ export interface DashboardTask {
 export interface DashboardAgent {
   id: string
   name: string
+  displayName: string | null
+  description: string | null
   status: 'online' | 'offline' | 'running' | 'busy' | 'idle'
   updatedAt: string | null
+}
+
+export interface AgentActivityEntry {
+  id: string
+  activity: string
+  detail: string | null
+  launchId: string | null
+  createdAt: string
 }
 
 export interface DashboardData {
@@ -300,4 +310,16 @@ export interface DashboardData {
 
 export async function fetchDashboard(serverSlug: string) {
   return invoke<DashboardData>('fetch_dashboard', { serverSlug })
+}
+
+export async function fetchAgentActivity(serverSlug: string, agentId: string) {
+  return invoke<AgentActivityEntry[]>('fetch_agent_activity', { serverSlug, agentId })
+}
+
+export async function stopAgent(serverSlug: string, agentId: string) {
+  return invoke<void>('stop_agent', { serverSlug, agentId })
+}
+
+export async function startAgent(serverSlug: string, agentId: string) {
+  return invoke<void>('start_agent', { serverSlug, agentId })
 }
