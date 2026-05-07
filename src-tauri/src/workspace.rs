@@ -2085,6 +2085,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       z-index: 1;
     }
 
+    .platform-macos .titlebar-back {
+      left: 78px;
+    }
+
     .titlebar-tools-inner {
       pointer-events: auto;
       position: absolute;
@@ -2206,6 +2210,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       right: 0;
       z-index: 4;
       width: min(360px, calc(100vw - 20px));
+      max-height: min(400px, calc(100vh - 60px));
+      overflow: auto;
       display: flex;
       flex-wrap: wrap;
       align-items: flex-start;
@@ -2218,7 +2224,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .titlebar-theme-menu:has(.titlebar-accent-wheel-popover) {
-      width: min(520px, calc(100vw - 20px));
+      width: min(440px, calc(100vw - 20px));
+      max-height: none;
+      overflow: visible;
     }
 
     .titlebar-theme-option-wrap {
@@ -2311,14 +2319,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) {
       z-index: 3;
-      min-height: 196px;
-      grid-template-columns: minmax(0, 1fr) 174px;
+      min-height: 148px;
+      grid-template-columns: minmax(0, 1fr) 136px;
       grid-template-areas:
         "fields accent"
         "actions accent";
       align-items: center;
-      gap: 12px 16px;
-      padding-top: 14px;
+      gap: 10px 12px;
+      padding-top: 10px;
     }
 
     .titlebar-theme-draft-accent {
@@ -2330,8 +2338,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) .titlebar-theme-draft-accent {
-      width: 160px;
-      height: 160px;
+      width: 124px;
+      height: 124px;
       align-self: center;
       margin-top: 0;
     }
@@ -2495,8 +2503,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       top: 0;
       right: 0;
       margin: 0;
-      width: 160px;
-      height: 160px;
+      width: 124px;
+      height: 124px;
       padding: 0;
       border: 0;
       border-radius: var(--desktop-radius-pill);
@@ -2509,8 +2517,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     .titlebar-accent-wheel-large {
       position: relative;
-      width: 160px;
-      height: 160px;
+      width: 124px;
+      height: 124px;
       border-radius: var(--desktop-radius-pill);
       overflow: hidden;
       background: conic-gradient(
@@ -2534,7 +2542,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .titlebar-accent-wheel-large::before {
-      inset: 30px;
+      inset: 24px;
     }
 
     .titlebar-accent-wheel-marker {
@@ -2748,8 +2756,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     .service-log-controls {
       min-width: 0;
       display: grid;
-      grid-template-columns: minmax(360px, 1.15fr) minmax(250px, 0.85fr);
-      align-items: end;
+      grid-template-columns: 1fr;
       gap: 7px;
       padding: 6px;
       border: 1px solid var(--desktop-line);
@@ -3791,6 +3798,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         left: 8px;
       }
 
+      .platform-macos .titlebar-back {
+        left: 78px;
+      }
+
       .titlebar-tools-inner {
         right: 8px;
         gap: 4px;
@@ -4262,6 +4273,18 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
             <button class="settings-icon-button compact" type="button" data-service-log-close title="${t("close")}" aria-label="${t("close")}">${closeIcon()}</button>
           </header>
           <div class="service-log-controls">
+            <div class="service-log-toolbar">
+              <label class="server-search service-log-search">
+                ${searchIcon()}
+                <span class="sr-only">${t("serverLogSearch")}</span>
+                <input data-service-log-search value="${escapeHtml(viewer.query || "")}" placeholder="${t("serverLogSearch")}" aria-label="${t("serverLogSearch")}" ${viewer.loading || !viewer.snapshot ? "disabled" : ""}>
+              </label>
+              <span class="service-chip service-log-count" data-service-log-count>${escapeHtml(status)}</span>
+              <div class="service-log-actions">
+                <button class="settings-icon-button compact" type="button" data-service-log-step="-1" title="${t("serverLogPreviousMatch")}" aria-label="${t("serverLogPreviousMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("up")}</button>
+                <button class="settings-icon-button compact" type="button" data-service-log-step="1" title="${t("serverLogNextMatch")}" aria-label="${t("serverLogNextMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("down")}</button>
+              </div>
+            </div>
             <div class="service-log-timebar">
               <fieldset class="service-log-time-field">
                 <legend>${t("serverLogFrom")}</legend>
@@ -4275,18 +4298,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
               </fieldset>
               <label class="service-log-range-select">${clockIcon()}<select data-service-log-preset aria-label="${t("serverLogRange")}" title="${t("serverLogRange")}" ${viewer.loading ? "disabled" : ""}>${rangeOptions}</select></label>
               <button class="settings-icon-button compact service-log-range-button" type="button" data-service-log-apply-range title="${t("serverLogRangeApply")}" aria-label="${t("serverLogRangeApply")}" ${viewer.loading ? "disabled" : ""}>${actionIcon("refresh", viewer.loading)}</button>
-            </div>
-            <div class="service-log-toolbar">
-              <label class="server-search service-log-search">
-                ${searchIcon()}
-                <span class="sr-only">${t("serverLogSearch")}</span>
-                <input data-service-log-search value="${escapeHtml(viewer.query || "")}" placeholder="${t("serverLogSearch")}" aria-label="${t("serverLogSearch")}" ${viewer.loading || !viewer.snapshot ? "disabled" : ""}>
-              </label>
-              <span class="service-chip service-log-count" data-service-log-count>${escapeHtml(status)}</span>
-              <div class="service-log-actions">
-                <button class="settings-icon-button compact" type="button" data-service-log-step="-1" title="${t("serverLogPreviousMatch")}" aria-label="${t("serverLogPreviousMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("up")}</button>
-                <button class="settings-icon-button compact" type="button" data-service-log-step="1" title="${t("serverLogNextMatch")}" aria-label="${t("serverLogNextMatch")}" ${search.searching || search.count === 0 ? "disabled" : ""}>${chevronIcon("down")}</button>
-              </div>
             </div>
           </div>
           ${viewer.error ? `<p class="service-empty service-log-error" role="alert">${escapeHtml(viewer.error)}</p>` : ""}
@@ -4307,6 +4318,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     const dock = document.createElement("div");
     dock.className = "dock";
+    if (navigator.platform?.startsWith("Mac") || navigator.userAgent?.includes("Macintosh")) {
+      dock.classList.add("platform-macos");
+    }
 
     const toolbar = document.createElement("div");
     toolbar.className = "titlebar-tools";
