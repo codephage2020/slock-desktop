@@ -441,6 +441,16 @@ body:has(.loading-shell),
   font-size: 0.82rem;
 }
 
+.dashboard-warning {
+  padding: 6px 12px;
+  margin: 0 0 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #c24141 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, #c24141 20%, var(--line));
+  color: color-mix(in srgb, #c24141 72%, var(--text));
+  font-size: 0.76rem;
+}
+
 .dashboard-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

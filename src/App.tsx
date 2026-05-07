@@ -238,6 +238,7 @@ const COPY = {
     taskStatusInProgress: 'In Progress',
     taskStatusInReview: 'Review',
     taskStatusDone: 'Done',
+    dashboardPartialError: 'Some data failed to load',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -379,6 +380,7 @@ const COPY = {
     taskStatusInProgress: '进行中',
     taskStatusInReview: '审核中',
     taskStatusDone: '已完成',
+    dashboardPartialError: '部分数据加载失败',
   },
 } as const
 
@@ -2222,6 +2224,9 @@ function App() {
 
         {dashboardData ? (
           <section className="dashboard" aria-label={copy.dashboardLabel}>
+            {dashboardData.warnings && dashboardData.warnings.length > 0 ? (
+              <p className="dashboard-warning inline-note">{copy.dashboardPartialError ?? 'Some data failed to load'}</p>
+            ) : null}
             <div className="dashboard-stats">
               <div className="dashboard-stat-card">
                 <span className="dashboard-stat-value">

@@ -330,6 +330,8 @@ struct DashboardData {
     unread: Vec<DashboardChannelUnread>,
     tasks: Vec<DashboardTask>,
     agents: Vec<DashboardAgent>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1488,9 +1490,10 @@ fn fetch_dashboard(
 
     let server_url = settings.server_url.clone();
     let api_root = api_base_url(&server_url);
+    let mut warnings: Vec<String> = Vec::new();
 
     // Fetch channels (GET /channels with X-Server-Id header)
-    let channels = load_authenticated_json::<Vec<DashboardChannel>>(
+    let channels = match load_authenticated_json::<Vec<DashboardChannel>>(
         &app,
         &state,
         &server_url,
@@ -1500,12 +1503,17 @@ fn fetch_dashboard(
                 .header("X-Server-Id", &server_id)
                 .bearer_auth(access_token)
         },
-    )
-    .unwrap_or_default();
+    ) {
+        Ok(data) => data,
+        Err(err) => {
+            warnings.push(format!("channels: {err}"));
+            Vec::new()
+        }
+    };
 
     // Fetch unread counts (GET /channels/unread with X-Server-Id header)
     // Returns { channelId: count } object, convert to Vec<DashboardChannelUnread>
-    let unread_map = load_authenticated_json::<std::collections::HashMap<String, u32>>(
+    let unread = match load_authenticated_json::<std::collections::HashMap<String, u32>>(
         &app,
         &state,
         &server_url,
@@ -1515,18 +1523,22 @@ fn fetch_dashboard(
                 .header("X-Server-Id", &server_id)
                 .bearer_auth(access_token)
         },
-    )
-    .unwrap_or_default();
-    let unread: Vec<DashboardChannelUnread> = unread_map
-        .into_iter()
-        .map(|(channel_id, unread_count)| DashboardChannelUnread {
-            channel_id,
-            unread_count,
-        })
-        .collect();
+    ) {
+        Ok(map) => map
+            .into_iter()
+            .map(|(channel_id, unread_count)| DashboardChannelUnread {
+                channel_id,
+                unread_count,
+            })
+            .collect(),
+        Err(err) => {
+            warnings.push(format!("unread: {err}"));
+            Vec::new()
+        }
+    };
 
     // Fetch tasks (GET /tasks/server with X-Server-Id header)
-    let tasks = load_authenticated_json::<Vec<DashboardTask>>(
+    let tasks = match load_authenticated_json::<Vec<DashboardTask>>(
         &app,
         &state,
         &server_url,
@@ -1536,11 +1548,16 @@ fn fetch_dashboard(
                 .header("X-Server-Id", &server_id)
                 .bearer_auth(access_token)
         },
-    )
-    .unwrap_or_default();
+    ) {
+        Ok(data) => data,
+        Err(err) => {
+            warnings.push(format!("tasks: {err}"));
+            Vec::new()
+        }
+    };
 
     // Fetch agents (GET /agents with X-Server-Id header)
-    let agents = load_authenticated_json::<Vec<DashboardAgent>>(
+    let agents = match load_authenticated_json::<Vec<DashboardAgent>>(
         &app,
         &state,
         &server_url,
@@ -1550,14 +1567,20 @@ fn fetch_dashboard(
                 .header("X-Server-Id", &server_id)
                 .bearer_auth(access_token)
         },
-    )
-    .unwrap_or_default();
+    ) {
+        Ok(data) => data,
+        Err(err) => {
+            warnings.push(format!("agents: {err}"));
+            Vec::new()
+        }
+    };
 
     Ok(DashboardData {
         channels,
         unread,
         tasks,
         agents,
+        warnings,
     })
 }
 
