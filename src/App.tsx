@@ -256,6 +256,11 @@ const COPY = {
     dashboardAgentStatus: 'Agents',
     dashboardActiveChannels: 'Active Channels',
     dashboardLabel: 'Server Dashboard',
+    dashboardMyTasks: 'My Tasks',
+    dashboardNoMyTasks: 'No tasks assigned to you',
+    dashboardRecentTasks: 'Recent Tasks',
+    dashboardNoTasks: 'No tasks yet',
+    dashboardOpenWorkspace: 'Open in Workspace',
     taskStatusTodo: 'Todo',
     taskStatusInProgress: 'In Progress',
     taskStatusInReview: 'Review',
@@ -409,6 +414,11 @@ const COPY = {
     dashboardAgentStatus: 'Agents',
     dashboardActiveChannels: '活跃频道',
     dashboardLabel: 'Server 概览',
+    dashboardMyTasks: '我的任务',
+    dashboardNoMyTasks: '暂无分配给你的任务',
+    dashboardRecentTasks: '近期任务',
+    dashboardNoTasks: '暂无任务',
+    dashboardOpenWorkspace: '在工作区打开',
     taskStatusTodo: '待办',
     taskStatusInProgress: '进行中',
     taskStatusInReview: '审核中',
@@ -2423,36 +2433,70 @@ function App() {
         {dashboardData ? (
           <section className="dashboard" aria-label={copy.dashboardLabel}>
             {dashboardData.warnings && dashboardData.warnings.length > 0 ? (
-              <p className="dashboard-warning inline-note">{copy.dashboardPartialError ?? 'Some data failed to load'}</p>
+              <p className="dashboard-warning inline-note">{copy.dashboardPartialError}</p>
             ) : null}
             <div className="dashboard-stats">
               <div className="dashboard-stat-card">
                 <span className="dashboard-stat-value">
                   {dashboardData.channels.filter((ch) => !ch.isArchived).length}
                 </span>
-                <span className="dashboard-stat-label">{copy.dashboardChannels ?? 'Channels'}</span>
+                <span className="dashboard-stat-label">{copy.dashboardChannels}</span>
               </div>
               <div className="dashboard-stat-card">
                 <span className="dashboard-stat-value">
                   {dashboardData.unread.reduce((sum, u) => sum + u.unreadCount, 0)}
                 </span>
-                <span className="dashboard-stat-label">{copy.dashboardUnread ?? 'Unread'}</span>
+                <span className="dashboard-stat-label">{copy.dashboardUnread}</span>
               </div>
               <div className="dashboard-stat-card">
                 <span className="dashboard-stat-value">{dashboardData.tasks.length}</span>
-                <span className="dashboard-stat-label">{copy.dashboardTasks ?? 'Tasks'}</span>
+                <span className="dashboard-stat-label">{copy.dashboardTasks}</span>
               </div>
               <div className="dashboard-stat-card">
                 <span className="dashboard-stat-value">
                   {dashboardData.agents.filter((a) => a.status !== 'offline').length}/{dashboardData.agents.length}
                 </span>
-                <span className="dashboard-stat-label">{copy.dashboardAgents ?? 'Agents'}</span>
+                <span className="dashboard-stat-label">{copy.dashboardAgents}</span>
               </div>
             </div>
 
             <div className="dashboard-panels">
+              {/* My Tasks — highest priority panel */}
               <div className="dashboard-panel">
-                <p className="eyebrow">{copy.dashboardTaskStatus ?? 'Task Status'}</p>
+                <p className="eyebrow">{copy.dashboardMyTasks}</p>
+                {(() => {
+                  const myTasks = dashboardData.tasks.filter(
+                    (t) => t.assignee === currentAccountId && (t.status === 'todo' || t.status === 'in_progress')
+                  )
+                  if (myTasks.length === 0) {
+                    return <p className="inline-note">{copy.dashboardNoMyTasks}</p>
+                  }
+                  return (
+                    <div className="dashboard-task-list">
+                      {myTasks.map((task) => {
+                        const channel = dashboardData.channels.find((ch) => ch.id === task.channelId)
+                        return (
+                          <button
+                            key={task.id}
+                            type="button"
+                            className="dashboard-task-item"
+                            onClick={() => void handleLaunch()}
+                            title={copy.dashboardOpenWorkspace}
+                          >
+                            <span className={`task-dot ${task.status.replace('_', '-')}`} />
+                            <span className="dashboard-task-title">{task.title}</span>
+                            {channel ? <span className="dashboard-task-channel">#{channel.name}</span> : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* Task Status overview */}
+              <div className="dashboard-panel">
+                <p className="eyebrow">{copy.dashboardTaskStatus}</p>
                 <div className="dashboard-task-bar">
                   {(() => {
                     const total = dashboardData.tasks.length || 1
@@ -2476,10 +2520,38 @@ function App() {
                   <span className="task-legend-item"><span className="task-dot in-review" />{copy.taskStatusInReview} {dashboardData.tasks.filter((t) => t.status === 'in_review').length}</span>
                   <span className="task-legend-item"><span className="task-dot done" />{copy.taskStatusDone} {dashboardData.tasks.filter((t) => t.status === 'done').length}</span>
                 </div>
+                {/* Recent tasks list */}
+                {dashboardData.tasks.length > 0 ? (
+                  <div className="dashboard-task-list recent">
+                    <p className="eyebrow small">{copy.dashboardRecentTasks}</p>
+                    {dashboardData.tasks
+                      .filter((t) => t.status !== 'done')
+                      .slice(0, 5)
+                      .map((task) => {
+                        const channel = dashboardData.channels.find((ch) => ch.id === task.channelId)
+                        return (
+                          <button
+                            key={task.id}
+                            type="button"
+                            className="dashboard-task-item"
+                            onClick={() => void handleLaunch()}
+                            title={copy.dashboardOpenWorkspace}
+                          >
+                            <span className={`task-dot ${task.status.replace('_', '-')}`} />
+                            <span className="dashboard-task-title">{task.title}</span>
+                            {channel ? <span className="dashboard-task-channel">#{channel.name}</span> : null}
+                          </button>
+                        )
+                      })}
+                  </div>
+                ) : (
+                  <p className="inline-note">{copy.dashboardNoTasks}</p>
+                )}
               </div>
 
+              {/* Agent status */}
               <div className="dashboard-panel">
-                <p className="eyebrow">{copy.dashboardAgentStatus ?? 'Agents'}</p>
+                <p className="eyebrow">{copy.dashboardAgentStatus}</p>
                 <div className="dashboard-agent-list">
                   {dashboardData.agents.map((agent) => (
                     <div key={agent.id} className="dashboard-agent-row" ref={agentCardTarget?.id === agent.id ? agentCardRef : undefined}>
@@ -2558,8 +2630,9 @@ function App() {
                 </div>
               </div>
 
+              {/* Active Channels — clickable */}
               <div className="dashboard-panel">
-                <p className="eyebrow">{copy.dashboardActiveChannels ?? 'Active Channels'}</p>
+                <p className="eyebrow">{copy.dashboardActiveChannels}</p>
                 <div className="dashboard-channel-list">
                   {dashboardData.channels
                     .filter((ch) => !ch.isArchived && ch.lastMessageAt)
@@ -2568,12 +2641,18 @@ function App() {
                     .map((channel) => {
                       const unread = dashboardData.unread.find((u) => u.channelId === channel.id)
                       return (
-                        <div key={channel.id} className="dashboard-channel-row">
+                        <button
+                          key={channel.id}
+                          type="button"
+                          className="dashboard-channel-row"
+                          onClick={() => void handleLaunch()}
+                          title={copy.dashboardOpenWorkspace}
+                        >
                           <span className="channel-name">#{channel.name}</span>
                           {unread && unread.unreadCount > 0 ? (
                             <span className="channel-unread-badge">{unread.unreadCount}</span>
                           ) : null}
-                        </div>
+                        </button>
                       )
                     })}
                 </div>

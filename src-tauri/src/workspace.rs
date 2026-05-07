@@ -2086,7 +2086,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .platform-macos .titlebar-back {
-      left: 78px;
+      left: 86px;
     }
 
     .titlebar-tools-inner {
@@ -2765,6 +2765,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .service-log-toolbar {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
       gap: 7px;
     }
 
@@ -2878,8 +2881,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .service-log-search {
-      flex: 1 1 auto;
-      min-width: 140px;
+      grid-column: 1 / -1;
+      min-width: 0;
     }
 
     .service-log-count {
@@ -3799,7 +3802,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       }
 
       .platform-macos .titlebar-back {
-        left: 78px;
+        left: 86px;
       }
 
       .titlebar-tools-inner {
