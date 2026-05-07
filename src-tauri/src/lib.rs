@@ -415,6 +415,10 @@ struct DashboardAgent {
     id: String,
     name: String,
     status: String,
+    #[serde(default, alias = "display_name")]
+    display_name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
     #[serde(alias = "updated_at")]
     updated_at: Option<String>,
 }
@@ -460,6 +464,19 @@ struct MessageReminderPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     sender_type: Option<String>,
     content_preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentActivityEntry {
+    id: String,
+    activity: String,
+    #[serde(default)]
+    detail: Option<String>,
+    #[serde(default, alias = "launch_id")]
+    launch_id: Option<String>,
+    #[serde(alias = "created_at")]
+    created_at: String,
 }
 
 #[tauri::command]
@@ -1057,6 +1074,13 @@ fn exit_workspace(app: AppHandle, state: State<'_, DesktopState>) -> Result<Boot
     apply_launcher_titlebar_style(&window);
     apply_launcher_window_size(&window);
 
+    // Navigate back to the launcher frontend.
+    // In dev mode, use the Vite dev server URL; in production, use the embedded asset URL.
+    #[cfg(debug_assertions)]
+    let launcher_url = "http://localhost:1420"
+        .parse::<Url>()
+        .map_err(|err| err.to_string())?;
+    #[cfg(not(debug_assertions))]
     let launcher_url = "tauri://localhost"
         .parse::<Url>()
         .map_err(|err| err.to_string())?;
@@ -2514,6 +2538,156 @@ fn show_message_reminder_notification(
 }})();"#
     );
     window.eval(script).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn fetch_agent_activity(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    agent_id: String,
+) -> Result<Vec<AgentActivityEntry>, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    load_authenticated_json::<Vec<AgentActivityEntry>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/agents/{agent_id}/activity-log"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+}
+
+#[tauri::command]
+fn stop_agent(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    agent_id: String,
+) -> Result<(), String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    let response = send_authenticated(&app, &state, &server_url, |client, access_token| {
+        client
+            .post(format!("{api_root}/agents/{agent_id}/stop"))
+            .header("X-Server-Id", &server_id)
+            .bearer_auth(access_token)
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Failed to stop agent: {status}: {body}"));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn start_agent(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    agent_id: String,
+) -> Result<(), String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    let response = send_authenticated(&app, &state, &server_url, |client, access_token| {
+        client
+            .post(format!("{api_root}/agents/{agent_id}/start"))
+            .header("X-Server-Id", &server_id)
+            .bearer_auth(access_token)
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Failed to start agent: {status}: {body}"));
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -7556,6 +7730,9 @@ pub fn run() {
             message_reminders: Mutex::new(MessageReminderRuntime::default()),
         })
         .on_page_load(|webview, payload| {
+            // Only handle workspace URLs (https://app.slock.ai).
+            // Launcher (tauri://localhost) and other URLs exit early here,
+            // so workspace titlebar/size/scripts are never applied to non-workspace pages.
             if !is_workspace_url(payload.url()) {
                 if webview.label() == MAIN_LABEL
                     && matches!(payload.event(), PageLoadEvent::Finished)
@@ -7759,7 +7936,10 @@ pub fn run() {
             close_login_window,
             activate_account,
             forget_account,
-            fetch_dashboard
+            fetch_dashboard,
+            fetch_agent_activity,
+            stop_agent,
+            start_agent
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
