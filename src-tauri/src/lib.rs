@@ -473,14 +473,31 @@ struct MessageReminderPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AgentActivityEntry {
+    #[serde(default)]
     id: String,
+    #[serde(default)]
     activity: String,
     #[serde(default)]
     detail: Option<String>,
     #[serde(default, alias = "launch_id")]
     launch_id: Option<String>,
-    #[serde(alias = "created_at")]
-    created_at: String,
+    #[serde(default, alias = "created_at")]
+    created_at: Option<String>,
+    // Additional fields the API may return (ignored by frontend but needed for deserialization)
+    #[serde(default, alias = "agent_id")]
+    agent_id: Option<String>,
+}
+
+/// Envelope wrapper in case API wraps activity entries
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentActivityEnvelope {
+    #[serde(default)]
+    entries: Vec<AgentActivityEntry>,
+    #[serde(default)]
+    data: Vec<AgentActivityEntry>,
+    #[serde(default, alias = "activity_log")]
+    activity_log: Vec<AgentActivityEntry>,
 }
 
 // ── Inbox types ──────────────────────────────────────────────────────
@@ -2731,17 +2748,50 @@ fn fetch_agent_activity(
     let server_url = settings.server_url.clone();
     let api_root = api_base_url(&server_url);
 
-    load_authenticated_json::<Vec<AgentActivityEntry>>(
-        &app,
-        &state,
-        &server_url,
-        |client, access_token| {
-            client
-                .get(format!("{api_root}/agents/{agent_id}/activity-log"))
-                .header("X-Server-Id", &server_id)
-                .bearer_auth(access_token)
-        },
-    )
+    // Try parsing response with fallback: direct array first, then envelope wrappers
+    let response = send_authenticated(&app, &state, &server_url, |client, access_token| {
+        client
+            .get(format!("{api_root}/agents/{agent_id}/activity-log"))
+            .header("X-Server-Id", &server_id)
+            .bearer_auth(access_token)
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Desktop API returned {status}: {body}"));
+    }
+
+    let body = response
+        .text()
+        .map_err(|err| format!("Failed to read agent activity response: {err}"))?;
+
+    // Try 1: direct array
+    if let Ok(entries) = serde_json::from_str::<Vec<AgentActivityEntry>>(&body) {
+        return Ok(entries);
+    }
+
+    // Try 2: envelope wrapper (entries/data/activityLog)
+    if let Ok(envelope) = serde_json::from_str::<AgentActivityEnvelope>(&body) {
+        // Return whichever field has data
+        if !envelope.entries.is_empty() {
+            return Ok(envelope.entries);
+        }
+        if !envelope.data.is_empty() {
+            return Ok(envelope.data);
+        }
+        if !envelope.activity_log.is_empty() {
+            return Ok(envelope.activity_log);
+        }
+        // All empty — return empty vec (API returned valid JSON but no entries)
+        return Ok(Vec::new());
+    }
+
+    // Both failed — log raw body prefix for debugging
+    let preview = if body.len() > 200 { &body[..200] } else { &body };
+    Err(format!(
+        "Failed to parse agent activity: body preview: {preview}"
+    ))
 }
 
 #[tauri::command]

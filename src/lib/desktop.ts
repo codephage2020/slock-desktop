@@ -297,7 +297,8 @@ export interface AgentActivityEntry {
   activity: string
   detail: string | null
   launchId: string | null
-  createdAt: string
+  createdAt: string | null
+  agentId?: string | null
 }
 
 export interface DashboardData {

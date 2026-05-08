@@ -30,6 +30,9 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         minutesAgo: "%dm ago",
         hoursAgo: "%dh ago",
         daysAgo: "%dd ago",
+        stop: "Stop",
+        start: "Start",
+        restart: "Restart",
       },
       "zh-CN": {
         description: "描述",
@@ -42,6 +45,9 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         minutesAgo: "%d分钟前",
         hoursAgo: "%d小时前",
         daysAgo: "%d天前",
+        stop: "停止",
+        start: "启动",
+        restart: "重启",
       },
     };
 
@@ -286,49 +292,80 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return el.classList.contains("card-brutal");
     }
 
-    // --- Build injected content ---
-    function buildInjectedHeader(agent, activity) {
+    // --- Build injected action buttons (top of card) ---
+    function buildActionButtons(agent, serverSlug) {
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
       container.style.cssText =
-        "padding: 8px 12px 4px; border-bottom: 1px solid rgba(0,0,0,0.08);";
+        "padding: 6px 12px; border-bottom: 1px solid rgba(0,0,0,0.08); display: flex; gap: 6px; justify-content: flex-end;";
 
-      // Name + status row
-      const header = document.createElement("div");
-      header.style.cssText =
-        "display: flex; align-items: center; gap: 6px; margin-bottom: 4px;";
-
-      const dot = document.createElement("span");
       const isOnline = agent.status !== "offline";
-      dot.style.cssText =
-        "width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: " +
-        (isOnline ? "#22c55e" : "#9ca3af") +
-        ";";
 
-      const name = document.createElement("span");
-      name.style.cssText = "font-weight: 700; font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
-      name.textContent = agent.displayName || agent.name;
+      // Start/Stop button
+      const toggleBtn = document.createElement("button");
+      toggleBtn.style.cssText =
+        "padding: 3px 10px; font-size: 11px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.12); cursor: pointer; background: " +
+        (isOnline ? "rgba(239,68,68,0.08)" : "rgba(34,197,94,0.08)") +
+        "; color: " + (isOnline ? "#dc2626" : "#16a34a") + ";";
+      toggleBtn.textContent = isOnline ? t("stop") : t("start");
+      toggleBtn.addEventListener("click", async function (e) {
+        e.stopPropagation();
+        toggleBtn.disabled = true;
+        toggleBtn.style.opacity = "0.5";
+        try {
+          await invoke(isOnline ? "stop_agent" : "start_agent", {
+            serverSlug: serverSlug,
+            agentId: agent.id,
+          });
+          // Invalidate cache to refresh status
+          lastFetchMs = 0;
+        } catch (err) {
+          console.warn("[Slock Desktop] agent card: action failed", err);
+        }
+        toggleBtn.disabled = false;
+        toggleBtn.style.opacity = "1";
+      });
 
-      const status = document.createElement("span");
-      status.style.cssText =
-        "font-size: 11px; color: #6b7280; flex-shrink: 0;";
-      status.textContent = isOnline ? t("online") : t("offline");
-
-      header.appendChild(dot);
-      header.appendChild(name);
-      header.appendChild(status);
-      container.appendChild(header);
-
-      // Description
-      if (agent.description) {
-        const desc = document.createElement("p");
-        desc.style.cssText =
-          "margin: 0 0 6px; font-size: 12px; color: #6b7280; line-height: 1.4; word-break: break-word;";
-        desc.textContent = agent.description;
-        container.appendChild(desc);
+      // Restart button (only when online)
+      const restartBtn = document.createElement("button");
+      restartBtn.style.cssText =
+        "padding: 3px 10px; font-size: 11px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.12); cursor: pointer; background: rgba(59,130,246,0.08); color: #2563eb;";
+      restartBtn.textContent = t("restart");
+      if (!isOnline) {
+        restartBtn.disabled = true;
+        restartBtn.style.opacity = "0.4";
+        restartBtn.style.cursor = "default";
       }
+      restartBtn.addEventListener("click", async function (e) {
+        e.stopPropagation();
+        if (!isOnline) return;
+        restartBtn.disabled = true;
+        restartBtn.style.opacity = "0.5";
+        try {
+          await invoke("stop_agent", { serverSlug: serverSlug, agentId: agent.id });
+          // Brief delay before restart
+          await new Promise(function (r) { setTimeout(r, 1000); });
+          await invoke("start_agent", { serverSlug: serverSlug, agentId: agent.id });
+          lastFetchMs = 0;
+        } catch (err) {
+          console.warn("[Slock Desktop] agent card: restart failed", err);
+        }
+        restartBtn.disabled = false;
+        restartBtn.style.opacity = "1";
+      });
 
-      // Activity
+      container.appendChild(toggleBtn);
+      container.appendChild(restartBtn);
+      return container;
+    }
+
+    // --- Build injected activity footer (bottom of card) ---
+    function buildActivityFooter(activity) {
+      const container = document.createElement("div");
+      container.setAttribute(INJECT_ATTR, "true");
+      container.style.cssText =
+        "padding: 6px 12px 8px; border-top: 1px solid rgba(0,0,0,0.08);";
+
       if (activity && activity.length > 0) {
         const actTitle = document.createElement("p");
         actTitle.style.cssText =
@@ -338,7 +375,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
 
         const list = document.createElement("ul");
         list.style.cssText =
-          "margin: 0 0 4px; padding: 0; list-style: none;";
+          "margin: 0; padding: 0; list-style: none;";
 
         const maxItems = Math.min(activity.length, 5);
         for (let i = 0; i < maxItems; i++) {
@@ -364,7 +401,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       } else {
         const noAct = document.createElement("p");
         noAct.style.cssText =
-          "margin: 2px 0 4px; font-size: 11px; color: #9ca3af;";
+          "margin: 0; font-size: 11px; color: #9ca3af;";
         noAct.textContent = t("noActivity");
         container.appendChild(noAct);
       }
@@ -467,8 +504,16 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       }
 
       console.log("[Slock Desktop] agent card: injecting content for", agent.name);
-      const header = buildInjectedHeader(agent, activity);
-      cardEl.insertBefore(header, cardEl.firstChild);
+      const serverSlug = getCurrentServerSlug();
+
+      // Insert action buttons at top of card
+      const buttons = buildActionButtons(agent, serverSlug);
+      cardEl.insertBefore(buttons, cardEl.firstChild);
+
+      // Append activity footer at bottom of card
+      const footer = buildActivityFooter(activity);
+      cardEl.appendChild(footer);
+
       cardEl.setAttribute(INJECT_ATTR, "done");
 
       // Widen card to fit content
@@ -557,6 +602,9 @@ mod tests {
         let script = agent_card_inject_script("test", "zh-CN");
         assert!(script.contains("暂无描述"));
         assert!(script.contains("最近活动"));
+        assert!(script.contains("停止"));
+        assert!(script.contains("启动"));
+        assert!(script.contains("重启"));
     }
 
     #[test]
@@ -616,5 +664,21 @@ mod tests {
         assert!(script.contains("extractAgentId"));
         assert!(script.contains("UUID_RE"));
         assert!(script.contains("indexOf(\"agent\")"));
+    }
+
+    #[test]
+    fn script_has_action_buttons() {
+        let script = agent_card_inject_script("test", "en-US");
+        assert!(script.contains("buildActionButtons"));
+        assert!(script.contains("stop_agent"));
+        assert!(script.contains("start_agent"));
+        assert!(script.contains("Restart"));
+    }
+
+    #[test]
+    fn script_has_activity_footer() {
+        let script = agent_card_inject_script("test", "en-US");
+        assert!(script.contains("buildActivityFooter"));
+        assert!(script.contains("appendChild(footer)"));
     }
 }
