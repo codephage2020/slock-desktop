@@ -9,33 +9,30 @@ import {
   useRef,
   useState,
 } from 'react'
-import { createPortal } from 'react-dom'
 import { listen } from '@tauri-apps/api/event'
 import './App.css'
 import './Settings.css'
 import {
   activateAccount,
-  type AgentActivityEntry,
   type BootstrapPayload,
   type CustomThemeSnapshot,
-  type DashboardAgent,
-  type DashboardData,
   type DesktopUpdateCheck,
-  type InboxDmChannel,
   type InboxMessage,
-  type InboxThread,
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
+  type ServerMember,
   type ThemeDefinition,
   type ThemeStyleConfig,
   type ThemeStyleDefinition,
   checkDesktopUpdate,
   createCustomTheme,
   deleteCustomTheme,
-  fetchAgentActivity,
+  fetchChannelMessages,
   fetchDashboard,
   fetchDmChannels,
   fetchFollowedThreads,
+  fetchServerMembers,
+  fetchServerUnreadSummary,
   fetchThreadMessages,
   fetchUnreadChannels,
   installDesktopUpdate,
@@ -51,9 +48,7 @@ import {
   renameCustomTheme,
   selectServiceServer,
   sendMessage,
-  startAgent,
   startService,
-  stopAgent,
   stopService,
   switchAccount,
   updateCustomThemeAccent,
@@ -560,73 +555,48 @@ function App() {
   const styleImportInputRef = useRef<HTMLInputElement | null>(null)
   const serviceLogSearchRef = useRef<HTMLInputElement | null>(null)
   const serviceLogContentRef = useRef<HTMLPreElement | null>(null)
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
-  const [dashboardLoading, setDashboardLoading] = useState(false)
-  const [dashboardError, setDashboardError] = useState<string | null>(null)
-  // Inbox state
-  const [inboxThreads, setInboxThreads] = useState<InboxThread[]>([])
-  const [inboxDms, setInboxDms] = useState<InboxDmChannel[]>([])
-  const [inboxUnreadMap, setInboxUnreadMap] = useState<Map<string, number>>(new Map())
+  // Unified inbox state (multi-server)
+  type UnifiedItem = {
+    id: string
+    serverSlug: string
+    serverName: string
+    channelId: string
+    channelName: string
+    type: 'channel' | 'thread' | 'dm'
+    unreadCount: number
+    lastMessageAt: string | null
+    displayName: string | null
+    parentChannelName: string | null
+    avatarUrl: string | null
+  }
+  type ServerChannelGroup = {
+    serverSlug: string
+    serverName: string
+    channels: { id: string; name: string; type: string; unreadCount: number }[]
+  }
+  type UnreadMessageItem = InboxMessage & {
+    serverSlug: string
+    serverName: string
+    channelName: string
+  }
+  const [unifiedItems, setUnifiedItems] = useState<UnifiedItem[]>([])
+  const [serverChannelGroups, setServerChannelGroups] = useState<ServerChannelGroup[]>([])
+  const [unreadMessagesFeed, setUnreadMessagesFeed] = useState<UnreadMessageItem[]>([])
+  const [memberMap, setMemberMap] = useState<Map<string, ServerMember>>(new Map())
   const [inboxLoading, setInboxLoading] = useState(false)
   const [inboxTab, setInboxTab] = useState<'unread' | 'all'>('unread')
   const [inboxSearch, setInboxSearch] = useState('')
-  const [inboxSelectedId, setInboxSelectedId] = useState<string | null>(null)
+  const [selectedChannel, setSelectedChannel] = useState<{ serverSlug: string; channelId: string; itemType?: 'channel' | 'thread' | 'dm' } | null>(null)
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([])
   const [inboxMessagesLoading, setInboxMessagesLoading] = useState(false)
   const [inboxReplyText, setInboxReplyText] = useState('')
   const [inboxSending, setInboxSending] = useState(false)
   const inboxMessagesEndRef = useRef<HTMLDivElement | null>(null)
-
-  // Unified inbox list combining threads and DMs
-  type InboxListItem = {
-    id: string
-    type: 'thread' | 'dm'
-    title: string | null
-    subtitle: string | null
-    lastMessageAt: string | null
-    unreadCount: number
-    avatarInitial: string
-    avatarUrl: string | null
-    channelId: string
-  }
-
-  const inboxList = useMemo<InboxListItem[]>(() => {
-    const threads: InboxListItem[] = inboxThreads.map((t) => ({
-      id: t.id,
-      type: 'thread' as const,
-      title: t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : null),
-      subtitle: t.parentChannelName ? `#${t.parentChannelName}` : null,
-      lastMessageAt: t.lastMessageAt,
-      unreadCount: t.unreadCount || inboxUnreadMap.get(t.id) || 0,
-      avatarInitial: '#',
-      avatarUrl: null,
-      channelId: t.id,
-    }))
-    const dms: InboxListItem[] = inboxDms.map((d) => ({
-      id: d.id,
-      type: 'dm' as const,
-      title: d.displayName ?? d.name,
-      subtitle: null,
-      lastMessageAt: d.lastMessageAt,
-      unreadCount: d.unreadCount || inboxUnreadMap.get(d.id) || 0,
-      avatarInitial: (d.displayName ?? d.name).charAt(0).toUpperCase(),
-      avatarUrl: d.members[0]?.avatarUrl ?? null,
-      channelId: d.id,
-    }))
-    return [...threads, ...dms].sort((a, b) =>
-      (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '')
-    )
-  }, [inboxThreads, inboxDms, inboxUnreadMap])
+  const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
 
   const [messageReminders, setMessageReminders] = useState<MessageReminderToast[]>([])
   const messageRemindersRef = useRef<MessageReminderToast[]>([])
   const messageReminderTimersRef = useRef<Map<string, number>>(new Map())
-  const [agentCardTarget, setAgentCardTarget] = useState<DashboardAgent | null>(null)
-  const [agentCardActivity, setAgentCardActivity] = useState<AgentActivityEntry[]>([])
-  const [agentCardLoading, setAgentCardLoading] = useState(false)
-  const [agentCardAction, setAgentCardAction] = useState<string | null>(null)
-  const [agentCardPosition, setAgentCardPosition] = useState<{ top: number; left: number } | null>(null)
-  const agentCardRef = useRef<HTMLDivElement | null>(null)
   const initialServiceRefreshRef = useRef(false)
   const authResolvedRef = useRef(false)
   const [initialServiceRefreshDone, setInitialServiceRefreshDone] = useState(false)
@@ -1144,100 +1114,224 @@ function App() {
     }
   }, [])
 
+  // Fetch unified inbox data from all servers
   useEffect(() => {
-    if (!agentCardTarget) {
+    if (!snapshot?.service.authenticated || !initialServiceRefreshDone) {
+      setUnifiedItems([])
+      setServerChannelGroups([])
+      setUnreadMessagesFeed([])
       return
     }
 
-    const closeAgentCardOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) {
-        return
-      }
-      if (agentCardRef.current?.contains(target)) {
-        return
-      }
-      setAgentCardTarget(null)
-    }
-
-    document.addEventListener('pointerdown', closeAgentCardOnOutsidePointer)
-    return () => document.removeEventListener('pointerdown', closeAgentCardOnOutsidePointer)
-  }, [agentCardTarget])
-
-  // Fetch dashboard data when selected server changes
-  useEffect(() => {
-    if (!snapshot?.service.selectedServerSlug || !snapshot.service.authenticated) {
-      setDashboardData(null)
-      setDashboardError(null)
+    const servers = snapshot.service.servers.filter((s) => s.apiKeyReady)
+    if (servers.length === 0) {
+      setUnifiedItems([])
+      setServerChannelGroups([])
+      setUnreadMessagesFeed([])
       return
     }
 
-    // Wait for initial service refresh to populate cached_servers
-    if (!initialServiceRefreshDone) {
-      return
-    }
-
-    const serverSlug = snapshot.service.selectedServerSlug
     let cancelled = false
 
-    async function loadDashboard() {
-      setDashboardLoading(true)
-      setDashboardError(null)
-      try {
-        const data = await fetchDashboard(serverSlug)
-        if (!cancelled) {
-          setDashboardData(data)
-          setDashboardError(null)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setDashboardData(null)
-          setDashboardError(
-            err instanceof Error ? err.message : 'Failed to load dashboard',
-          )
-        }
-      } finally {
-        if (!cancelled) {
-          setDashboardLoading(false)
-        }
-      }
-    }
-
-    void loadDashboard()
-    return () => { cancelled = true }
-  }, [snapshot?.service.selectedServerSlug, snapshot?.service.authenticated, initialServiceRefreshDone])
-
-  // Load inbox items alongside dashboard
-  useEffect(() => {
-    if (!snapshot?.service.authenticated || !snapshot.service.selectedServerSlug || !initialServiceRefreshDone) {
-      setInboxThreads([])
-      setInboxDms([])
-      setInboxUnreadMap(new Map())
-      return
-    }
-
-    const serverSlug = snapshot.service.selectedServerSlug
-    let cancelled = false
-
-    async function loadInbox() {
+    async function loadUnifiedInbox() {
       setInboxLoading(true)
       try {
-        const [threadsResult, dmsResult, unreadResult] = await Promise.allSettled([
-          fetchFollowedThreads(serverSlug),
-          fetchDmChannels(serverSlug),
-          fetchUnreadChannels(serverSlug),
-        ])
-        if (!cancelled) {
-          const threads = threadsResult.status === 'fulfilled' ? threadsResult.value : []
-          const dms = dmsResult.status === 'fulfilled' ? dmsResult.value : []
-          const unreadEntries = unreadResult.status === 'fulfilled' ? unreadResult.value : []
-          setInboxThreads(threads)
-          setInboxDms(dms)
-          const map = new Map<string, number>()
-          for (const entry of unreadEntries) {
-            map.set(entry.channelId, entry.unreadCount)
+        // Step 1: Get cross-server unread summary to optimize fetching
+        const serverUnreadMap = new Map<string, number>()
+        try {
+          const summary = await fetchServerUnreadSummary()
+          for (const entry of summary) {
+            // Map serverId to serverSlug via servers list
+            const matched = servers.find((s) => s.id === entry.serverId)
+            if (matched) {
+              serverUnreadMap.set(matched.slug, entry.unreadCount)
+            }
           }
-          setInboxUnreadMap(map)
+        } catch {
+          // Fallback: treat all servers as potentially having unread
+          for (const s of servers) {
+            serverUnreadMap.set(s.slug, 1)
+          }
+        }
+
+        // Step 2: Fetch data per server (full data for servers with unread, channels-only for others)
+        const serverResults = await Promise.allSettled(
+          servers.map(async (server) => {
+            const hasUnread = (serverUnreadMap.get(server.slug) ?? 0) > 0
+            const calls = [
+              fetchDashboard(server.slug),
+              fetchFollowedThreads(server.slug),
+              fetchDmChannels(server.slug),
+              fetchUnreadChannels(server.slug),
+              fetchServerMembers(server.slug),
+            ] as const
+
+            const [dashResult, threadsResult, dmsResult, unreadResult, membersResult] =
+              await Promise.allSettled(calls)
+
+            const items: UnifiedItem[] = []
+            const channelList: ServerChannelGroup['channels'] = []
+            const members: ServerMember[] =
+              membersResult.status === 'fulfilled' ? membersResult.value : []
+
+            // Build unread map for this server
+            const unreadMap = new Map<string, number>()
+            if (unreadResult.status === 'fulfilled') {
+              for (const entry of unreadResult.value) {
+                unreadMap.set(entry.channelId, entry.unreadCount)
+              }
+            }
+
+            // Track unread items for message fetching
+            const unreadChannelIds: { channelId: string; channelName: string; type: UnifiedItem['type']; unreadCount: number }[] = []
+
+            // Channels from dashboard
+            if (dashResult.status === 'fulfilled') {
+              const dashUnreadMap = new Map(
+                (dashResult.value.unread ?? []).map((u) => [u.channelId, u.unreadCount])
+              )
+              for (const ch of dashResult.value.channels) {
+                if (ch.isArchived) continue
+                const unread = dashUnreadMap.get(ch.id) ?? unreadMap.get(ch.id) ?? 0
+                items.push({
+                  id: `${server.slug}:${ch.id}`,
+                  serverSlug: server.slug,
+                  serverName: server.name,
+                  channelId: ch.id,
+                  channelName: `#${ch.name}`,
+                  type: 'channel',
+                  unreadCount: unread,
+                  lastMessageAt: ch.lastMessageAt,
+                  displayName: null,
+                  parentChannelName: null,
+                  avatarUrl: null,
+                })
+                channelList.push({
+                  id: ch.id,
+                  name: ch.name,
+                  type: ch.type,
+                  unreadCount: unread,
+                })
+                if (unread > 0) {
+                  unreadChannelIds.push({ channelId: ch.id, channelName: `#${ch.name}`, type: 'channel', unreadCount: unread })
+                }
+              }
+            }
+
+            // Threads
+            if (threadsResult.status === 'fulfilled') {
+              for (const t of threadsResult.value) {
+                const unread = t.unreadCount || unreadMap.get(t.id) || 0
+                const name = t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : copy.inboxThread)
+                items.push({
+                  id: `${server.slug}:${t.id}`,
+                  serverSlug: server.slug,
+                  serverName: server.name,
+                  channelId: t.id,
+                  channelName: name,
+                  type: 'thread',
+                  unreadCount: unread,
+                  lastMessageAt: t.lastMessageAt,
+                  displayName: null,
+                  parentChannelName: t.parentChannelName,
+                  avatarUrl: null,
+                })
+                if (unread > 0) {
+                  unreadChannelIds.push({ channelId: t.id, channelName: name, type: 'thread', unreadCount: unread })
+                }
+              }
+            }
+
+            // DMs
+            if (dmsResult.status === 'fulfilled') {
+              for (const d of dmsResult.value) {
+                const unread = d.unreadCount || unreadMap.get(d.id) || 0
+                const name = d.displayName ?? d.name
+                items.push({
+                  id: `${server.slug}:${d.id}`,
+                  serverSlug: server.slug,
+                  serverName: server.name,
+                  channelId: d.id,
+                  channelName: name,
+                  type: 'dm',
+                  unreadCount: unread,
+                  lastMessageAt: d.lastMessageAt,
+                  displayName: d.displayName,
+                  parentChannelName: null,
+                  avatarUrl: d.members[0]?.avatarUrl ?? null,
+                })
+                if (unread > 0) {
+                  unreadChannelIds.push({ channelId: d.id, channelName: name, type: 'dm', unreadCount: unread })
+                }
+              }
+            }
+
+            // Step 3: For unread channels, fetch only the unread messages
+            let unreadMsgs: UnreadMessageItem[] = []
+            if (hasUnread && unreadChannelIds.length > 0) {
+              const msgResults = await Promise.allSettled(
+                unreadChannelIds.map(async (ch) => {
+                  // Fetch exactly the number of unread messages (capped at 50 for safety)
+                  const fetchLimit = Math.min(ch.unreadCount, 50)
+                  const resp = ch.type === 'channel'
+                    ? await fetchChannelMessages(server.slug, ch.channelId, { limit: fetchLimit })
+                    : await fetchThreadMessages(server.slug, ch.channelId, { limit: fetchLimit })
+                  // Take only the latest N messages matching unreadCount
+                  const msgs = resp.messages.slice(-ch.unreadCount)
+                  return msgs.map((msg) => ({
+                    ...msg,
+                    serverSlug: server.slug,
+                    serverName: server.name,
+                    channelName: ch.channelName,
+                  }))
+                })
+              )
+              for (const r of msgResults) {
+                if (r.status === 'fulfilled') {
+                  unreadMsgs = unreadMsgs.concat(r.value)
+                }
+              }
+            }
+
+            return {
+              items,
+              group: { serverSlug: server.slug, serverName: server.name, channels: channelList },
+              members,
+              unreadMsgs,
+            }
+          })
+        )
+
+        if (!cancelled) {
+          type ServerResult = {
+            items: UnifiedItem[]
+            group: ServerChannelGroup
+            members: ServerMember[]
+            unreadMsgs: UnreadMessageItem[]
+          }
+          const fulfilled = serverResults
+            .filter((r): r is PromiseFulfilledResult<ServerResult> => r.status === 'fulfilled')
+          const allItems = fulfilled.flatMap((r) => r.value.items)
+          const groups = fulfilled.map((r) => r.value.group)
+          // Build member map keyed by serverSlug:memberId for cross-server uniqueness
+          const newMemberMap = new Map<string, ServerMember>()
+          for (const r of fulfilled) {
+            const slug = r.value.group.serverSlug
+            for (const m of r.value.members) {
+              newMemberMap.set(`${slug}:${m.id}`, m)
+            }
+          }
+          // Combine and sort unread messages by time (newest first)
+          const allUnreadMsgs = fulfilled
+            .flatMap((r) => r.value.unreadMsgs)
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
+          setUnifiedItems(allItems)
+          setServerChannelGroups(groups)
+          setMemberMap(newMemberMap)
+          setUnreadMessagesFeed(allUnreadMsgs)
+          // Auto-expand all servers
+          setExpandedServers(new Set(groups.map((g) => g.serverSlug)))
         }
       } finally {
         if (!cancelled) {
@@ -1246,41 +1340,42 @@ function App() {
       }
     }
 
-    void loadInbox()
+    void loadUnifiedInbox()
     return () => { cancelled = true }
-  }, [snapshot?.service.selectedServerSlug, snapshot?.service.authenticated, initialServiceRefreshDone])
+  }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone, copy.inboxThread])
 
   // Load messages when a conversation is selected
   useEffect(() => {
-    if (!inboxSelectedId || !snapshot?.service.selectedServerSlug) {
+    if (!selectedChannel) {
       setInboxMessages([])
       return
     }
 
-    const serverSlug = snapshot.service.selectedServerSlug
+    const { serverSlug, channelId, itemType } = selectedChannel
     let cancelled = false
 
     async function loadMessages() {
       setInboxMessagesLoading(true)
       try {
-        const resp = await fetchThreadMessages(serverSlug, inboxSelectedId!, { limit: 50 })
+        const resp = itemType === 'channel'
+          ? await fetchChannelMessages(serverSlug, channelId, { limit: 50 })
+          : await fetchThreadMessages(serverSlug, channelId, { limit: 50 })
         if (!cancelled) {
           setInboxMessages(resp.messages)
         }
-        // Mark as read and zero out local unread count
-        markChannelRead(serverSlug, inboxSelectedId!).then(() => {
+        // Mark as read and zero out local unread count + remove from feed
+        markChannelRead(serverSlug, channelId).then(() => {
           if (!cancelled) {
-            const chId = inboxSelectedId!
-            setInboxUnreadMap((prev) => {
-              const next = new Map(prev)
-              next.set(chId, 0)
-              return next
-            })
-            setInboxThreads((prev) =>
-              prev.map((t) => t.id === chId ? { ...t, unreadCount: 0 } : t)
+            setUnifiedItems((prev) =>
+              prev.map((i) =>
+                i.serverSlug === serverSlug && i.channelId === channelId
+                  ? { ...i, unreadCount: 0 }
+                  : i,
+              ),
             )
-            setInboxDms((prev) =>
-              prev.map((d) => d.id === chId ? { ...d, unreadCount: 0 } : d)
+            // Remove this channel's messages from the unread feed
+            setUnreadMessagesFeed((prev) =>
+              prev.filter((msg) => !(msg.serverSlug === serverSlug && msg.channelId === channelId)),
             )
           }
         }).catch(() => { /* ignore */ })
@@ -1297,7 +1392,8 @@ function App() {
 
     void loadMessages()
     return () => { cancelled = true }
-  }, [inboxSelectedId, snapshot?.service.selectedServerSlug])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: use primitive fields to avoid re-fetch on object identity change
+  }, [selectedChannel?.serverSlug, selectedChannel?.channelId, selectedChannel?.itemType])
 
   useEffect(() => {
     if (
@@ -1915,47 +2011,11 @@ function App() {
     }
   }
 
-  async function handleAgentCardOpen(agent: DashboardAgent, triggerElement?: HTMLElement) {
-    if (agentCardTarget?.id === agent.id) {
-      setAgentCardTarget(null)
-      setAgentCardPosition(null)
-      return
-    }
-    if (triggerElement) {
-      const rect = triggerElement.getBoundingClientRect()
-      const cardWidth = 320
-      const cardHeight = 300
-      const left = Math.min(rect.left, window.innerWidth - cardWidth - 8)
-      const spaceBelow = window.innerHeight - rect.bottom
-      const top = spaceBelow >= cardHeight
-        ? rect.bottom + 4
-        : Math.max(8, rect.top - cardHeight - 4)
-      setAgentCardPosition({ top, left: Math.max(8, left) })
-    } else {
-      setAgentCardPosition(null)
-    }
-    setAgentCardTarget(agent)
-    setAgentCardActivity([])
-    setAgentCardLoading(true)
-    try {
-      const serverSlug = snapshot?.service.selectedServerSlug
-      if (serverSlug) {
-        const activity = await fetchAgentActivity(serverSlug, agent.id)
-        setAgentCardActivity(activity.slice(0, 5))
-      }
-    } catch {
-      // Activity load failure is non-critical
-    } finally {
-      setAgentCardLoading(false)
-    }
-  }
-
   async function handleInboxSend() {
-    const serverSlug = snapshot?.service.selectedServerSlug
-    if (!serverSlug || !inboxSelectedId || !inboxReplyText.trim() || inboxSending) return
+    if (!selectedChannel || !inboxReplyText.trim() || inboxSending) return
     setInboxSending(true)
     try {
-      const resp = await sendMessage(serverSlug, inboxSelectedId, inboxReplyText.trim())
+      const resp = await sendMessage(selectedChannel.serverSlug, selectedChannel.channelId, inboxReplyText.trim())
       setInboxReplyText('')
       // Append the sent message directly (resp is a full InboxMessage)
       setInboxMessages((prev) => [...prev, resp])
@@ -1967,58 +2027,6 @@ function App() {
       console.error('Failed to send message', err)
     } finally {
       setInboxSending(false)
-    }
-  }
-
-  async function handleAgentStop(agent: DashboardAgent) {
-    const serverSlug = snapshot?.service.selectedServerSlug
-    if (!serverSlug) { return }
-    try {
-      setAgentCardAction('stop')
-      await stopAgent(serverSlug, agent.id)
-      // Refresh dashboard to get updated agent status
-      const data = await fetchDashboard(serverSlug)
-      startTransition(() => setDashboardData(data))
-      setAgentCardTarget(null)
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setAgentCardAction(null)
-    }
-  }
-
-  async function handleAgentStart(agent: DashboardAgent) {
-    const serverSlug = snapshot?.service.selectedServerSlug
-    if (!serverSlug) { return }
-    try {
-      setAgentCardAction('start')
-      await startAgent(serverSlug, agent.id)
-      // Refresh dashboard to get updated agent status
-      const data = await fetchDashboard(serverSlug)
-      startTransition(() => setDashboardData(data))
-      setAgentCardTarget(null)
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setAgentCardAction(null)
-    }
-  }
-
-  async function handleAgentRestart(agent: DashboardAgent) {
-    const serverSlug = snapshot?.service.selectedServerSlug
-    if (!serverSlug) { return }
-    try {
-      setAgentCardAction('restart')
-      await stopAgent(serverSlug, agent.id)
-      await startAgent(serverSlug, agent.id)
-      // Refresh dashboard to get updated agent status
-      const data = await fetchDashboard(serverSlug)
-      startTransition(() => setDashboardData(data))
-      setAgentCardTarget(null)
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setAgentCardAction(null)
     }
   }
 
@@ -2780,8 +2788,8 @@ function App() {
                   onClick={() => setInboxTab('unread')}
                 >
                   {copy.inboxUnread}
-                  {inboxList.filter((i) => i.unreadCount > 0).length > 0 ? (
-                    <span className="inbox-tab-badge">{inboxList.filter((i) => i.unreadCount > 0).length}</span>
+                  {unreadMessagesFeed.length > 0 ? (
+                    <span className="inbox-tab-badge">{unreadMessagesFeed.length}</span>
                   ) : null}
                 </button>
                 <button
@@ -2797,87 +2805,144 @@ function App() {
             </div>
             <div className="inbox-list" role="listbox">
               {(() => {
-                const normalizedSearch = inboxSearch.trim().toLowerCase()
-                const filtered = inboxList
-                  .filter((item) => {
-                    if (inboxTab === 'unread' && item.unreadCount === 0) return false
-                    if (normalizedSearch) {
-                      return (item.title ?? '').toLowerCase().includes(normalizedSearch)
-                    }
-                    return true
-                  })
-
                 if (inboxLoading) {
                   return <div className="inbox-list-empty"><SpinnerIcon /></div>
                 }
 
-                if (filtered.length === 0) {
+                const normalizedSearch = inboxSearch.trim().toLowerCase()
+
+                if (inboxTab === 'unread') {
+                  // Unread tab: individual messages from all servers, sorted by time
+                  const filtered = normalizedSearch
+                    ? unreadMessagesFeed.filter((msg) => {
+                        const senderName = (msg.senderDisplayName ?? msg.senderName ?? '').toLowerCase()
+                        const content = msg.content.toLowerCase()
+                        const channel = msg.channelName.toLowerCase()
+                        return senderName.includes(normalizedSearch) || content.includes(normalizedSearch) || channel.includes(normalizedSearch)
+                      })
+                    : unreadMessagesFeed
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="inbox-list-empty">
+                        <p className="inline-note">{copy.inboxNoUnread}</p>
+                      </div>
+                    )
+                  }
+                  return filtered.map((msg) => {
+                    const senderMember = msg.senderId ? memberMap.get(`${msg.serverSlug}:${msg.senderId}`) : null
+                    const displayName = msg.senderDisplayName ?? senderMember?.displayName ?? msg.senderName ?? senderMember?.name ?? copy.inboxUnknownSender
+                    const avatarUrl = msg.senderAvatarUrl ?? senderMember?.avatarUrl ?? null
+                    // Find the item type for routing
+                    const item = unifiedItems.find(
+                      (i) => i.serverSlug === msg.serverSlug && i.channelId === msg.channelId,
+                    )
+                    return (
+                      <button
+                        key={msg.id}
+                        type="button"
+                        className="inbox-unread-msg"
+                        onClick={() => setSelectedChannel({ serverSlug: msg.serverSlug, channelId: msg.channelId, itemType: item?.type })}
+                      >
+                        <div className="inbox-msg-avatar">
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt="" className="inbox-avatar-img" />
+                          ) : (
+                            <span className="inbox-avatar-placeholder">
+                              {(displayName).charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="inbox-item-body">
+                          <div className="inbox-item-header">
+                            <span className="inbox-item-title">{displayName}</span>
+                            <span className="inbox-item-time">{formatRelativeTime(msg.createdAt)}</span>
+                          </div>
+                          <p className="inbox-item-preview">{msg.content}</p>
+                          <span className="inbox-item-subtitle">{msg.channelName} · {msg.serverName}</span>
+                        </div>
+                      </button>
+                    )
+                  })
+                }
+
+                // All tab: Server → Channel directory tree
+                if (serverChannelGroups.length === 0) {
                   return (
                     <div className="inbox-list-empty">
-                      <p className="inline-note">
-                        {inboxTab === 'unread' ? copy.inboxNoUnread : copy.inboxEmpty}
-                      </p>
+                      <p className="inline-note">{copy.inboxEmpty}</p>
                     </div>
                   )
                 }
-
-                return filtered.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="option"
-                    className={`inbox-item${inboxSelectedId === item.channelId ? ' selected' : ''}${item.unreadCount > 0 ? ' unread' : ''}`}
-                    aria-selected={inboxSelectedId === item.channelId}
-                    onClick={() => setInboxSelectedId(item.channelId)}
-                  >
-                    <div className="inbox-item-avatar">
-                      {item.avatarUrl ? (
-                        <img src={item.avatarUrl} alt="" className="inbox-avatar-img" />
-                      ) : (
-                        <span className="inbox-avatar-placeholder">
-                          {item.avatarInitial}
-                        </span>
-                      )}
-                    </div>
-                    <div className="inbox-item-body">
-                      <div className="inbox-item-header">
-                        <span className="inbox-item-title">{item.title ?? copy.inboxThread}</span>
-                        {item.lastMessageAt ? (
-                          <span className="inbox-item-time">{formatRelativeTime(item.lastMessageAt)}</span>
-                        ) : null}
-                      </div>
-                      {item.type === 'thread' && item.subtitle ? (
-                        <span className="inbox-item-subtitle">{item.subtitle}</span>
+                return serverChannelGroups.map((group) => {
+                  const expanded = expandedServers.has(group.serverSlug)
+                  const filteredChannels = normalizedSearch
+                    ? group.channels.filter((ch) => ch.name.toLowerCase().includes(normalizedSearch))
+                    : group.channels
+                  if (normalizedSearch && filteredChannels.length === 0) return null
+                  return (
+                    <div key={group.serverSlug} className="inbox-server-group">
+                      <button
+                        type="button"
+                        className={`inbox-server-header${expanded ? ' expanded' : ''}`}
+                        onClick={() => {
+                          setExpandedServers((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(group.serverSlug)) {
+                              next.delete(group.serverSlug)
+                            } else {
+                              next.add(group.serverSlug)
+                            }
+                            return next
+                          })
+                        }}
+                      >
+                        <ChevronIcon direction={expanded ? 'down' : 'right'} />
+                        <span className="inbox-server-name">{group.serverName}</span>
+                        <span className="inbox-server-count">{filteredChannels.length}</span>
+                      </button>
+                      {expanded ? (
+                        <div className="inbox-channel-list">
+                          {filteredChannels.map((ch) => {
+                            const isSelected = selectedChannel?.serverSlug === group.serverSlug && selectedChannel?.channelId === ch.id
+                            return (
+                              <button
+                                key={ch.id}
+                                type="button"
+                                className={`inbox-channel-row${isSelected ? ' selected' : ''}${ch.unreadCount > 0 ? ' unread' : ''}`}
+                                onClick={() => setSelectedChannel({ serverSlug: group.serverSlug, channelId: ch.id, itemType: 'channel' })}
+                              >
+                                <span className="inbox-channel-name">#{ch.name}</span>
+                                {ch.unreadCount > 0 ? (
+                                  <span className="inbox-channel-badge">{ch.unreadCount}</span>
+                                ) : null}
+                              </button>
+                            )
+                          })}
+                        </div>
                       ) : null}
-                      {item.unreadCount > 0 ? (
-                        <p className="inbox-item-preview">
-                          {item.unreadCount} {copy.inboxUnreadLabel}
-                        </p>
-                      ) : null}
                     </div>
-                    {item.unreadCount > 0 ? (
-                      <span className="inbox-item-unread-dot" aria-label={`${item.unreadCount} ${copy.inboxUnreadLabel}`} />
-                    ) : null}
-                  </button>
-                ))
+                  )
+                })
               })()}
             </div>
           </aside>
 
-          {/* Content area */}
+          {/* Content area — message detail + reply only */}
           <div className="inbox-content">
-            {inboxSelectedId ? (
+            {selectedChannel ? (
               <div className="inbox-message-view">
                 {/* Message header */}
                 <div className="inbox-message-header">
                   <span className="inbox-message-title">
-                    {inboxList.find((i) => i.channelId === inboxSelectedId)?.title ?? copy.inboxConversation}
+                    {unifiedItems.find(
+                      (i) => i.serverSlug === selectedChannel.serverSlug && i.channelId === selectedChannel.channelId,
+                    )?.channelName ?? copy.inboxConversation}
                   </span>
                   <button
                     type="button"
                     className="inbox-message-close"
-                    onClick={() => { setInboxSelectedId(null); setInboxMessages([]) }}
-                    aria-label="Close"
+                    onClick={() => { setSelectedChannel(null); setInboxMessages([]) }}
+                    aria-label={copy.close}
                   >
                     <XIcon />
                   </button>
@@ -2891,26 +2956,31 @@ function App() {
                       <p className="inline-note">{copy.inboxEmpty}</p>
                     </div>
                   ) : (
-                    inboxMessages.map((msg) => (
+                    inboxMessages.map((msg) => {
+                      const senderMember = msg.senderId && selectedChannel ? memberMap.get(`${selectedChannel.serverSlug}:${msg.senderId}`) : null
+                      const resolvedName = msg.senderDisplayName ?? senderMember?.displayName ?? msg.senderName ?? senderMember?.name ?? copy.inboxUnknownSender
+                      const resolvedAvatar = msg.senderAvatarUrl ?? senderMember?.avatarUrl ?? null
+                      return (
                       <div key={msg.id} className={`inbox-msg${msg.senderType === 'agent' ? ' agent' : ''}`}>
                         <div className="inbox-msg-avatar">
-                          {msg.senderAvatarUrl ? (
-                            <img src={msg.senderAvatarUrl} alt="" className="inbox-avatar-img" />
+                          {resolvedAvatar ? (
+                            <img src={resolvedAvatar} alt="" className="inbox-avatar-img" />
                           ) : (
                             <span className="inbox-avatar-placeholder">
-                              {msg.senderType === 'agent' ? 'A' : (msg.senderName ?? '?').charAt(0).toUpperCase()}
+                              {msg.senderType === 'agent' ? 'A' : resolvedName.charAt(0).toUpperCase()}
                             </span>
                           )}
                         </div>
                         <div className="inbox-msg-body">
                           <div className="inbox-msg-meta">
-                            <span className="inbox-msg-name">{msg.senderDisplayName ?? msg.senderName ?? copy.inboxUnknownSender}</span>
+                            <span className="inbox-msg-name">{resolvedName}</span>
                             <span className="inbox-msg-time">{formatRelativeTime(msg.createdAt)}</span>
                           </div>
                           <div className="inbox-msg-content">{msg.content}</div>
                         </div>
                       </div>
-                    ))
+                      )
+                    })
                   )}
                   <div ref={inboxMessagesEndRef} />
                 </div>
@@ -2941,270 +3011,13 @@ function App() {
                 </div>
               </div>
             ) : (
-              /* Dashboard as default content when no conversation selected */
-              <>
-        {dashboardData ? (
-          <section className="dashboard" aria-label={copy.dashboardLabel}>
-            {dashboardData.warnings && dashboardData.warnings.length > 0 ? (
-              <p className="dashboard-warning inline-note">{copy.dashboardPartialError}</p>
-            ) : null}
-            <div className="dashboard-stats">
-              <button className="dashboard-stat-card" onClick={() => void handleWorkspaceOpen()}>
-                <span className="dashboard-stat-value">
-                  {dashboardData.channels.filter((ch) => !ch.isArchived).length}
-                </span>
-                <span className="dashboard-stat-label">{copy.dashboardChannels}</span>
-              </button>
-              <button className={`dashboard-stat-card${dashboardData.unread.reduce((sum, u) => sum + u.unreadCount, 0) > 0 ? ' has-unread' : ''}`} onClick={() => void handleWorkspaceOpen()}>
-                <span className="dashboard-stat-value">
-                  {dashboardData.unread.reduce((sum, u) => sum + u.unreadCount, 0)}
-                </span>
-                <span className="dashboard-stat-label">{copy.dashboardUnread}</span>
-              </button>
-              <button className="dashboard-stat-card" onClick={() => void handleWorkspaceOpen()}>
-                <span className="dashboard-stat-value">{dashboardData.tasks.length}</span>
-                <span className="dashboard-stat-label">{copy.dashboardTasks}</span>
-              </button>
-              <button className="dashboard-stat-card" onClick={() => void handleWorkspaceOpen()}>
-                <span className="dashboard-stat-value">
-                  {dashboardData.agents.filter((a) => a.status !== 'offline').length}/{dashboardData.agents.length}
-                </span>
-                <span className="dashboard-stat-label">{copy.dashboardAgents}</span>
-              </button>
-            </div>
-
-            <div className="dashboard-panels">
-              {/* My Tasks — highest priority panel */}
-              <div className="dashboard-panel">
-                <p className="eyebrow">{copy.dashboardMyTasks}</p>
-                {(() => {
-                  const myTasks = dashboardData.tasks.filter(
-                    (t) => t.assignee === currentAccountId && (t.status === 'todo' || t.status === 'in_progress')
-                  )
-                  if (myTasks.length === 0) {
-                    return <p className="inline-note">{copy.dashboardNoMyTasks}</p>
-                  }
-                  return (
-                    <div className="dashboard-task-list">
-                      {myTasks.map((task) => {
-                        const channel = dashboardData.channels.find((ch) => ch.id === task.channelId)
-                        return (
-                          <button
-                            key={task.id}
-                            type="button"
-                            className="dashboard-task-item"
-                            onClick={() => void handleWorkspaceOpen()}
-                            title={copy.dashboardOpenWorkspace}
-                          >
-                            <span className={`task-dot ${task.status.replace('_', '-')}`} />
-                            <span className="dashboard-task-title">{task.title}</span>
-                            {channel ? <span className="dashboard-task-channel">#{channel.name}</span> : null}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
+              <div className="inbox-empty-state">
+                <p className="inline-note">{copy.inboxSelectThread}</p>
               </div>
-
-              {/* Task Status overview */}
-              <div className="dashboard-panel">
-                <p className="eyebrow">{copy.dashboardTaskStatus}</p>
-                <div className="dashboard-task-bar">
-                  {(() => {
-                    const total = dashboardData.tasks.length || 1
-                    const todo = dashboardData.tasks.filter((t) => t.status === 'todo').length
-                    const inProgress = dashboardData.tasks.filter((t) => t.status === 'in_progress').length
-                    const inReview = dashboardData.tasks.filter((t) => t.status === 'in_review').length
-                    const done = dashboardData.tasks.filter((t) => t.status === 'done').length
-                    return (
-                      <>
-                        {todo > 0 ? <span className="task-bar-segment todo" style={{ flex: todo / total }} title={`${copy.taskStatusTodo}: ${todo}`} /> : null}
-                        {inProgress > 0 ? <span className="task-bar-segment in-progress" style={{ flex: inProgress / total }} title={`${copy.taskStatusInProgress}: ${inProgress}`} /> : null}
-                        {inReview > 0 ? <span className="task-bar-segment in-review" style={{ flex: inReview / total }} title={`${copy.taskStatusInReview}: ${inReview}`} /> : null}
-                        {done > 0 ? <span className="task-bar-segment done" style={{ flex: done / total }} title={`${copy.taskStatusDone}: ${done}`} /> : null}
-                      </>
-                    )
-                  })()}
-                </div>
-                <div className="dashboard-task-legend">
-                  <span className="task-legend-item"><span className="task-dot todo" />{copy.taskStatusTodo} {dashboardData.tasks.filter((t) => t.status === 'todo').length}</span>
-                  <span className="task-legend-item"><span className="task-dot in-progress" />{copy.taskStatusInProgress} {dashboardData.tasks.filter((t) => t.status === 'in_progress').length}</span>
-                  <span className="task-legend-item"><span className="task-dot in-review" />{copy.taskStatusInReview} {dashboardData.tasks.filter((t) => t.status === 'in_review').length}</span>
-                  <span className="task-legend-item"><span className="task-dot done" />{copy.taskStatusDone} {dashboardData.tasks.filter((t) => t.status === 'done').length}</span>
-                </div>
-                {/* Recent tasks list */}
-                {dashboardData.tasks.length > 0 ? (
-                  <div className="dashboard-task-list recent">
-                    <p className="eyebrow small">{copy.dashboardRecentTasks}</p>
-                    {dashboardData.tasks
-                      .filter((t) => t.status !== 'done')
-                      .slice(0, 5)
-                      .map((task) => {
-                        const channel = dashboardData.channels.find((ch) => ch.id === task.channelId)
-                        return (
-                          <button
-                            key={task.id}
-                            type="button"
-                            className="dashboard-task-item"
-                            onClick={() => void handleWorkspaceOpen()}
-                            title={copy.dashboardOpenWorkspace}
-                          >
-                            <span className={`task-dot ${task.status.replace('_', '-')}`} />
-                            <span className="dashboard-task-title">{task.title}</span>
-                            {channel ? <span className="dashboard-task-channel">#{channel.name}</span> : null}
-                          </button>
-                        )
-                      })}
-                  </div>
-                ) : (
-                  <p className="inline-note">{copy.dashboardNoTasks}</p>
-                )}
-              </div>
-
-              {/* Agent status */}
-              <div className="dashboard-panel">
-                <p className="eyebrow">{copy.dashboardAgentStatus}</p>
-                {dashboardData.agents.length === 0 ? (
-                  <p className="inline-note">{copy.dashboardNoAgents}</p>
-                ) : (
-                <div className="dashboard-agent-list">
-                  {dashboardData.agents.map((agent) => (
-                    <div key={agent.id} className="dashboard-agent-row">
-                      <button
-                        type="button"
-                        className="agent-avatar-button"
-                        onClick={(e) => void handleAgentCardOpen(agent, e.currentTarget)}
-                        title={agent.displayName ?? agent.name}
-                      >
-                        <span className={`agent-status-dot ${agent.status === 'offline' ? 'offline' : 'online'}`} />
-                      </button>
-                      <span className="agent-name">{agent.displayName ?? agent.name}</span>
-                      <span className="agent-status-label">{agent.status}</span>
-                    </div>
-                  ))}
-                </div>
-                )}
-              </div>
-
-              {/* Active Channels — clickable */}
-              <div className="dashboard-panel">
-                <p className="eyebrow">{copy.dashboardActiveChannels}</p>
-                {(() => {
-                  const activeChannels = dashboardData.channels
-                    .filter((ch) => !ch.isArchived && ch.lastMessageAt)
-                    .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
-                    .slice(0, 5)
-                  if (activeChannels.length === 0) {
-                    return <p className="inline-note">{copy.dashboardNoChannels}</p>
-                  }
-                  return (
-                    <div className="dashboard-channel-list">
-                      {activeChannels.map((channel) => {
-                        const unread = dashboardData.unread.find((u) => u.channelId === channel.id)
-                        return (
-                          <button
-                            key={channel.id}
-                            type="button"
-                            className="dashboard-channel-row"
-                            onClick={() => void handleWorkspaceOpen()}
-                            title={copy.dashboardOpenWorkspace}
-                          >
-                            <span className="channel-name">#{channel.name}</span>
-                            {unread && unread.unreadCount > 0 ? (
-                              <span className="channel-unread-badge">{unread.unreadCount}</span>
-                            ) : null}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
-              </div>
-            </div>
-          </section>
-        ) : dashboardLoading ? (
-          <div className="dashboard-loading">
-            <SpinnerIcon />
-          </div>
-        ) : dashboardError ? (
-          <div className="dashboard-error">
-            <p className="inline-note">{dashboardError}</p>
-          </div>
-        ) : null}
-              </>
             )}
           </div>
         </div>
       </section>
-
-      {agentCardTarget && agentCardPosition ? createPortal(
-        <div
-          ref={agentCardRef}
-          className="agent-card"
-          role="dialog"
-          aria-label={agentCardTarget.name}
-          style={{ top: agentCardPosition.top, left: agentCardPosition.left }}
-        >
-          <div className="agent-card-header">
-            <span className={`agent-status-dot ${agentCardTarget.status === 'offline' ? 'offline' : 'online'}`} />
-            <span className="agent-card-name">{agentCardTarget.displayName ?? agentCardTarget.name}</span>
-            <span className="agent-card-status">{agentCardTarget.status}</span>
-          </div>
-          <p className="agent-card-description">
-            {agentCardTarget.description || copy.agentNoDescription}
-          </p>
-          <div className="agent-card-activity">
-            <p className="agent-card-activity-title">{copy.agentActivity}</p>
-            {agentCardLoading ? (
-              <SpinnerIcon />
-            ) : agentCardActivity.length > 0 ? (
-              <ul className="agent-card-activity-list">
-                {agentCardActivity.map((entry) => (
-                  <li key={entry.id}>
-                    <span className="activity-text">{entry.activity}</span>
-                    <span className="activity-time">{formatRelativeTime(entry.createdAt)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="inline-note">{copy.agentNoActivity}</p>
-            )}
-          </div>
-          <div className="agent-card-actions">
-            {agentCardTarget.status !== 'offline' ? (
-              <>
-                <button
-                  type="button"
-                  className="agent-card-button danger"
-                  onClick={() => void handleAgentStop(agentCardTarget)}
-                  disabled={agentCardAction !== null}
-                >
-                  {agentCardAction === 'stop' ? copy.agentStopping : copy.agentStop}
-                </button>
-                <button
-                  type="button"
-                  className="agent-card-button"
-                  onClick={() => void handleAgentRestart(agentCardTarget)}
-                  disabled={agentCardAction !== null}
-                >
-                  {agentCardAction === 'restart' ? copy.agentStarting : copy.agentRestart}
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="agent-card-button accent"
-                onClick={() => void handleAgentStart(agentCardTarget)}
-                disabled={agentCardAction !== null}
-              >
-                {agentCardAction === 'start' ? copy.agentStarting : copy.agentStart}
-              </button>
-            )}
-          </div>
-        </div>,
-        document.body
-      ) : null}
 
       {messageReminders.length > 0 ? (
         <div className="message-reminder-stack">
@@ -4178,7 +3991,7 @@ function ClockIcon() {
   )
 }
 
-function ChevronIcon({ direction }: { direction: 'up' | 'down' }) {
+function ChevronIcon({ direction }: { direction: 'up' | 'down' | 'right' }) {
   return (
     <svg
       className="service-action-icon"
@@ -4190,7 +4003,7 @@ function ChevronIcon({ direction }: { direction: 'up' | 'down' }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {direction === 'up' ? <path d="m18 15-6-6-6 6" /> : <path d="m6 9 6 6 6-6" />}
+      {direction === 'up' ? <path d="m18 15-6-6-6 6" /> : direction === 'right' ? <path d="m9 18 6-6-6-6" /> : <path d="m6 9 6 6 6-6" />}
     </svg>
   )
 }
