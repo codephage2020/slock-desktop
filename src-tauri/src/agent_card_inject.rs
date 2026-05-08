@@ -103,13 +103,17 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       var detail = entry.detail || "";
       var toolInput = entry.toolInput || "";
 
-      // status entries: activity field contains the status text
+      // status entries: activity = connection state (online/disconnected),
+      // detail = work state (Idle/Working/Thinking). Check detail first.
       if (kind === "status" || !kind) {
-        var act = (activity || detail || "").toLowerCase();
-        if (act.indexOf("idle") !== -1) return { label: t("actIdle"), detail: "", dotColor: "#22c55e" };
-        if (act.indexOf("working") !== -1) return { label: t("actWorking"), detail: detail || "", dotColor: "#eab308" };
-        if (act.indexOf("thinking") !== -1) return { label: t("actThinking"), detail: "", dotColor: "#eab308" };
-        if (act.indexOf("disconnect") !== -1) return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
+        var detailLower = detail.toLowerCase();
+        var activityLower = activity.toLowerCase();
+        if (detailLower === "idle") return { label: t("actIdle"), detail: "", dotColor: "#22c55e" };
+        if (detailLower === "working") return { label: t("actWorking"), detail: "", dotColor: "#eab308" };
+        if (detailLower === "thinking") return { label: t("actThinking"), detail: "", dotColor: "#eab308" };
+        if (activityLower === "disconnected" || detailLower === "disconnected") return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
+        // Fallback for unknown status
+        if (detail || activity) return { label: detail || activity, detail: "", dotColor: "#9ca3af" };
       }
 
       if (kind === "tool_use" || kind === "tool_start") {
