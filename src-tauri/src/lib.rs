@@ -2749,15 +2749,16 @@ fn fetch_agent_activity(
     let api_root = api_base_url(&server_url);
 
     // Try parsing response with fallback: direct array first, then envelope wrappers
+    let url = format!("{api_root}/agents/{agent_id}/activity-log?limit=5");
     let response = send_authenticated(&app, &state, &server_url, |client, access_token| {
         client
-            .get(format!("{api_root}/agents/{agent_id}/activity-log"))
+            .get(&url)
             .header("X-Server-Id", &server_id)
             .bearer_auth(access_token)
     })?;
 
-    if !response.status().is_success() {
-        let status = response.status();
+    let status = response.status();
+    if !status.is_success() {
         let body = response.text().unwrap_or_default();
         return Err(format!("Desktop API returned {status}: {body}"));
     }
@@ -2766,8 +2767,14 @@ fn fetch_agent_activity(
         .text()
         .map_err(|err| format!("Failed to read agent activity response: {err}"))?;
 
+    let body_len = body.len();
+
     // Try 1: direct array
     if let Ok(entries) = serde_json::from_str::<Vec<AgentActivityEntry>>(&body) {
+        eprintln!(
+            "[agent-activity] agent={agent_id} status={status} body_len={body_len} parsed=direct_array entries={}",
+            entries.len()
+        );
         return Ok(entries);
     }
 
@@ -2775,20 +2782,38 @@ fn fetch_agent_activity(
     if let Ok(envelope) = serde_json::from_str::<AgentActivityEnvelope>(&body) {
         // Return whichever field has data
         if !envelope.entries.is_empty() {
+            eprintln!(
+                "[agent-activity] agent={agent_id} status={status} body_len={body_len} parsed=envelope.entries entries={}",
+                envelope.entries.len()
+            );
             return Ok(envelope.entries);
         }
         if !envelope.data.is_empty() {
+            eprintln!(
+                "[agent-activity] agent={agent_id} status={status} body_len={body_len} parsed=envelope.data entries={}",
+                envelope.data.len()
+            );
             return Ok(envelope.data);
         }
         if !envelope.activity_log.is_empty() {
+            eprintln!(
+                "[agent-activity] agent={agent_id} status={status} body_len={body_len} parsed=envelope.activity_log entries={}",
+                envelope.activity_log.len()
+            );
             return Ok(envelope.activity_log);
         }
         // All empty — return empty vec (API returned valid JSON but no entries)
+        eprintln!(
+            "[agent-activity] agent={agent_id} status={status} body_len={body_len} parsed=envelope_all_empty entries=0"
+        );
         return Ok(Vec::new());
     }
 
     // Both failed — log raw body prefix for debugging
     let preview: String = body.chars().take(200).collect();
+    eprintln!(
+        "[agent-activity] agent={agent_id} status={status} body_len={body_len} parse_failed preview={preview}"
+    );
     Err(format!(
         "Failed to parse agent activity: body preview: {preview}"
     ))
