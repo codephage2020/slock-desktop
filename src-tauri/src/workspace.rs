@@ -2959,7 +2959,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 6px;
       padding: 8px;
       margin-bottom: 8px;
-      border: 1px solid var(--desktop-line);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 66%, transparent);
       border-radius: var(--desktop-radius-md);
       background: color-mix(in srgb, var(--desktop-surface-secondary) 70%, transparent);
     }
@@ -3109,7 +3109,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       min-height: 0;
       overflow: auto;
       padding: 10px 12px;
-      border: 1px solid var(--desktop-line);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 70%, transparent);
       border-radius: var(--desktop-radius-md);
       background: var(--desktop-surface-secondary);
       color: var(--desktop-text);
