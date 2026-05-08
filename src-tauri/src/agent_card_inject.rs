@@ -314,12 +314,6 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
             console.log("[Slock Desktop] agent card: card-brutal skipped: inside radix dialog at depth", depth);
             return false;
           }
-          // Reject: inside a page-level agent detail view (main content area, not a popover)
-          // Agent detail pages typically have a large containing element that is NOT a popover
-          if (parent.hasAttribute("data-radix-scroll-area-viewport") && depth > 3) {
-            console.log("[Slock Desktop] agent card: card-brutal skipped: inside scroll area (likely detail page) at depth", depth);
-            return false;
-          }
         }
         parent = parent.parentElement;
         depth++;
@@ -336,6 +330,9 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
 
     function createBrutalButton(svg, label, onClick) {
       var btn = document.createElement("button");
+      btn.type = "button";
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
       btn.style.cssText =
         "display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1.5px solid currentColor; background: transparent; cursor: pointer; font-size: 11px; font-weight: 700; font-family: inherit; color: inherit; transition: box-shadow 0.15s, transform 0.15s;";
       btn.innerHTML = svg + '<span>' + label + '</span>';
@@ -407,19 +404,23 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
 
     // --- Build injected activity footer (bottom of card) ---
     // Unwrap nested entry: API returns { entry: { activity, detail, kind }, timestamp }
+    // Merge strategy: start with raw, overlay inner fields where inner is non-empty
     function unwrapEntry(raw) {
       if (!raw) return raw;
       if (raw.entry && typeof raw.entry === "object") {
-        // Merge nested entry fields onto top level (nested wins over empty top-level)
         var inner = raw.entry;
-        return {
-          activity: inner.activity || raw.activity || "",
-          detail: inner.detail || raw.detail || null,
-          kind: inner.kind || null,
-          timestamp: raw.timestamp || inner.timestamp || null,
-          createdAt: raw.createdAt || raw.created_at || inner.createdAt || inner.created_at || null,
-          id: raw.id || inner.id || "",
-        };
+        var merged = {};
+        // Copy all top-level fields first (except entry itself)
+        for (var k in raw) {
+          if (k !== "entry" && raw.hasOwnProperty(k)) merged[k] = raw[k];
+        }
+        // Overlay inner fields: inner wins when it has a truthy value
+        for (var j in inner) {
+          if (inner.hasOwnProperty(j)) {
+            if (inner[j] || !merged[j]) merged[j] = inner[j];
+          }
+        }
+        return merged;
       }
       return raw;
     }
@@ -801,8 +802,6 @@ mod tests {
         assert!(script.contains("aria-modal"));
         // Must reject Radix dialog content
         assert!(script.contains("data-radix-dialog-content"));
-        // Must reject scroll area (detail page)
-        assert!(script.contains("data-radix-scroll-area-viewport"));
         // Must have skip diagnostic log
         assert!(script.contains("card-brutal skipped"));
         // Must log ancestors for diagnostics
