@@ -2280,8 +2280,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .titlebar-theme-swatch {
-      width: 12px;
-      height: 12px;
+      width: 16px;
+      height: 16px;
       border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
       border-radius: var(--desktop-radius-pill);
       background: var(--theme-accent, var(--desktop-accent));
@@ -2293,18 +2293,19 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       top: 32px;
       right: 0;
       z-index: 4;
-      width: min(360px, calc(100vw - 20px));
+      width: min(320px, calc(100vw - 20px));
       max-height: min(400px, calc(100vh - 60px));
       overflow: auto;
       display: flex;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      gap: 6px;
-      padding: 8px;
-      border: 1px solid var(--desktop-line);
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       border-radius: var(--desktop-radius-md);
-      background: var(--desktop-surface);
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+      background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
+      box-shadow:
+        0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
     }
 
     .titlebar-theme-menu:has(.titlebar-accent-wheel-popover) {
@@ -2346,21 +2347,97 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       background: var(--theme-accent, var(--desktop-accent));
     }
 
-    .titlebar-theme-option.add {
-      flex: 0 0 24px;
+    /* Vertical theme list rows */
+    .titlebar-theme-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
+      border-radius: var(--desktop-radius-sm);
+      position: relative;
+      transition: background 150ms ease, border-color 150ms ease;
+    }
+
+    .titlebar-theme-row:hover {
       background: var(--desktop-surface-secondary);
+      border-color: color-mix(in srgb, var(--desktop-line) 70%, transparent);
+    }
+
+    .titlebar-theme-row.selected {
+      background: var(--desktop-selection);
+      border-color: color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 30%, var(--desktop-line));
+    }
+
+    .titlebar-theme-row-button {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--desktop-text);
+      cursor: pointer;
+      font: inherit;
+      padding: 4px 6px;
+    }
+
+    .titlebar-theme-row-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: var(--desktop-radius-pill);
+      background: var(--theme-accent, var(--desktop-accent));
+      flex-shrink: 0;
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 0 0 2px color-mix(in srgb, var(--desktop-surface) 70%, transparent);
+    }
+
+    .titlebar-theme-row-copy {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .titlebar-theme-row-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--desktop-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .titlebar-theme-row-hex {
+      font-size: 10px;
+      color: var(--desktop-muted);
+      text-transform: uppercase;
+    }
+
+    .titlebar-theme-option.add {
+      width: 100%;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--desktop-surface-secondary);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
+      border-radius: var(--desktop-radius-sm);
       box-shadow: none;
       font-size: 16px;
       font-weight: 700;
       line-height: 1;
+      cursor: pointer;
     }
 
     .titlebar-theme-delete {
-      position: absolute;
-      top: -6px;
-      right: -6px;
-      width: 16px;
-      height: 16px;
+      flex-shrink: 0;
+      width: 20px;
+      height: 20px;
       display: inline-grid;
       place-items: center;
       padding: 0;
@@ -2688,7 +2765,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 4px;
       min-width: 58px;
       padding: 3px 9px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.03em;
@@ -2726,11 +2803,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 10px;
       overflow: auto;
       padding: 12px;
-      border: 1px solid var(--desktop-line);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       border-radius: var(--desktop-radius-lg);
-      background: var(--desktop-surface);
+      background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
       color: var(--desktop-text);
-      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.14);
+      box-shadow:
+        0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
     }
 
     .titlebar-release-head {
@@ -2785,18 +2864,20 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .service-log-dialog {
-      width: min(860px, calc(100vw - 24px));
+      width: min(940px, 100%);
       max-height: min(640px, calc(100vh - 58px));
       min-height: min(460px, calc(100vh - 58px));
       display: grid;
       grid-template-rows: auto auto minmax(0, 1fr) auto;
       gap: 0;
       padding: 12px;
-      border: 1px solid var(--desktop-line);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       border-radius: var(--desktop-radius-lg);
-      background: var(--desktop-surface);
+      background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
       color: var(--desktop-text);
-      box-shadow: 0 20px 64px rgba(0, 0, 0, 0.18);
+      box-shadow:
+        0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
     }
 
     .service-log-head,
@@ -2819,9 +2900,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 2px;
     }
 
-    .service-log-title strong {
+    .service-log-title h2 {
+      margin: 0;
       overflow: hidden;
       font-size: 14px;
+      font-weight: 700;
       line-height: 1.2;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -2831,7 +2914,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       min-width: 0;
       overflow: hidden;
       color: var(--desktop-muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 11px;
       line-height: 1.3;
       text-overflow: ellipsis;
@@ -2841,7 +2924,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     .service-log-controls {
       min-width: 0;
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 6px;
       padding: 8px;
       margin-bottom: 8px;
@@ -2874,7 +2957,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       border: 0;
       color: var(--desktop-muted);
       font-size: 9px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
@@ -2999,7 +3082,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       border-radius: var(--desktop-radius-md);
       background: var(--desktop-surface-secondary);
       color: var(--desktop-text);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 11px;
       line-height: 1.6;
       white-space: pre-wrap;
@@ -3610,9 +3693,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 		    }
 
         .settings-icon-button.compact {
-          width: 28px;
-          height: 28px;
-          font-size: 13px;
+          width: 24px;
+          height: 24px;
+          font-size: 12px;
         }
 
 		    .settings-icon-button svg {
@@ -3971,10 +4054,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       max-height: min(400px, calc(100vh - 60px));
       overflow: auto;
       padding: 10px;
-      border: 1px solid var(--desktop-line);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       border-radius: var(--desktop-radius-md);
-      background: var(--desktop-surface);
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+      background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
+      box-shadow:
+        0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
     }
 
     .titlebar-style-head {
@@ -3999,17 +4084,21 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     .text-action-button {
       appearance: none;
-      border: none;
-      background: none;
-      color: var(--desktop-accent);
+      min-height: 24px;
+      padding: 3px 7px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 70%, transparent);
+      border-radius: var(--desktop-radius-pill);
+      background: color-mix(in srgb, var(--desktop-surface-secondary) 70%, transparent);
+      color: var(--desktop-muted);
       font: inherit;
       font-size: 11px;
+      font-weight: 700;
       cursor: pointer;
-      padding: 0;
     }
 
     .text-action-button:hover {
-      text-decoration: underline;
+      border-color: color-mix(in srgb, var(--desktop-accent) 28%, var(--desktop-line));
+      color: var(--desktop-accent);
     }
 
     .text-action-button:disabled {
@@ -4029,29 +4118,43 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       align-items: center;
       gap: 8px;
       padding: 6px 8px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
       border-radius: var(--desktop-radius-sm);
       cursor: pointer;
-      transition: background 150ms ease;
+      transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
     }
 
     .titlebar-style-row:hover {
       background: var(--desktop-surface-secondary);
+      border-color: color-mix(in srgb, var(--desktop-line) 70%, transparent);
+      transform: translateY(-1px);
     }
 
     .titlebar-style-row.selected {
       background: var(--desktop-selection);
+      border-color: color-mix(in srgb, var(--desktop-accent) 30%, var(--desktop-line));
     }
 
     .titlebar-style-preview {
-      display: flex;
-      gap: 2px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 3px;
+      width: 40px;
+      height: 28px;
+      padding: 3px;
+      border-radius: var(--desktop-radius-sm);
+      background: var(--desktop-surface);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--desktop-line) 70%, transparent);
       flex-shrink: 0;
     }
 
     .titlebar-style-preview span {
-      width: 10px;
-      height: 22px;
-      border-radius: 3px;
+      border-radius: 6px;
+    }
+
+    .titlebar-style-preview span:first-child {
+      grid-row: span 2;
     }
 
     .titlebar-style-copy {
@@ -4173,21 +4276,27 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         const deleting = appearanceBusyAction === `theme-delete:${theme.id}`;
         const label = titlebarThemeLabel(theme);
         return `
-          <span class="titlebar-theme-option-wrap${selected ? " active" : ""}" style="--theme-accent:${escapeHtml(swatch)}">
+          <div class="titlebar-theme-row${selected ? " selected" : ""}" style="--theme-accent:${escapeHtml(swatch)}">
             <button
-              class="titlebar-theme-option"
+              class="titlebar-theme-row-button"
               type="button"
               data-titlebar-theme-option="${escapeHtml(theme.id)}"
               title="${escapeHtml(label)}"
               aria-label="${escapeHtml(label)}"
               ${appearanceBusyAction ? "disabled" : ""}
-            ><span class="titlebar-theme-option-swatch" aria-hidden="true"></span></button>
+            >
+              <span class="titlebar-theme-row-swatch" aria-hidden="true"></span>
+              <span class="titlebar-theme-row-copy">
+                <span class="titlebar-theme-row-name">${escapeHtml(label)}</span>
+                <span class="titlebar-theme-row-hex">${escapeHtml(swatch)}</span>
+              </span>
+            </button>
             ${
               custom
                 ? `<button class="titlebar-theme-delete" type="button" data-titlebar-theme-delete="${escapeHtml(theme.id)}" title="${t("themeDelete")}" aria-label="${t("themeDelete")}: ${escapeHtml(label)}" ${deleting ? "disabled" : ""}>${deleting ? actionIcon("refresh", true) : closeIcon()}</button>`
                 : ""
             }
-          </span>
+          </div>
         `;
       })
       .join("");
@@ -4528,7 +4637,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           <header class="service-log-head">
             <span class="service-log-title">
               <span class="eyebrow">${t("serverLogTitle")}</span>
-              <strong>${escapeHtml(viewer.serverName || viewer.serverSlug)}</strong>
+              <h2>${escapeHtml(viewer.serverName || viewer.serverSlug)}</h2>
               <code class="service-log-path" title="${escapeHtml(path)}">${escapeHtml(path)}</code>
             </span>
             <button class="settings-icon-button compact" type="button" data-service-log-close title="${t("close")}" aria-label="${t("close")}">${closeIcon()}</button>
