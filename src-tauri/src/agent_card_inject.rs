@@ -329,25 +329,30 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return true;
     }
 
-    // --- Build injected action button (single Start/Stop, appended to card bottom) ---
+    // --- Build injected action buttons (neobrutalism btn-brutal style) ---
     var SVG_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
     var SVG_START = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 20,12 8,19"/></svg>';
     var SVG_RESTART = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><polyline points="3 22 3 16 9 16"/></svg>';
 
-    function createIconButton(svg, label, color, onClick) {
+    function createBrutalButton(svg, label, onClick) {
       var btn = document.createElement("button");
       btn.style.cssText =
-        "display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; border: none; background: transparent; cursor: pointer; padding: 0; color: " +
-        color + "; transition: background 0.15s;";
-      btn.innerHTML = svg;
-      btn.title = label;
-      btn.setAttribute("aria-label", label);
-      btn.addEventListener("mouseenter", function () { if (!btn.disabled) btn.style.background = "rgba(0,0,0,0.06)"; });
-      btn.addEventListener("mouseleave", function () { btn.style.background = "transparent"; });
+        "display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1.5px solid currentColor; background: transparent; cursor: pointer; font-size: 11px; font-weight: 700; font-family: inherit; color: inherit; transition: box-shadow 0.15s, transform 0.15s;";
+      btn.innerHTML = svg + '<span>' + label + '</span>';
+      btn.addEventListener("mouseenter", function () {
+        if (!btn.disabled) {
+          btn.style.boxShadow = "2px 2px 0 currentColor";
+          btn.style.transform = "translate(-1px, -1px)";
+        }
+      });
+      btn.addEventListener("mouseleave", function () {
+        btn.style.boxShadow = "none";
+        btn.style.transform = "none";
+      });
       btn.addEventListener("click", async function (e) {
         e.stopPropagation();
         btn.disabled = true;
-        btn.style.opacity = "0.3";
+        btn.style.opacity = "0.4";
         btn.style.cursor = "default";
         try {
           await onClick();
@@ -366,15 +371,14 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
       container.style.cssText =
-        "padding: 4px 12px 0; display: flex; justify-content: flex-end; gap: 4px;";
+        "padding: 8px 12px 4px; display: flex; justify-content: flex-end; gap: 6px;";
 
       const isOnline = agent.status !== "offline";
 
       // Start/Stop toggle
-      var toggleBtn = createIconButton(
+      var toggleBtn = createBrutalButton(
         isOnline ? SVG_STOP : SVG_START,
         isOnline ? t("stop") : t("start"),
-        isOnline ? "#dc2626" : "#16a34a",
         function () {
           return invoke(isOnline ? "stop_agent" : "start_agent", {
             serverSlug: serverSlug,
@@ -386,13 +390,11 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
 
       // Restart button (only when online)
       if (isOnline) {
-        var restartBtn = createIconButton(
+        var restartBtn = createBrutalButton(
           SVG_RESTART,
           t("restart"),
-          "#d97706",
           async function () {
             await invoke("stop_agent", { serverSlug: serverSlug, agentId: agent.id });
-            // Brief delay before restart
             await new Promise(function (r) { setTimeout(r, 1000); });
             await invoke("start_agent", { serverSlug: serverSlug, agentId: agent.id });
           }
