@@ -579,6 +579,32 @@ struct MessagesEnvelope {
     has_more: bool,
 }
 
+// --- Unified inbox types ---
+
+/// Server member returned by GET /api/servers/{serverId}/members
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ServerMember {
+    id: String,
+    name: String,
+    #[serde(default, alias = "display_name")]
+    display_name: Option<String>,
+    #[serde(default, alias = "avatar_url")]
+    avatar_url: Option<String>,
+    #[serde(default)]
+    role: Option<String>,
+}
+
+/// Per-server unread count returned by GET /api/servers/unread-summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ServerUnreadEntry {
+    #[serde(alias = "server_id")]
+    server_id: String,
+    #[serde(default, alias = "unread_count")]
+    unread_count: u32,
+}
+
 /// Envelope returned by POST /api/messages
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3042,6 +3068,99 @@ fn fetch_thread_messages(
         messages: envelope.messages,
         has_more: envelope.has_more,
     })
+}
+
+/// Fetch messages for any channel (regular or thread).
+/// Same API endpoint as fetch_thread_messages — provided as a semantic alias
+/// for the unified inbox "channel messages" use case.
+#[tauri::command]
+fn fetch_channel_messages(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    channel_id: String,
+    limit: Option<u32>,
+    before: Option<String>,
+    after: Option<String>,
+) -> Result<InboxMessagesResponse, String> {
+    fetch_thread_messages(app, state, server_slug, channel_id, limit, before, after)
+}
+
+/// Fetch all members of a server.
+/// GET /api/servers/{serverId}/members
+#[tauri::command]
+fn fetch_server_members(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<Vec<ServerMember>, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    load_authenticated_json::<Vec<ServerMember>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers/{server_id}/members"))
+                .bearer_auth(access_token)
+        },
+    )
+}
+
+/// Fetch unread summary across all servers.
+/// GET /api/servers/unread-summary (no X-Server-Id needed)
+#[tauri::command]
+fn fetch_server_unread_summary(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<Vec<ServerUnreadEntry>, String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    load_authenticated_json::<Vec<ServerUnreadEntry>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers/unread-summary"))
+                .bearer_auth(access_token)
+        },
+    )
 }
 
 #[tauri::command]
@@ -8438,6 +8557,9 @@ pub fn run() {
             fetch_dm_channels,
             fetch_unread_channels,
             fetch_thread_messages,
+            fetch_channel_messages,
+            fetch_server_members,
+            fetch_server_unread_summary,
             send_message,
             mark_channel_read
         ])
