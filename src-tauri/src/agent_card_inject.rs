@@ -396,7 +396,11 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       }
 
       // Strategy 2: Use hover-captured agent ID (from pointerover/click on avatar)
-      // Verify the hovered agent's name appears in the card text to prevent cross-card mismatch
+      // Trust the capture if TTL is valid, but reject if card text contains
+      // a DIFFERENT known agent's name (cross-card mismatch protection).
+      // Note: original card may not contain the agent's name at all (e.g. only
+      // action buttons), so we can't require name presence — only reject on
+      // explicit mismatch with another agent.
       if (!agentId) {
         const hoverId = getHoveredAgentId();
         if (hoverId) {
@@ -404,13 +408,21 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
           const hoverAgent = agents.find((a) => a.id === hoverId);
           if (hoverAgent) {
             const cardText = (cardEl.textContent || "").trim();
-            const dn = hoverAgent.displayName || "";
-            const n = hoverAgent.name || "";
-            if ((dn && cardText.indexOf(dn) !== -1) || (n && cardText.indexOf(n) !== -1)) {
+            // Check if card text contains a DIFFERENT agent's name
+            let mismatch = false;
+            for (const other of agents) {
+              if (other.id === hoverId) continue;
+              const odn = other.displayName || "";
+              const on = other.name || "";
+              if ((odn && cardText.indexOf(odn) !== -1) || (on && cardText.indexOf(on) !== -1)) {
+                mismatch = true;
+                console.log("[Slock Desktop] agent card: hover ID rejected (card matches different agent)", hoverId, other.id);
+                break;
+              }
+            }
+            if (!mismatch) {
               agentId = hoverId;
               idSource = "hover-capture";
-            } else {
-              console.log("[Slock Desktop] agent card: hover ID rejected (name mismatch)", hoverId, cardText.substring(0, 60));
             }
           }
         }
@@ -579,8 +591,8 @@ mod tests {
         assert!(script.contains("removeEventListener"));
         // Verify stale hover ID cleared when no agent found
         assert!(script.contains("lastHoveredAgentId = null"));
-        // Verify hover ID verified against card text before use
-        assert!(script.contains("hover ID rejected (name mismatch)"));
+        // Verify hover ID verified against other agent names before use
+        assert!(script.contains("hover ID rejected (card matches different agent)"));
     }
 
     #[test]
