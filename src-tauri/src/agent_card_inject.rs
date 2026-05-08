@@ -287,29 +287,30 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return null;
     }
 
-    // --- Detect agent card (reject dialog/modal/detail page, allow hover popover) ---
+    // --- Detect agent card (only hover popover, reject native page cards) ---
     function isAgentCard(el) {
       if (!el || !el.classList) return false;
-      // Must have card-brutal class
       if (!el.classList.contains("card-brutal")) return false;
+      // Reject: native page cards have layout classes like w-full, max-w-md, p-6
+      if (el.classList.contains("w-full") || el.classList.contains("max-w-md") || el.classList.contains("p-6")) {
+        console.log("[Slock Desktop] agent card: card-brutal skipped: native page layout class", el.className);
+        return false;
+      }
       // Walk ancestors: reject if inside a dialog, modal, or Radix dialog content
       var parent = el.parentElement;
       var depth = 0;
       var ancestors = [];
       while (parent && depth < 30) {
-        // Collect ancestor info for diagnostics
         var tag = parent.tagName || "";
         var cls = (parent.className && typeof parent.className === "string") ? parent.className.substring(0, 60) : "";
         var role = (parent.getAttribute && parent.getAttribute("role")) || "";
         ancestors.push(tag + (cls ? "." + cls.split(" ")[0] : "") + (role ? "[role=" + role + "]" : ""));
 
         if (parent.getAttribute) {
-          // Reject: inside a dialog/modal
           if (parent.getAttribute("role") === "dialog" || parent.getAttribute("aria-modal") === "true") {
             console.log("[Slock Desktop] agent card: card-brutal skipped: inside dialog/modal at depth", depth);
             return false;
           }
-          // Reject: inside a Radix dialog content
           if (parent.hasAttribute("data-radix-dialog-content")) {
             console.log("[Slock Desktop] agent card: card-brutal skipped: inside radix dialog at depth", depth);
             return false;
@@ -318,7 +319,6 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         parent = parent.parentElement;
         depth++;
       }
-      // Log ancestor chain for diagnostics
       console.log("[Slock Desktop] agent card: accepted card-brutal, ancestors:", ancestors.slice(0, 10).join(" > "));
       return true;
     }
@@ -442,37 +442,50 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return ts;
     }
 
-    function buildActivityFooter(activity) {
+    // --- Activity cache (keyed by agent ID) ---
+    var activityCache = {};
+    var ACTIVITY_CACHE_TTL = 30000;
+
+    function buildActivitySkeleton() {
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
+      container.setAttribute("data-activity-placeholder", "true");
       container.style.cssText =
         "padding: 8px 12px; border-top: 1px solid rgba(0,0,0,0.06); margin-top: 6px;";
 
-      // Log first entry structure for diagnostics
+      const actTitle = document.createElement("p");
+      actTitle.style.cssText =
+        "margin: 0 0 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af;";
+      actTitle.textContent = t("activity");
+      container.appendChild(actTitle);
+
+      const loading = document.createElement("p");
+      loading.style.cssText = "margin: 0; font-size: 11px; color: #9ca3af;";
+      loading.textContent = "...";
+      container.appendChild(loading);
+
+      return container;
+    }
+
+    function fillActivityContent(container, activity) {
+      // Remove loading placeholder (keep title)
+      while (container.children.length > 1) {
+        container.removeChild(container.lastChild);
+      }
+
       if (activity && activity.length > 0) {
         try {
           console.log("[Slock Desktop] agent card: activity entry[0] keys =", Object.keys(activity[0]).join(","), "values =", JSON.stringify(activity[0]).substring(0, 200));
         } catch (_) {}
-      }
-
-      if (activity && activity.length > 0) {
-        const actTitle = document.createElement("p");
-        actTitle.style.cssText =
-          "margin: 0 0 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af;";
-        actTitle.textContent = t("activity");
-        container.appendChild(actTitle);
 
         const list = document.createElement("ul");
-        list.style.cssText =
-          "margin: 0; padding: 0; list-style: none;";
+        list.style.cssText = "margin: 0; padding: 0; list-style: none;";
 
         const maxItems = Math.min(activity.length, 5);
         for (let i = 0; i < maxItems; i++) {
           const entry = activity[i];
           const entryText = getEntryText(entry);
           const entryTime = getEntryTime(entry);
-
-          // Skip entries with no displayable text
           if (!entryText) continue;
 
           const li = document.createElement("li");
@@ -493,11 +506,9 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
           list.appendChild(li);
         }
 
-        // If all entries had empty text, show no-activity message
         if (list.children.length === 0) {
           const noAct = document.createElement("p");
-          noAct.style.cssText =
-            "margin: 0; font-size: 11px; color: #9ca3af;";
+          noAct.style.cssText = "margin: 0; font-size: 11px; color: #9ca3af;";
           noAct.textContent = t("noActivity");
           container.appendChild(noAct);
         } else {
@@ -505,22 +516,20 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         }
       } else {
         const noAct = document.createElement("p");
-        noAct.style.cssText =
-          "margin: 0; font-size: 11px; color: #9ca3af;";
+        noAct.style.cssText = "margin: 0; font-size: 11px; color: #9ca3af;";
         noAct.textContent = t("noActivity");
         container.appendChild(noAct);
       }
-
-      return container;
+      container.removeAttribute("data-activity-placeholder");
     }
 
-    // --- Injection logic ---
+    // --- Injection logic (two-phase: sync buttons + async activity) ---
     async function injectAgentCard(cardEl) {
       if (cardEl.hasAttribute(INJECT_ATTR)) return;
       cardEl.setAttribute(INJECT_ATTR, "pending");
       console.log("[Slock Desktop] agent card: injection started", cardEl.className);
 
-      // Strategy 1: Get agent ID from React fiber (card + siblings + parent)
+      // --- Phase 1: Determine agent ID (prefer sync strategies) ---
       let agentId = getAgentIdFromFiber(cardEl);
       let idSource = "fiber-card";
 
@@ -537,40 +546,38 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         if (agentId) idSource = "fiber-parent";
       }
 
-      // Strategy 2: Use hover-captured agent ID (from pointerover/click on avatar)
-      // Trust the capture if TTL is valid, but reject if card text contains
-      // a DIFFERENT known agent's name (cross-card mismatch protection).
-      // Note: original card may not contain the agent's name at all (e.g. only
-      // action buttons), so we can't require name presence — only reject on
-      // explicit mismatch with another agent.
+      // Strategy 2: Hover-captured agent ID (sync check with cached agents)
       if (!agentId) {
         const hoverId = getHoveredAgentId();
         if (hoverId) {
-          const agents = await getAgents();
-          const hoverAgent = agents.find((a) => a.id === hoverId);
-          if (hoverAgent) {
+          const agents = cachedAgents.length ? cachedAgents : [];
+          let mismatch = false;
+          if (agents.length) {
             const cardText = (cardEl.textContent || "").trim();
-            // Check if card text contains a DIFFERENT agent's name
-            let mismatch = false;
             for (const other of agents) {
               if (other.id === hoverId) continue;
               const odn = other.displayName || "";
               const on = other.name || "";
               if ((odn && cardText.indexOf(odn) !== -1) || (on && cardText.indexOf(on) !== -1)) {
                 mismatch = true;
-                console.log("[Slock Desktop] agent card: hover ID rejected (card matches different agent)", hoverId, other.id);
                 break;
               }
             }
-            if (!mismatch) {
-              agentId = hoverId;
-              idSource = "hover-capture";
-            }
+          }
+          if (!mismatch) {
+            agentId = hoverId;
+            idSource = "hover-capture";
           }
         }
       }
 
-      // Strategy 3: Name-based fallback — match card text against known agents
+      // Strategy 3: Name-match with cached agents (sync if cache warm)
+      if (!agentId && cachedAgents.length) {
+        agentId = getAgentIdByName(cardEl, cachedAgents);
+        if (agentId) idSource = "name-match-cached";
+      }
+
+      // Strategy 4: Async fallback — fetch agents then name-match
       if (!agentId) {
         const agents = await getAgents();
         agentId = getAgentIdByName(cardEl, agents);
@@ -578,53 +585,71 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       }
 
       if (!agentId) {
-        console.warn("[Slock Desktop] agent card: could not determine agent ID (all strategies failed)");
-        // Log card info for debugging
-        try {
-          console.log("[Slock Desktop] agent card debug: textContent =", (cardEl.textContent || "").substring(0, 100));
-          console.log("[Slock Desktop] agent card debug: innerHTML length =", (cardEl.innerHTML || "").length);
-          console.log("[Slock Desktop] agent card debug: children =", cardEl.children.length);
-        } catch (_) {}
+        console.warn("[Slock Desktop] agent card: could not determine agent ID");
         cardEl.removeAttribute(INJECT_ATTR);
         return;
       }
       console.log("[Slock Desktop] agent card: found agent ID", agentId, "via", idSource);
 
-      // Fetch agent info first (populates cached_servers), then activity
-      const agents = await getAgents();
-      console.log("[Slock Desktop] agent card: fetched", agents.length, "agents");
-      const activity = await getAgentActivity(agentId);
-
-      // Check card is still in DOM
       if (!document.body.contains(cardEl)) {
-        console.log("[Slock Desktop] agent card: card removed from DOM during fetch");
+        console.log("[Slock Desktop] agent card: card removed before injection");
         return;
       }
 
+      // --- Phase 2: Immediate sync injection (buttons + skeleton) ---
+      let agents = cachedAgents.length ? cachedAgents : await getAgents();
       const agent = agents.find((a) => a.id === agentId);
       if (!agent) {
-        console.warn("[Slock Desktop] agent card: agent not found in dashboard data", agentId);
+        console.warn("[Slock Desktop] agent card: agent not found", agentId);
         cardEl.removeAttribute(INJECT_ATTR);
+        return;
+      }
+
+      if (!document.body.contains(cardEl)) {
+        console.log("[Slock Desktop] agent card: card removed before injection");
         return;
       }
 
       console.log("[Slock Desktop] agent card: injecting content for", agent.name);
       const serverSlug = getCurrentServerSlug();
 
-      // Append action button (inline, no absolute positioning)
-      const buttons = buildActionButtons(agent, serverSlug);
-      cardEl.appendChild(buttons);
-
-      // Append activity footer at bottom of card
-      const footer = buildActivityFooter(activity);
-      cardEl.appendChild(footer);
-
-      cardEl.setAttribute(INJECT_ATTR, "done");
-
-      // Widen card to fit content
+      // Widen card immediately
       cardEl.style.width = "auto";
       cardEl.style.minWidth = "220px";
       cardEl.style.maxWidth = "320px";
+
+      // Inject buttons immediately (sync)
+      const buttons = buildActionButtons(agent, serverSlug);
+      cardEl.appendChild(buttons);
+
+      // Check activity cache first
+      var cached = activityCache[agentId];
+      if (cached && (Date.now() - cached.fetchedAt) < ACTIVITY_CACHE_TTL) {
+        const footer = buildActivitySkeleton();
+        cardEl.appendChild(footer);
+        fillActivityContent(footer, cached.data);
+        cardEl.setAttribute(INJECT_ATTR, "done");
+        return;
+      }
+
+      // Inject activity skeleton immediately, fill async
+      const activityFooter = buildActivitySkeleton();
+      cardEl.appendChild(activityFooter);
+      cardEl.setAttribute(INJECT_ATTR, "done");
+
+      // --- Phase 3: Async activity fetch ---
+      try {
+        const activity = await getAgentActivity(agentId);
+        activityCache[agentId] = { data: activity, fetchedAt: Date.now() };
+        if (document.body.contains(cardEl) && document.body.contains(activityFooter)) {
+          fillActivityContent(activityFooter, activity);
+        }
+      } catch (e) {
+        console.warn("[Slock Desktop] agent card: activity fetch failed", e);
+        if (document.body.contains(activityFooter)) {
+          fillActivityContent(activityFooter, []);
+        }
+      }
     }
 
     // --- MutationObserver ---
@@ -785,18 +810,30 @@ mod tests {
     }
 
     #[test]
-    fn script_has_activity_footer() {
+    fn script_has_activity_two_phase() {
         let script = agent_card_inject_script("test", "en-US");
-        assert!(script.contains("buildActivityFooter"));
-        assert!(script.contains("appendChild(footer)"));
+        // Phase 2: skeleton injected synchronously
+        assert!(script.contains("buildActivitySkeleton"));
+        assert!(script.contains("data-activity-placeholder"));
+        // Phase 3: async fill replaces skeleton content
+        assert!(script.contains("fillActivityContent"));
+        // Activity cache (30s TTL)
+        assert!(script.contains("activityCache"));
+        assert!(script.contains("ACTIVITY_CACHE_TTL"));
         // Fallback chain for field names
         assert!(script.contains("getEntryText"));
         assert!(script.contains("getEntryTime"));
+        // unwrapEntry for nested API response
+        assert!(script.contains("unwrapEntry"));
     }
 
     #[test]
     fn script_limits_injection_to_popover() {
         let script = agent_card_inject_script("test", "en-US");
+        // Must reject native page layout classes
+        assert!(script.contains("w-full"));
+        assert!(script.contains("max-w-md"));
+        assert!(script.contains("p-6"));
         // Must reject dialogs/modals
         assert!(script.contains("role"));
         assert!(script.contains("aria-modal"));
