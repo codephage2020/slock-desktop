@@ -15,7 +15,6 @@ import './Settings.css'
 import {
   activateAccount,
   type BootstrapPayload,
-  type CustomThemeSnapshot,
   type DesktopUpdateCheck,
   type InboxMessage,
   type ServiceAccountSnapshot,
@@ -45,7 +44,6 @@ import {
   openWorkspace,
   refreshServiceServerCatalog,
   refreshServiceServerStatus,
-  renameCustomTheme,
   selectServiceServer,
   sendMessage,
   startService,
@@ -232,7 +230,6 @@ const COPY = {
     themeOriginalName: 'Original',
     themeOriginalSummary: 'Slock’s native appearance.',
     themeDefaultColorName: 'Default accent',
-    themeDefaultColorSummary: 'Slock green.',
     themeStyleOriginalName: 'Original style',
     themeStyleOriginalSummary: 'Current web UI without desktop overrides.',
     themeStyleDefaultName: 'Default style',
@@ -241,14 +238,11 @@ const COPY = {
     themeExportStyle: 'Export style',
     themeImportInvalid: 'Invalid style file.',
     themeNewLabel: 'New theme',
-    themeRename: 'Rename',
     themeDelete: 'Delete',
-    themeBuiltIn: 'Built-in',
     themeEmptyHint: 'No custom themes yet — tap + to create one.',
-    themeRenameSave: 'Save',
-    themeRenameCancel: 'Cancel',
     themeNewTitle: 'Create theme',
     themeCreate: 'Create',
+    themeCancel: 'Cancel',
     creatingTheme: 'Creating…',
     deletingTheme: 'Deleting…',
     appBootingTitle: 'slock-desktop',
@@ -406,7 +400,6 @@ const COPY = {
     themeOriginalName: '原主题',
     themeOriginalSummary: '保持 Slock 原生外观。',
     themeDefaultColorName: '默认主题色',
-    themeDefaultColorSummary: 'Slock 绿色。',
     themeStyleOriginalName: '原样式',
     themeStyleOriginalSummary: '保留当前 Web UI 原始样式。',
     themeStyleDefaultName: '默认样式',
@@ -415,14 +408,11 @@ const COPY = {
     themeExportStyle: '导出样式',
     themeImportInvalid: '样式文件无效。',
     themeNewLabel: '新建主题',
-    themeRename: '重命名',
     themeDelete: '删除',
-    themeBuiltIn: '内置',
     themeEmptyHint: '还没有自定义主题，点击 + 新建。',
-    themeRenameSave: '保存',
-    themeRenameCancel: '取消',
     themeNewTitle: '新建主题',
     themeCreate: '创建',
+    themeCancel: '取消',
     creatingTheme: '创建中…',
     deletingTheme: '删除中…',
     appBootingTitle: 'slock-desktop',
@@ -535,8 +525,6 @@ function App() {
   const [workspaceLaunchTarget, setWorkspaceLaunchTarget] = useState<string | null>(null)
   const [browserLoginPending, setBrowserLoginPending] = useState(false)
   const [serviceRefreshPhase, setServiceRefreshPhase] = useState<ServiceRefreshPhase>(null)
-  const [renamingThemeId, setRenamingThemeId] = useState<string | null>(null)
-  const [renameDraft, setRenameDraft] = useState('')
   const [newThemeDraft, setNewThemeDraft] = useState<NewThemeDraft | null>(null)
   const [newThemeWheelOpen, setNewThemeWheelOpen] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
@@ -550,7 +538,6 @@ function App() {
   const stylePanelRef = useRef<HTMLDivElement | null>(null)
   const releaseNotesRef = useRef<HTMLDivElement | null>(null)
   const themeDraftRef = useRef<HTMLDivElement | null>(null)
-  const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
   const styleImportInputRef = useRef<HTMLInputElement | null>(null)
   const serviceLogSearchRef = useRef<HTMLInputElement | null>(null)
@@ -893,13 +880,6 @@ function App() {
       cancelled = true
     }
   }, [serviceAuthenticated])
-
-  useEffect(() => {
-    if (renamingThemeId && renameInputRef.current) {
-      renameInputRef.current.focus()
-      renameInputRef.current.select()
-    }
-  }, [renamingThemeId])
 
   useEffect(() => {
     if (newThemeDraft && newNameInputRef.current) {
@@ -1442,9 +1422,6 @@ function App() {
   }, [snapshotReady, serviceAuthenticated, initialServiceRefreshDone, latestUpdate])
 
   async function handleThemeChange(themeId: string) {
-    if (renamingThemeId === themeId) {
-      return
-    }
     try {
       setBusyAction(`theme:${themeId}`)
       setErrorMessage(null)
@@ -1611,38 +1588,6 @@ function App() {
     }
   }
 
-  function startRename(theme: CustomThemeSnapshot) {
-    setRenamingThemeId(theme.id)
-    setRenameDraft(theme.name)
-  }
-
-  function cancelRename() {
-    setRenamingThemeId(null)
-    setRenameDraft('')
-  }
-
-  async function commitRename() {
-    if (!renamingThemeId) {
-      return
-    }
-    const name = renameDraft.trim()
-    if (!name) {
-      cancelRename()
-      return
-    }
-    try {
-      setBusyAction(`rename:${renamingThemeId}`)
-      setErrorMessage(null)
-      const next = await renameCustomTheme({ id: renamingThemeId, name })
-      startTransition(() => setSnapshot(next))
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error))
-    } finally {
-      setBusyAction(null)
-      cancelRename()
-    }
-  }
-
   async function handleAccentChange(themeId: string, accent: string) {
     try {
       setBusyAction(`accent:${themeId}`)
@@ -1662,9 +1607,6 @@ function App() {
       setErrorMessage(null)
       const next = await deleteCustomTheme({ id: themeId })
       startTransition(() => setSnapshot(next))
-      if (renamingThemeId === themeId) {
-        cancelRename()
-      }
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
     } finally {
@@ -2474,7 +2416,7 @@ function App() {
             <span className="titlebar-theme-swatch" aria-hidden="true" />
           </button>
           {themePanelOpen ? (
-            <div className="titlebar-theme-panel" aria-label={copy.themeColor}>
+            <div className="titlebar-theme-menu" aria-label={copy.themeColor}>
               <div className="control-card-head">
                 <p className="eyebrow">{copy.themeColor}</p>
                 <button
@@ -2489,48 +2431,37 @@ function App() {
                 </button>
               </div>
 
-              <ul className="theme-rail" role="radiogroup" aria-label={copy.themeColor}>
+              <div className="theme-menu-list" role="radiogroup" aria-label={copy.themeColor}>
                 {snapshot.themes.map((theme) => {
                   const customTheme = snapshot.customThemes.find((item) => item.id === theme.id)
                   const selected = theme.id === snapshot.colorScheme
-                  const isRenaming = theme.id === renamingThemeId
                   const builtIn = !customTheme
                   const swatch = customTheme?.accent ?? DEFAULT_NEW_THEME_ACCENT
                   return (
-                    <li key={theme.id}>
-                      <ThemeRow
-                        themeId={theme.id}
-                        swatch={swatch}
-                        name={builtIn ? copy.themeDefaultColorName : (customTheme?.name ?? theme.name)}
-                        summary={builtIn ? copy.themeDefaultColorSummary : swatch.toUpperCase()}
-                        selected={selected}
-                        busy={busyAction === `theme:${theme.id}`}
-                        locked={builtIn}
-                        lockedLabel={copy.themeBuiltIn}
-                        renaming={isRenaming}
-                        renameDraft={renameDraft}
-                        onRenameDraftChange={setRenameDraft}
-                        renameInputRef={renameInputRef}
-                        onCommitRename={() => void commitRename()}
-                        onCancelRename={cancelRename}
-                        onSelect={() => handleThemeChange(theme.id)}
-                        onStartRename={customTheme ? () => startRename(customTheme) : undefined}
-                        onAccentChange={customTheme ? (value) => void handleAccentChange(theme.id, value) : undefined}
-                        onDelete={customTheme ? () => void handleDeleteTheme(theme.id) : undefined}
-                        deleting={busyAction === `delete:${theme.id}`}
-                        renameLabel={copy.themeRename}
-                        deleteLabel={copy.themeDelete}
-                        accentLabel={copy.customThemeAccentAria}
-                      />
-                    </li>
+                    <ThemeRow
+                      key={theme.id}
+                      themeId={theme.id}
+                      swatch={swatch}
+                      name={builtIn ? copy.themeDefaultColorName : (customTheme?.name ?? theme.name)}
+                      summary={swatch.toUpperCase()}
+                      selected={selected}
+                      busy={busyAction === `theme:${theme.id}`}
+                      locked={builtIn}
+                      onSelect={() => handleThemeChange(theme.id)}
+                      onAccentChange={customTheme ? (value) => void handleAccentChange(theme.id, value) : undefined}
+                      onDelete={customTheme ? () => void handleDeleteTheme(theme.id) : undefined}
+                      deleting={busyAction === `delete:${theme.id}`}
+                      deleteLabel={copy.themeDelete}
+                      accentLabel={copy.customThemeAccentAria}
+                    />
                   )
                 })}
                 {snapshot.customThemes.length === 0 && !newThemeDraft ? (
-                  <li className="theme-empty-row">
+                  <div className="theme-empty-row">
                     <p className="inline-note">{copy.themeEmptyHint}</p>
-                  </li>
+                  </div>
                 ) : null}
-              </ul>
+              </div>
 
             {newThemeDraft ? (
               <div
@@ -2636,7 +2567,7 @@ function App() {
                 </div>
                 <div className="theme-draft-actions">
                   <button
-                    className="theme-button accent-save-button"
+                    className="tiny-button accent"
                     type="button"
                     onClick={handleCreateTheme}
                     disabled={busyAction === 'create-theme'}
@@ -2644,11 +2575,11 @@ function App() {
                     {busyAction === 'create-theme' ? copy.creatingTheme : copy.themeCreate}
                   </button>
                   <button
-                    className="theme-button muted-button"
+                    className="tiny-button muted"
                     type="button"
                     onClick={cancelNewTheme}
                   >
-                    {copy.themeRenameCancel}
+                    {copy.themeCancel}
                   </button>
                 </div>
               </div>
@@ -3236,19 +3167,10 @@ interface ThemeRowProps {
   selected: boolean
   busy: boolean
   locked?: boolean
-  lockedLabel?: string
-  renaming?: boolean
-  renameDraft?: string
-  onRenameDraftChange?: (value: string) => void
-  renameInputRef?: React.RefObject<HTMLInputElement | null>
-  onCommitRename?: () => void
-  onCancelRename?: () => void
   onSelect: () => void
-  onStartRename?: () => void
   onAccentChange?: (value: string) => void
   onDelete?: () => void
   deleting?: boolean
-  renameLabel?: string
   deleteLabel?: string
   accentLabel?: string
 }
@@ -3283,21 +3205,11 @@ function ThemeRow(props: ThemeRowProps) {
     name,
     summary,
     selected,
-    busy,
     locked,
-    lockedLabel,
-    renaming,
-    renameDraft,
-    onRenameDraftChange,
-    renameInputRef,
-    onCommitRename,
-    onCancelRename,
     onSelect,
-    onStartRename,
     onAccentChange,
     onDelete,
     deleting,
-    renameLabel,
     deleteLabel,
     accentLabel,
   } = props
@@ -3309,15 +3221,12 @@ function ThemeRow(props: ThemeRowProps) {
       aria-checked={selected}
       tabIndex={0}
       onKeyDown={(event) => {
-        if ((event.key === 'Enter' || event.key === ' ') && !renaming) {
+        if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           onSelect()
         }
       }}
       onClick={(event) => {
-        if (renaming) {
-          return
-        }
         const target = event.target as HTMLElement
         if (target.closest('button, input, label')) {
           return
@@ -3348,44 +3257,12 @@ function ThemeRow(props: ThemeRowProps) {
       )}
 
       <div className="theme-row-copy">
-        {renaming ? (
-          <input
-            ref={renameInputRef}
-            className="theme-name-input"
-            value={renameDraft ?? ''}
-            onChange={(event) => onRenameDraftChange?.(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                onCommitRename?.()
-              } else if (event.key === 'Escape') {
-                event.preventDefault()
-                onCancelRename?.()
-              }
-            }}
-            onBlur={() => onCommitRename?.()}
-            aria-label={renameLabel}
-          />
-        ) : (
-          <>
-            <span className="theme-row-name">{name}</span>
-            <span className="theme-row-summary">{locked ? lockedLabel : summary}</span>
-          </>
-        )}
+        <span className="theme-row-name">{name}</span>
+        <span className="theme-row-summary">{summary}</span>
       </div>
 
       {!locked ? (
         <div className="theme-row-actions">
-          <button
-            className="icon-action-button compact"
-            type="button"
-            onClick={onStartRename}
-            disabled={busy || renaming}
-            aria-label={renameLabel}
-            title={renameLabel}
-          >
-            <PencilIcon />
-          </button>
           <button
             className="icon-action-button danger compact"
             type="button"
@@ -3872,24 +3749,6 @@ function PlusIcon() {
     >
       <path d="M12 5v14" />
       <path d="M5 12h14" />
-    </svg>
-  )
-}
-
-function PencilIcon() {
-  return (
-    <svg
-      className="service-action-icon"
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
   )
 }
