@@ -820,17 +820,24 @@ body:has(.loading-shell),
 }
 
 .titlebar-version {
-  font-size: 0.7rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   flex: 0 0 auto;
   appearance: none;
   font: inherit;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, transform 0.12s;
 }
 
 .titlebar-version:hover {
   border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-strong));
+  transform: translateY(-1px);
+}
+
+.titlebar-version:active {
+  transform: scale(0.97);
 }
 
 .titlebar-update-button {
@@ -839,17 +846,22 @@ body:has(.loading-shell),
   gap: 4px;
   padding: 2px 8px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-xs, 8px);
   background: var(--accent);
   color: white;
   font-size: 0.68rem;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, transform 0.12s;
 }
 
 .titlebar-update-button:hover {
   opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.titlebar-update-button:active {
+  transform: scale(0.97);
 }
 
 .titlebar-update-button:disabled {
@@ -869,7 +881,7 @@ body:has(.loading-shell),
   gap: 8px;
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
-  border-radius: 12px;
+  border-radius: var(--radius-md, 12px);
   background: color-mix(in srgb, var(--surface) 98%, var(--canvas));
   color: var(--text);
   box-shadow:
@@ -891,7 +903,7 @@ body:has(.loading-shell),
 }
 
 .release-notes-title strong {
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 700;
 }
 
