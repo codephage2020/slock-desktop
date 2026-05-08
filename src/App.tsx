@@ -3100,7 +3100,7 @@ function App() {
                     disabled={!serviceLogViewer.snapshot || serviceLogViewer.loading}
                   />
                 </label>
-                <span className="status-chip service-log-count">
+                <span className="service-chip service-log-count">
                   {serviceLogStatusLabel}
                 </span>
                 <div className="service-log-actions">
