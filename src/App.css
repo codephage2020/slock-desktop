@@ -131,21 +131,17 @@ body:has(.loading-shell),
   color: var(--muted);
 }
 
-.inbox-tabs {
+.inbox-filter-bar {
   display: flex;
-  gap: 2px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--line) 30%, transparent);
-  padding: 2px;
+  gap: 4px;
 }
 
-.inbox-tab {
-  flex: 1;
+.inbox-filter-chip {
   appearance: none;
-  border: none;
+  border: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
   background: transparent;
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: 999px;
+  padding: 4px 10px;
   font: inherit;
   font-size: 0.72rem;
   font-weight: 600;
@@ -153,18 +149,22 @@ body:has(.loading-shell),
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 4px;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.inbox-tab.active {
-  background: var(--surface);
+.inbox-filter-chip:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--line));
+}
+
+.inbox-filter-chip.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   color: var(--text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
 }
 
-.inbox-tab-badge {
+.inbox-filter-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -222,8 +222,8 @@ body:has(.loading-shell),
   font-weight: 700;
 }
 
-/* Unread message item in the unread tab */
-.inbox-unread-msg {
+/* Feed item in the unified list */
+.inbox-feed-item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -240,17 +240,21 @@ body:has(.loading-shell),
   transition: background 0.12s;
 }
 
-.inbox-unread-msg:hover {
+.inbox-feed-item:hover {
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
-.inbox-unread-msg .inbox-msg-avatar {
+.inbox-feed-item.selected {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.inbox-feed-item .inbox-msg-avatar {
   width: 32px;
   height: 32px;
   font-size: 0.72rem;
 }
 
-.inbox-unread-msg .inbox-item-title {
+.inbox-feed-item .inbox-item-title {
   font-weight: 700;
 }
 
@@ -347,11 +351,140 @@ body:has(.loading-shell),
   flex-direction: column;
 }
 
-.inbox-empty-state {
+/* Quick Send — Spotlight-style compose */
+
+.inbox-quick-send {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
+  padding: 24px;
+}
+
+.inbox-quick-send-inner {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inbox-quick-send-inner .eyebrow {
+  margin: 0;
+}
+
+.inbox-target-selector {
+  position: relative;
+}
+
+.inbox-target-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: var(--radius-xs, 8px);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.78rem;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.inbox-target-button:hover {
+  border-color: var(--accent);
+}
+
+.inbox-target-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: var(--radius-xs, 8px);
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--text) 10%, transparent),
+    0 24px 48px -24px color-mix(in srgb, var(--text) 20%, transparent);
+  z-index: 10;
+}
+
+.inbox-target-group-name {
+  padding: 6px 10px 2px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.inbox-target-option {
+  display: block;
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.inbox-target-option:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.inbox-quick-send-input {
+  width: 100%;
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: var(--radius-xs, 8px);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.78rem;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+  transition: border-color 0.15s;
+}
+
+.inbox-quick-send-input:focus {
+  border-color: var(--accent);
+}
+
+.inbox-quick-send-input::placeholder {
+  color: var(--muted);
+}
+
+/* Back button in message header */
+
+.inbox-back-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-xs, 8px);
+  transition: color 0.12s, background 0.12s;
+}
+
+.inbox-back-button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--line) 30%, transparent);
 }
 
 /* Server directory tree (All tab) */

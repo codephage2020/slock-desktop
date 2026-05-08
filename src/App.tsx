@@ -279,6 +279,8 @@ const COPY = {
     inbox: 'Inbox',
     inboxUnread: 'Unread',
     inboxAll: 'All',
+    inboxMentions: 'Mentions',
+    inboxDMs: 'DMs',
     inboxSearch: 'Search…',
     inboxEmpty: 'No messages yet',
     inboxNoUnread: 'All caught up!',
@@ -290,6 +292,10 @@ const COPY = {
     inboxConversation: 'Conversation',
     inboxUnreadLabel: 'unread',
     inboxUnknownSender: 'Unknown',
+    inboxQuickSend: 'Quick Send',
+    inboxSelectTarget: 'Select a channel…',
+    inboxComposePlaceholder: 'Write a message…',
+    inboxBack: 'Back',
   },
   'zh-CN': {
     workspaceActive: '工作区已打开',
@@ -449,6 +455,8 @@ const COPY = {
     inbox: '收件箱',
     inboxUnread: '未读',
     inboxAll: '全部',
+    inboxMentions: '提及',
+    inboxDMs: '私信',
     inboxSearch: '搜索…',
     inboxEmpty: '暂无消息',
     inboxNoUnread: '全部已读！',
@@ -460,6 +468,10 @@ const COPY = {
     inboxConversation: '会话',
     inboxUnreadLabel: '条未读',
     inboxUnknownSender: '未知',
+    inboxQuickSend: '快速发送',
+    inboxSelectTarget: '选择频道…',
+    inboxComposePlaceholder: '输入消息内容…',
+    inboxBack: '返回',
   },
 } as const
 
@@ -571,7 +583,7 @@ function App() {
   const [unreadMessagesFeed, setUnreadMessagesFeed] = useState<UnreadMessageItem[]>([])
   const [memberMap, setMemberMap] = useState<Map<string, ServerMember>>(new Map())
   const [inboxLoading, setInboxLoading] = useState(false)
-  const [inboxTab, setInboxTab] = useState<'unread' | 'all'>('unread')
+  const [inboxFilter, setInboxFilter] = useState<'all' | 'mentions' | 'dms'>('all')
   const [inboxSearch, setInboxSearch] = useState('')
   const [selectedChannel, setSelectedChannel] = useState<{ serverSlug: string; channelId: string; itemType?: 'channel' | 'thread' | 'dm' } | null>(null)
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([])
@@ -579,7 +591,11 @@ function App() {
   const [inboxReplyText, setInboxReplyText] = useState('')
   const [inboxSending, setInboxSending] = useState(false)
   const inboxMessagesEndRef = useRef<HTMLDivElement | null>(null)
-  const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
+  // Quick send state
+  const [quickSendTarget, setQuickSendTarget] = useState<{ serverSlug: string; channelId: string; label: string } | null>(null)
+  const [quickSendText, setQuickSendText] = useState('')
+  const [quickSendSending, setQuickSendSending] = useState(false)
+  const [quickSendTargetOpen, setQuickSendTargetOpen] = useState(false)
 
   const [messageReminders, setMessageReminders] = useState<MessageReminderToast[]>([])
   const messageRemindersRef = useRef<MessageReminderToast[]>([])
@@ -1310,8 +1326,6 @@ function App() {
           setServerChannelGroups(groups)
           setMemberMap(newMemberMap)
           setUnreadMessagesFeed(allUnreadMsgs)
-          // Auto-expand all servers
-          setExpandedServers(new Set(groups.map((g) => g.serverSlug)))
         }
       } finally {
         if (!cancelled) {
@@ -1969,6 +1983,19 @@ function App() {
       console.error('Failed to send message', err)
     } finally {
       setInboxSending(false)
+    }
+  }
+
+  async function handleQuickSend() {
+    if (!quickSendTarget || !quickSendText.trim() || quickSendSending) return
+    setQuickSendSending(true)
+    try {
+      await sendMessage(quickSendTarget.serverSlug, quickSendTarget.channelId, quickSendText.trim())
+      setQuickSendText('')
+    } catch (err) {
+      console.error('Failed to send quick message', err)
+    } finally {
+      setQuickSendSending(false)
     }
   }
 
@@ -2700,7 +2727,7 @@ function App() {
         ) : null}
 
         <div className="inbox-layout">
-          {/* Inbox Sidebar */}
+          {/* Left — Unified Feed */}
           <aside className="inbox-sidebar" aria-label={copy.inbox}>
             <div className="inbox-sidebar-header">
               <input
@@ -2710,28 +2737,31 @@ function App() {
                 value={inboxSearch}
                 onChange={(e) => setInboxSearch(e.target.value)}
               />
-              <div className="inbox-tabs" role="tablist">
-                <button
-                  type="button"
-                  role="tab"
-                  className={`inbox-tab${inboxTab === 'unread' ? ' active' : ''}`}
-                  aria-selected={inboxTab === 'unread'}
-                  onClick={() => setInboxTab('unread')}
-                >
-                  {copy.inboxUnread}
-                  {unreadMessagesFeed.length > 0 ? (
-                    <span className="inbox-tab-badge">{unreadMessagesFeed.length}</span>
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  className={`inbox-tab${inboxTab === 'all' ? ' active' : ''}`}
-                  aria-selected={inboxTab === 'all'}
-                  onClick={() => setInboxTab('all')}
-                >
-                  {copy.inboxAll}
-                </button>
+              <div className="inbox-filter-bar" role="tablist">
+                {(['all', 'mentions', 'dms'] as const).map((filter) => {
+                  const label = filter === 'all' ? copy.inboxAll : filter === 'mentions' ? copy.inboxMentions : copy.inboxDMs
+                  const count = filter === 'all'
+                    ? unreadMessagesFeed.length
+                    : filter === 'dms'
+                      ? unreadMessagesFeed.filter((m) => {
+                          const item = unifiedItems.find((i) => i.serverSlug === m.serverSlug && i.channelId === m.channelId)
+                          return item?.type === 'dm'
+                        }).length
+                      : 0
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      role="tab"
+                      className={`inbox-filter-chip${inboxFilter === filter ? ' active' : ''}`}
+                      aria-selected={inboxFilter === filter}
+                      onClick={() => setInboxFilter(filter)}
+                    >
+                      {label}
+                      {count > 0 ? <span className="inbox-filter-badge">{count}</span> : null}
+                    </button>
+                  )
+                })}
               </div>
             </div>
             <div className="inbox-list" role="listbox">
@@ -2742,128 +2772,86 @@ function App() {
 
                 const normalizedSearch = inboxSearch.trim().toLowerCase()
 
-                if (inboxTab === 'unread') {
-                  // Unread tab: individual messages from all servers, sorted by time
-                  const filtered = normalizedSearch
-                    ? unreadMessagesFeed.filter((msg) => {
-                        const senderName = (msg.senderDisplayName ?? msg.senderName ?? '').toLowerCase()
-                        const content = msg.content.toLowerCase()
-                        const channel = msg.channelName.toLowerCase()
-                        return senderName.includes(normalizedSearch) || content.includes(normalizedSearch) || channel.includes(normalizedSearch)
-                      })
-                    : unreadMessagesFeed
-                  if (filtered.length === 0) {
-                    return (
-                      <div className="inbox-list-empty">
-                        <p className="inline-note">{copy.inboxNoUnread}</p>
-                      </div>
-                    )
-                  }
-                  return filtered.map((msg) => {
-                    const senderMember = msg.senderId ? memberMap.get(`${msg.serverSlug}:${msg.senderId}`) : null
-                    const displayName = msg.senderDisplayName ?? senderMember?.displayName ?? msg.senderName ?? senderMember?.name ?? copy.inboxUnknownSender
-                    const avatarUrl = msg.senderAvatarUrl ?? senderMember?.avatarUrl ?? null
-                    // Find the item type for routing
-                    const item = unifiedItems.find(
-                      (i) => i.serverSlug === msg.serverSlug && i.channelId === msg.channelId,
-                    )
-                    return (
-                      <button
-                        key={msg.id}
-                        type="button"
-                        className="inbox-unread-msg"
-                        onClick={() => setSelectedChannel({ serverSlug: msg.serverSlug, channelId: msg.channelId, itemType: item?.type })}
-                      >
-                        <div className="inbox-msg-avatar">
-                          {avatarUrl ? (
-                            <img src={avatarUrl} alt="" className="inbox-avatar-img" />
-                          ) : (
-                            <span className="inbox-avatar-placeholder">
-                              {(displayName).charAt(0).toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                        <div className="inbox-item-body">
-                          <div className="inbox-item-header">
-                            <span className="inbox-item-title">{displayName}</span>
-                            <span className="inbox-item-time">{formatRelativeTime(msg.createdAt)}</span>
-                          </div>
-                          <p className="inbox-item-preview">{msg.content}</p>
-                          <span className="inbox-item-subtitle">{msg.channelName} · {msg.serverName}</span>
-                        </div>
-                      </button>
-                    )
+                // Build the feed: all unread messages, filtered by type
+                let feed = unreadMessagesFeed
+                if (inboxFilter === 'dms') {
+                  feed = feed.filter((msg) => {
+                    const item = unifiedItems.find((i) => i.serverSlug === msg.serverSlug && i.channelId === msg.channelId)
+                    return item?.type === 'dm'
+                  })
+                }
+                // Search filter
+                if (normalizedSearch) {
+                  feed = feed.filter((msg) => {
+                    const senderName = (msg.senderDisplayName ?? msg.senderName ?? '').toLowerCase()
+                    const content = msg.content.toLowerCase()
+                    const channel = msg.channelName.toLowerCase()
+                    return senderName.includes(normalizedSearch) || content.includes(normalizedSearch) || channel.includes(normalizedSearch)
                   })
                 }
 
-                // All tab: Server → Channel directory tree
-                if (serverChannelGroups.length === 0) {
+                if (feed.length === 0) {
                   return (
                     <div className="inbox-list-empty">
-                      <p className="inline-note">{copy.inboxEmpty}</p>
+                      <p className="inline-note">{copy.inboxNoUnread}</p>
                     </div>
                   )
                 }
-                return serverChannelGroups.map((group) => {
-                  const expanded = expandedServers.has(group.serverSlug)
-                  const filteredChannels = normalizedSearch
-                    ? group.channels.filter((ch) => ch.name.toLowerCase().includes(normalizedSearch))
-                    : group.channels
-                  if (normalizedSearch && filteredChannels.length === 0) return null
+
+                return feed.map((msg) => {
+                  const senderMember = msg.senderId ? memberMap.get(`${msg.serverSlug}:${msg.senderId}`) : null
+                  const displayName = msg.senderDisplayName ?? senderMember?.displayName ?? msg.senderName ?? senderMember?.name ?? copy.inboxUnknownSender
+                  const avatarUrl = msg.senderAvatarUrl ?? senderMember?.avatarUrl ?? null
+                  const item = unifiedItems.find(
+                    (i) => i.serverSlug === msg.serverSlug && i.channelId === msg.channelId,
+                  )
+                  const isSelected = selectedChannel?.serverSlug === msg.serverSlug && selectedChannel?.channelId === msg.channelId
                   return (
-                    <div key={group.serverSlug} className="inbox-server-group">
-                      <button
-                        type="button"
-                        className={`inbox-server-header${expanded ? ' expanded' : ''}`}
-                        onClick={() => {
-                          setExpandedServers((prev) => {
-                            const next = new Set(prev)
-                            if (next.has(group.serverSlug)) {
-                              next.delete(group.serverSlug)
-                            } else {
-                              next.add(group.serverSlug)
-                            }
-                            return next
-                          })
-                        }}
-                      >
-                        <ChevronIcon direction={expanded ? 'down' : 'right'} />
-                        <span className="inbox-server-name">{group.serverName}</span>
-                        <span className="inbox-server-count">{filteredChannels.length}</span>
-                      </button>
-                      {expanded ? (
-                        <div className="inbox-channel-list">
-                          {filteredChannels.map((ch) => {
-                            const isSelected = selectedChannel?.serverSlug === group.serverSlug && selectedChannel?.channelId === ch.id
-                            return (
-                              <button
-                                key={ch.id}
-                                type="button"
-                                className={`inbox-channel-row${isSelected ? ' selected' : ''}${ch.unreadCount > 0 ? ' unread' : ''}`}
-                                onClick={() => setSelectedChannel({ serverSlug: group.serverSlug, channelId: ch.id, itemType: 'channel' })}
-                              >
-                                <span className="inbox-channel-name">#{ch.name}</span>
-                                {ch.unreadCount > 0 ? (
-                                  <span className="inbox-channel-badge">{ch.unreadCount}</span>
-                                ) : null}
-                              </button>
-                            )
-                          })}
+                    <button
+                      key={msg.id}
+                      type="button"
+                      className={`inbox-feed-item${isSelected ? ' selected' : ''}`}
+                      onClick={() => setSelectedChannel({ serverSlug: msg.serverSlug, channelId: msg.channelId, itemType: item?.type })}
+                    >
+                      <div className="inbox-msg-avatar">
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt="" className="inbox-avatar-img" />
+                        ) : (
+                          <span className="inbox-avatar-placeholder">
+                            {(displayName).charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="inbox-item-body">
+                        <div className="inbox-item-header">
+                          <span className="inbox-item-title">{displayName}</span>
+                          <span className="inbox-item-time">{formatRelativeTime(msg.createdAt)}</span>
                         </div>
-                      ) : null}
-                    </div>
+                        <p className="inbox-item-preview">{msg.content}</p>
+                        <span className="inbox-item-subtitle">{msg.channelName} · {msg.serverName}</span>
+                      </div>
+                    </button>
                   )
                 })
               })()}
             </div>
           </aside>
 
-          {/* Content area — message detail + reply only */}
+          {/* Right — Context Area */}
           <div className="inbox-content">
             {selectedChannel ? (
               <div className="inbox-message-view">
-                {/* Message header */}
+                {/* Message header with back button */}
                 <div className="inbox-message-header">
+                  <button
+                    type="button"
+                    className="inbox-back-button"
+                    onClick={() => { setSelectedChannel(null); setInboxMessages([]) }}
+                    aria-label={copy.inboxBack}
+                    title={copy.inboxBack}
+                  >
+                    <ChevronIcon direction="left" />
+                  </button>
                   <span className="inbox-message-title">
                     {unifiedItems.find(
                       (i) => i.serverSlug === selectedChannel.serverSlug && i.channelId === selectedChannel.channelId,
@@ -2872,8 +2860,23 @@ function App() {
                   <button
                     type="button"
                     className="inbox-message-close"
-                    onClick={() => { setSelectedChannel(null); setInboxMessages([]) }}
+                    onClick={() => {
+                      setSelectedChannel(null)
+                      setInboxMessages([])
+                      void markChannelRead(selectedChannel.serverSlug, selectedChannel.channelId).catch(() => {})
+                      setUnifiedItems((prev) =>
+                        prev.map((item) =>
+                          item.serverSlug === selectedChannel.serverSlug && item.channelId === selectedChannel.channelId
+                            ? { ...item, unreadCount: 0 }
+                            : item,
+                        ),
+                      )
+                      setUnreadMessagesFeed((prev) =>
+                        prev.filter((msg) => !(msg.serverSlug === selectedChannel.serverSlug && msg.channelId === selectedChannel.channelId)),
+                      )
+                    }}
                     aria-label={copy.close}
+                    title={copy.close}
                   >
                     <XIcon />
                   </button>
@@ -2942,8 +2945,65 @@ function App() {
                 </div>
               </div>
             ) : (
-              <div className="inbox-empty-state">
-                <p className="inline-note">{copy.inboxSelectThread}</p>
+              /* Quick Send — Spotlight-style compose */
+              <div className="inbox-quick-send">
+                <div className="inbox-quick-send-inner">
+                  <p className="eyebrow">{copy.inboxQuickSend}</p>
+                  <div className="inbox-target-selector">
+                    <button
+                      type="button"
+                      className="inbox-target-button"
+                      onClick={() => setQuickSendTargetOpen((o) => !o)}
+                    >
+                      {quickSendTarget ? quickSendTarget.label : copy.inboxSelectTarget}
+                      <ChevronIcon direction={quickSendTargetOpen ? 'up' : 'down'} />
+                    </button>
+                    {quickSendTargetOpen ? (
+                      <div className="inbox-target-dropdown">
+                        {serverChannelGroups.map((group) => (
+                          <div key={group.serverSlug} className="inbox-target-group">
+                            <p className="inbox-target-group-name">{group.serverName}</p>
+                            {group.channels.map((ch) => (
+                              <button
+                                key={ch.id}
+                                type="button"
+                                className="inbox-target-option"
+                                onClick={() => {
+                                  setQuickSendTarget({ serverSlug: group.serverSlug, channelId: ch.id, label: `${group.serverName} · #${ch.name}` })
+                                  setQuickSendTargetOpen(false)
+                                }}
+                              >
+                                #{ch.name}
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <textarea
+                    className="inbox-quick-send-input"
+                    placeholder={copy.inboxComposePlaceholder}
+                    value={quickSendText}
+                    onChange={(e) => setQuickSendText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        void handleQuickSend()
+                      }
+                    }}
+                    disabled={quickSendSending}
+                    rows={3}
+                  />
+                  <button
+                    type="button"
+                    className="inbox-send-button"
+                    onClick={() => void handleQuickSend()}
+                    disabled={quickSendSending || !quickSendTarget || !quickSendText.trim()}
+                  >
+                    {quickSendSending ? copy.inboxSending : copy.inboxSend}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -3850,7 +3910,7 @@ function ClockIcon() {
   )
 }
 
-function ChevronIcon({ direction }: { direction: 'up' | 'down' | 'right' }) {
+function ChevronIcon({ direction }: { direction: 'up' | 'down' | 'left' | 'right' }) {
   return (
     <svg
       className="service-action-icon"
@@ -3862,7 +3922,7 @@ function ChevronIcon({ direction }: { direction: 'up' | 'down' | 'right' }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {direction === 'up' ? <path d="m18 15-6-6-6 6" /> : direction === 'right' ? <path d="m9 18 6-6-6-6" /> : <path d="m6 9 6 6 6-6" />}
+      {direction === 'up' ? <path d="m18 15-6-6-6 6" /> : direction === 'left' ? <path d="m15 18-6-6 6-6" /> : direction === 'right' ? <path d="m9 18 6-6-6-6" /> : <path d="m6 9 6 6 6-6" />}
     </svg>
   )
 }
