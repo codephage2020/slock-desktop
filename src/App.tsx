@@ -20,6 +20,7 @@ import {
   type InboxMessage,
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
+  type ServerMember,
   type ThemeDefinition,
   type ThemeStyleConfig,
   type ThemeStyleDefinition,
@@ -30,6 +31,8 @@ import {
   fetchDashboard,
   fetchDmChannels,
   fetchFollowedThreads,
+  fetchServerMembers,
+  fetchServerUnreadSummary,
   fetchThreadMessages,
   fetchUnreadChannels,
   installDesktopUpdate,
@@ -571,26 +574,25 @@ function App() {
     serverName: string
     channels: { id: string; name: string; type: string; unreadCount: number }[]
   }
+  type UnreadMessageItem = InboxMessage & {
+    serverSlug: string
+    serverName: string
+    channelName: string
+  }
   const [unifiedItems, setUnifiedItems] = useState<UnifiedItem[]>([])
   const [serverChannelGroups, setServerChannelGroups] = useState<ServerChannelGroup[]>([])
+  const [unreadMessagesFeed, setUnreadMessagesFeed] = useState<UnreadMessageItem[]>([])
+  const [memberMap, setMemberMap] = useState<Map<string, ServerMember>>(new Map())
   const [inboxLoading, setInboxLoading] = useState(false)
   const [inboxTab, setInboxTab] = useState<'unread' | 'all'>('unread')
   const [inboxSearch, setInboxSearch] = useState('')
-  const [selectedChannel, setSelectedChannel] = useState<{ serverSlug: string; channelId: string } | null>(null)
+  const [selectedChannel, setSelectedChannel] = useState<{ serverSlug: string; channelId: string; itemType?: 'channel' | 'thread' | 'dm' } | null>(null)
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([])
   const [inboxMessagesLoading, setInboxMessagesLoading] = useState(false)
   const [inboxReplyText, setInboxReplyText] = useState('')
   const [inboxSending, setInboxSending] = useState(false)
   const inboxMessagesEndRef = useRef<HTMLDivElement | null>(null)
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
-
-  // Filtered lists derived from unified items
-  const unreadItems = useMemo(
-    () => unifiedItems.filter((item) => item.unreadCount > 0).sort((a, b) =>
-      (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '')
-    ),
-    [unifiedItems]
-  )
 
   const [messageReminders, setMessageReminders] = useState<MessageReminderToast[]>([])
   const messageRemindersRef = useRef<MessageReminderToast[]>([])
@@ -1117,6 +1119,7 @@ function App() {
     if (!snapshot?.service.authenticated || !initialServiceRefreshDone) {
       setUnifiedItems([])
       setServerChannelGroups([])
+      setUnreadMessagesFeed([])
       return
     }
 
@@ -1124,6 +1127,7 @@ function App() {
     if (servers.length === 0) {
       setUnifiedItems([])
       setServerChannelGroups([])
+      setUnreadMessagesFeed([])
       return
     }
 
@@ -1132,17 +1136,43 @@ function App() {
     async function loadUnifiedInbox() {
       setInboxLoading(true)
       try {
+        // Step 1: Get cross-server unread summary to optimize fetching
+        const serverUnreadMap = new Map<string, number>()
+        try {
+          const summary = await fetchServerUnreadSummary()
+          for (const entry of summary) {
+            // Map serverId to serverSlug via servers list
+            const matched = servers.find((s) => s.id === entry.serverId)
+            if (matched) {
+              serverUnreadMap.set(matched.slug, entry.unreadCount)
+            }
+          }
+        } catch {
+          // Fallback: treat all servers as potentially having unread
+          for (const s of servers) {
+            serverUnreadMap.set(s.slug, 1)
+          }
+        }
+
+        // Step 2: Fetch data per server (full data for servers with unread, channels-only for others)
         const serverResults = await Promise.allSettled(
           servers.map(async (server) => {
-            const [dashResult, threadsResult, dmsResult, unreadResult] = await Promise.allSettled([
+            const hasUnread = (serverUnreadMap.get(server.slug) ?? 0) > 0
+            const calls = [
               fetchDashboard(server.slug),
               fetchFollowedThreads(server.slug),
               fetchDmChannels(server.slug),
               fetchUnreadChannels(server.slug),
-            ])
+              fetchServerMembers(server.slug),
+            ] as const
 
-            const items: typeof unifiedItems = []
+            const [dashResult, threadsResult, dmsResult, unreadResult, membersResult] =
+              await Promise.allSettled(calls)
+
+            const items: UnifiedItem[] = []
             const channelList: ServerChannelGroup['channels'] = []
+            const members: ServerMember[] =
+              membersResult.status === 'fulfilled' ? membersResult.value : []
 
             // Build unread map for this server
             const unreadMap = new Map<string, number>()
@@ -1151,6 +1181,9 @@ function App() {
                 unreadMap.set(entry.channelId, entry.unreadCount)
               }
             }
+
+            // Track unread items for message fetching
+            const unreadChannelIds: { channelId: string; channelName: string; type: UnifiedItem['type'] }[] = []
 
             // Channels from dashboard
             if (dashResult.status === 'fulfilled') {
@@ -1179,60 +1212,119 @@ function App() {
                   type: ch.type,
                   unreadCount: unread,
                 })
+                if (unread > 0) {
+                  unreadChannelIds.push({ channelId: ch.id, channelName: `#${ch.name}`, type: 'channel' })
+                }
               }
             }
 
             // Threads
             if (threadsResult.status === 'fulfilled') {
               for (const t of threadsResult.value) {
+                const unread = t.unreadCount || unreadMap.get(t.id) || 0
+                const name = t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : copy.inboxThread)
                 items.push({
                   id: `${server.slug}:${t.id}`,
                   serverSlug: server.slug,
                   serverName: server.name,
                   channelId: t.id,
-                  channelName: t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : copy.inboxThread),
+                  channelName: name,
                   type: 'thread',
-                  unreadCount: t.unreadCount || unreadMap.get(t.id) || 0,
+                  unreadCount: unread,
                   lastMessageAt: t.lastMessageAt,
                   displayName: null,
                   parentChannelName: t.parentChannelName,
                   avatarUrl: null,
                 })
+                if (unread > 0) {
+                  unreadChannelIds.push({ channelId: t.id, channelName: name, type: 'thread' })
+                }
               }
             }
 
             // DMs
             if (dmsResult.status === 'fulfilled') {
               for (const d of dmsResult.value) {
+                const unread = d.unreadCount || unreadMap.get(d.id) || 0
+                const name = d.displayName ?? d.name
                 items.push({
                   id: `${server.slug}:${d.id}`,
                   serverSlug: server.slug,
                   serverName: server.name,
                   channelId: d.id,
-                  channelName: d.displayName ?? d.name,
+                  channelName: name,
                   type: 'dm',
-                  unreadCount: d.unreadCount || unreadMap.get(d.id) || 0,
+                  unreadCount: unread,
                   lastMessageAt: d.lastMessageAt,
                   displayName: d.displayName,
                   parentChannelName: null,
                   avatarUrl: d.members[0]?.avatarUrl ?? null,
                 })
+                if (unread > 0) {
+                  unreadChannelIds.push({ channelId: d.id, channelName: name, type: 'dm' })
+                }
               }
             }
 
-            return { items, group: { serverSlug: server.slug, serverName: server.name, channels: channelList } }
+            // Step 3: For unread channels, fetch recent messages
+            let unreadMsgs: UnreadMessageItem[] = []
+            if (hasUnread && unreadChannelIds.length > 0) {
+              const msgResults = await Promise.allSettled(
+                unreadChannelIds.map(async (ch) => {
+                  const resp = ch.type === 'channel'
+                    ? await fetchChannelMessages(server.slug, ch.channelId, { limit: 10 })
+                    : await fetchThreadMessages(server.slug, ch.channelId, { limit: 10 })
+                  return resp.messages.map((msg) => ({
+                    ...msg,
+                    serverSlug: server.slug,
+                    serverName: server.name,
+                    channelName: ch.channelName,
+                  }))
+                })
+              )
+              for (const r of msgResults) {
+                if (r.status === 'fulfilled') {
+                  unreadMsgs = unreadMsgs.concat(r.value)
+                }
+              }
+            }
+
+            return {
+              items,
+              group: { serverSlug: server.slug, serverName: server.name, channels: channelList },
+              members,
+              unreadMsgs,
+            }
           })
         )
 
         if (!cancelled) {
-          const allItems = serverResults
-            .filter((r): r is PromiseFulfilledResult<{ items: typeof unifiedItems; group: ServerChannelGroup }> => r.status === 'fulfilled')
-            .flatMap((r) => r.value.items)
-          const groups = serverResults
-            .filter((r): r is PromiseFulfilledResult<{ items: typeof unifiedItems; group: ServerChannelGroup }> => r.status === 'fulfilled')
-            .map((r) => r.value.group)
+          type ServerResult = {
+            items: UnifiedItem[]
+            group: ServerChannelGroup
+            members: ServerMember[]
+            unreadMsgs: UnreadMessageItem[]
+          }
+          const fulfilled = serverResults
+            .filter((r): r is PromiseFulfilledResult<ServerResult> => r.status === 'fulfilled')
+          const allItems = fulfilled.flatMap((r) => r.value.items)
+          const groups = fulfilled.map((r) => r.value.group)
+          // Build member map
+          const newMemberMap = new Map<string, ServerMember>()
+          for (const r of fulfilled) {
+            for (const m of r.value.members) {
+              newMemberMap.set(m.id, m)
+            }
+          }
+          // Combine and sort unread messages by time (newest first)
+          const allUnreadMsgs = fulfilled
+            .flatMap((r) => r.value.unreadMsgs)
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
           setUnifiedItems(allItems)
           setServerChannelGroups(groups)
+          setMemberMap(newMemberMap)
+          setUnreadMessagesFeed(allUnreadMsgs)
           // Auto-expand all servers
           setExpandedServers(new Set(groups.map((g) => g.serverSlug)))
         }
@@ -1245,7 +1337,7 @@ function App() {
 
     void loadUnifiedInbox()
     return () => { cancelled = true }
-  }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone])
+  }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone, copy.inboxThread])
 
   // Load messages when a conversation is selected
   useEffect(() => {
@@ -1254,17 +1346,13 @@ function App() {
       return
     }
 
-    const { serverSlug, channelId } = selectedChannel
-    // Determine the item type for correct API call
-    const item = unifiedItems.find(
-      (i) => i.serverSlug === serverSlug && i.channelId === channelId,
-    )
+    const { serverSlug, channelId, itemType } = selectedChannel
     let cancelled = false
 
     async function loadMessages() {
       setInboxMessagesLoading(true)
       try {
-        const resp = item?.type === 'channel'
+        const resp = itemType === 'channel'
           ? await fetchChannelMessages(serverSlug, channelId, { limit: 50 })
           : await fetchThreadMessages(serverSlug, channelId, { limit: 50 })
         if (!cancelled) {
@@ -1295,7 +1383,8 @@ function App() {
 
     void loadMessages()
     return () => { cancelled = true }
-  }, [selectedChannel, unifiedItems])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: use primitive fields to avoid re-fetch on object identity change
+  }, [selectedChannel?.serverSlug, selectedChannel?.channelId, selectedChannel?.itemType])
 
   useEffect(() => {
     if (
@@ -2690,8 +2779,8 @@ function App() {
                   onClick={() => setInboxTab('unread')}
                 >
                   {copy.inboxUnread}
-                  {unreadItems.length > 0 ? (
-                    <span className="inbox-tab-badge">{unreadItems.length}</span>
+                  {unreadMessagesFeed.length > 0 ? (
+                    <span className="inbox-tab-badge">{unreadMessagesFeed.length}</span>
                   ) : null}
                 </button>
                 <button
@@ -2714,10 +2803,15 @@ function App() {
                 const normalizedSearch = inboxSearch.trim().toLowerCase()
 
                 if (inboxTab === 'unread') {
-                  // Unread tab: all servers mixed, sorted by time
-                  const filtered = unreadItems.filter((item) =>
-                    !normalizedSearch || item.channelName.toLowerCase().includes(normalizedSearch)
-                  )
+                  // Unread tab: individual messages from all servers, sorted by time
+                  const filtered = normalizedSearch
+                    ? unreadMessagesFeed.filter((msg) => {
+                        const senderName = (msg.senderDisplayName ?? msg.senderName ?? '').toLowerCase()
+                        const content = msg.content.toLowerCase()
+                        const channel = msg.channelName.toLowerCase()
+                        return senderName.includes(normalizedSearch) || content.includes(normalizedSearch) || channel.includes(normalizedSearch)
+                      })
+                    : unreadMessagesFeed
                   if (filtered.length === 0) {
                     return (
                       <div className="inbox-list-empty">
@@ -2725,39 +2819,38 @@ function App() {
                       </div>
                     )
                   }
-                  return filtered.map((item) => {
-                    const isSelected = selectedChannel?.serverSlug === item.serverSlug && selectedChannel?.channelId === item.channelId
+                  return filtered.map((msg) => {
+                    const senderMember = msg.senderId ? memberMap.get(msg.senderId) : null
+                    const displayName = msg.senderDisplayName ?? senderMember?.displayName ?? msg.senderName ?? copy.inboxUnknownSender
+                    const avatarUrl = msg.senderAvatarUrl ?? senderMember?.avatarUrl ?? null
+                    // Find the item type for routing
+                    const item = unifiedItems.find(
+                      (i) => i.serverSlug === msg.serverSlug && i.channelId === msg.channelId,
+                    )
                     return (
                       <button
-                        key={item.id}
+                        key={msg.id}
                         type="button"
-                        role="option"
-                        className={`inbox-item${isSelected ? ' selected' : ''} unread`}
-                        aria-selected={isSelected}
-                        onClick={() => setSelectedChannel({ serverSlug: item.serverSlug, channelId: item.channelId })}
+                        className="inbox-unread-msg"
+                        onClick={() => setSelectedChannel({ serverSlug: msg.serverSlug, channelId: msg.channelId, itemType: item?.type })}
                       >
-                        <div className="inbox-item-avatar">
-                          {item.avatarUrl ? (
-                            <img src={item.avatarUrl} alt="" className="inbox-avatar-img" />
+                        <div className="inbox-msg-avatar">
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt="" className="inbox-avatar-img" />
                           ) : (
                             <span className="inbox-avatar-placeholder">
-                              {item.type === 'dm' ? (item.displayName ?? item.channelName).charAt(0).toUpperCase() : '#'}
+                              {(displayName).charAt(0).toUpperCase()}
                             </span>
                           )}
                         </div>
                         <div className="inbox-item-body">
                           <div className="inbox-item-header">
-                            <span className="inbox-item-title">{item.channelName}</span>
-                            {item.lastMessageAt ? (
-                              <span className="inbox-item-time">{formatRelativeTime(item.lastMessageAt)}</span>
-                            ) : null}
+                            <span className="inbox-item-title">{displayName}</span>
+                            <span className="inbox-item-time">{formatRelativeTime(msg.createdAt)}</span>
                           </div>
-                          <span className="inbox-item-subtitle">{item.serverName}</span>
-                          <p className="inbox-item-preview">
-                            {item.unreadCount} {copy.inboxUnreadLabel}
-                          </p>
+                          <p className="inbox-item-preview">{msg.content}</p>
+                          <span className="inbox-item-subtitle">{msg.channelName} · {msg.serverName}</span>
                         </div>
-                        <span className="inbox-item-unread-dot" aria-label={`${item.unreadCount} ${copy.inboxUnreadLabel}`} />
                       </button>
                     )
                   })
@@ -2807,7 +2900,7 @@ function App() {
                                 key={ch.id}
                                 type="button"
                                 className={`inbox-channel-row${isSelected ? ' selected' : ''}${ch.unreadCount > 0 ? ' unread' : ''}`}
-                                onClick={() => setSelectedChannel({ serverSlug: group.serverSlug, channelId: ch.id })}
+                                onClick={() => setSelectedChannel({ serverSlug: group.serverSlug, channelId: ch.id, itemType: 'channel' })}
                               >
                                 <span className="inbox-channel-name">#{ch.name}</span>
                                 {ch.unreadCount > 0 ? (

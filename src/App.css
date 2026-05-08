@@ -222,6 +222,38 @@ body:has(.loading-shell),
   font-weight: 700;
 }
 
+/* Unread message item in the unread tab */
+.inbox-unread-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  appearance: none;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 30%, transparent);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  transition: background 0.12s;
+}
+
+.inbox-unread-msg:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.inbox-unread-msg .inbox-msg-avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 0.72rem;
+}
+
+.inbox-unread-msg .inbox-item-title {
+  font-weight: 700;
+}
+
 .inbox-item-avatar {
   flex-shrink: 0;
   width: 32px;
