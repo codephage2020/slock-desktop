@@ -2280,8 +2280,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .titlebar-theme-swatch {
-      width: 12px;
-      height: 12px;
+      width: 16px;
+      height: 16px;
       border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
       border-radius: var(--desktop-radius-pill);
       background: var(--theme-accent, var(--desktop-accent));
@@ -2301,10 +2301,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       align-items: flex-start;
       gap: 6px;
       padding: 8px;
-      border: 1px solid var(--desktop-line);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       border-radius: var(--desktop-radius-md);
-      background: var(--desktop-surface);
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+      background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
+      box-shadow:
+        0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
     }
 
     .titlebar-theme-menu:has(.titlebar-accent-wheel-popover) {
@@ -2726,11 +2728,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 10px;
       overflow: auto;
       padding: 12px;
-      border: 1px solid var(--desktop-line);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       border-radius: var(--desktop-radius-lg);
-      background: var(--desktop-surface);
+      background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
       color: var(--desktop-text);
-      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.14);
+      box-shadow:
+        0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
     }
 
     .titlebar-release-head {
@@ -2792,11 +2796,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       grid-template-rows: auto auto minmax(0, 1fr) auto;
       gap: 0;
       padding: 12px;
-      border: 1px solid var(--desktop-line);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       border-radius: var(--desktop-radius-lg);
-      background: var(--desktop-surface);
+      background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
       color: var(--desktop-text);
-      box-shadow: 0 20px 64px rgba(0, 0, 0, 0.18);
+      box-shadow:
+        0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
     }
 
     .service-log-head,
@@ -3971,10 +3977,12 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       max-height: min(400px, calc(100vh - 60px));
       overflow: auto;
       padding: 10px;
-      border: 1px solid var(--desktop-line);
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       border-radius: var(--desktop-radius-md);
-      background: var(--desktop-surface);
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+      background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
+      box-shadow:
+        0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
+        0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
     }
 
     .titlebar-style-head {
@@ -3999,17 +4007,21 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     .text-action-button {
       appearance: none;
-      border: none;
-      background: none;
-      color: var(--desktop-accent);
+      min-height: 24px;
+      padding: 3px 7px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 70%, transparent);
+      border-radius: var(--desktop-radius-pill);
+      background: color-mix(in srgb, var(--desktop-surface-secondary) 70%, transparent);
+      color: var(--desktop-muted);
       font: inherit;
       font-size: 11px;
+      font-weight: 700;
       cursor: pointer;
-      padding: 0;
     }
 
     .text-action-button:hover {
-      text-decoration: underline;
+      border-color: color-mix(in srgb, var(--desktop-accent) 28%, var(--desktop-line));
+      color: var(--desktop-accent);
     }
 
     .text-action-button:disabled {
@@ -4029,29 +4041,43 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       align-items: center;
       gap: 8px;
       padding: 6px 8px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
       border-radius: var(--desktop-radius-sm);
       cursor: pointer;
-      transition: background 150ms ease;
+      transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
     }
 
     .titlebar-style-row:hover {
       background: var(--desktop-surface-secondary);
+      border-color: color-mix(in srgb, var(--desktop-line) 70%, transparent);
+      transform: translateY(-1px);
     }
 
     .titlebar-style-row.selected {
       background: var(--desktop-selection);
+      border-color: color-mix(in srgb, var(--desktop-accent) 30%, var(--desktop-line));
     }
 
     .titlebar-style-preview {
-      display: flex;
-      gap: 2px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 3px;
+      width: 40px;
+      height: 28px;
+      padding: 3px;
+      border-radius: var(--desktop-radius-sm);
+      background: var(--desktop-surface);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--desktop-line) 70%, transparent);
       flex-shrink: 0;
     }
 
     .titlebar-style-preview span {
-      width: 10px;
-      height: 22px;
-      border-radius: 3px;
+      border-radius: 6px;
+    }
+
+    .titlebar-style-preview span:first-child {
+      grid-row: span 2;
     }
 
     .titlebar-style-copy {
