@@ -390,19 +390,9 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       );
       container.appendChild(toggleBtn);
 
-      // Restart button (only when online)
-      if (isOnline) {
-        var restartBtn = createBrutalButton(
-          SVG_RESTART,
-          t("restart"),
-          async function () {
-            await invoke("stop_agent", { serverSlug: serverSlug, agentId: agent.id });
-            await new Promise(function (r) { setTimeout(r, 1000); });
-            await invoke("start_agent", { serverSlug: serverSlug, agentId: agent.id });
-          }
-        );
-        container.appendChild(restartBtn);
-      }
+      // Restart button removed: native web uses a 3-option restart dialog
+      // that we cannot replicate here. Will be re-added once we can
+      // navigate to / trigger the native restart flow.
 
       return container;
     }
@@ -483,12 +473,21 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
           console.log("[Slock Desktop] agent card: activity entry[0] keys =", Object.keys(activity[0]).join(","), "values =", JSON.stringify(activity[0]).substring(0, 200));
         } catch (_) {}
 
+        // Sort by timestamp descending (newest first)
+        var sorted = activity.slice().sort(function (a, b) {
+          var ta = getEntryTime(a);
+          var tb = getEntryTime(b);
+          var ma = ta ? new Date(ta).getTime() : 0;
+          var mb = tb ? new Date(tb).getTime() : 0;
+          return mb - ma;
+        });
+
         const list = document.createElement("ul");
         list.style.cssText = "margin: 0; padding: 0; list-style: none;";
 
-        const maxItems = Math.min(activity.length, 5);
+        const maxItems = Math.min(sorted.length, 5);
         for (let i = 0; i < maxItems; i++) {
-          const entry = activity[i];
+          const entry = sorted[i];
           const entryText = getEntryText(entry);
           const entryTime = getEntryTime(entry);
           if (!entryText) continue;
@@ -851,7 +850,7 @@ mod tests {
         assert!(script.contains("SVG_START"));
         assert!(script.contains("SVG_RESTART"));
         assert!(script.contains("aria-label"));
-        // Restart should be present (added back per user request)
+        // Restart SVG + translation key kept for future re-add (native flow)
         assert!(script.contains("restart"));
     }
 
@@ -871,6 +870,8 @@ mod tests {
         assert!(script.contains("getEntryTime"));
         // unwrapEntry for nested API response
         assert!(script.contains("unwrapEntry"));
+        // Activity sorted by timestamp descending (newest first)
+        assert!(script.contains(".sort("));
     }
 
     #[test]
