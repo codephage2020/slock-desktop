@@ -850,6 +850,7 @@ body:has(.loading-shell),
     0 4px 12px color-mix(in srgb, var(--text) 12%, transparent),
     0 24px 48px -24px color-mix(in srgb, var(--text) 24%, transparent);
   z-index: 40;
+  animation: panel-appear 150ms ease;
 }
 
 .titlebar-server-panel-head {
@@ -873,17 +874,19 @@ body:has(.loading-shell),
 }
 
 .titlebar-theme-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
   height: 26px;
   padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 48%, transparent);
   cursor: pointer;
-  transition: transform 0.15s;
+  transition:
+    transform 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease;
 }
 
 .titlebar-theme-button:hover {
@@ -893,9 +896,10 @@ body:has(.loading-shell),
 .titlebar-theme-swatch {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: var(--current-accent, var(--accent));
-  border: 2px solid color-mix(in srgb, var(--current-accent, var(--accent)) 60%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--current-accent, var(--accent)) 34%, transparent);
 }
 
 .titlebar-theme-panel {
@@ -914,6 +918,7 @@ body:has(.loading-shell),
     0 4px 12px color-mix(in srgb, var(--text) 12%, transparent),
     0 24px 48px -24px color-mix(in srgb, var(--text) 24%, transparent);
   z-index: 40;
+  animation: panel-appear 150ms ease;
 }
 
 .titlebar-icon-button {
@@ -982,6 +987,7 @@ body:has(.loading-shell),
     0 4px 12px color-mix(in srgb, var(--text) 12%, transparent),
     0 24px 48px -24px color-mix(in srgb, var(--text) 24%, transparent);
   z-index: 40;
+  animation: panel-appear 150ms ease;
 }
 
 /* Dashboard */
@@ -2138,26 +2144,26 @@ body:has(.loading-shell),
   z-index: 60;
   display: grid;
   place-items: center;
-  padding: 48px 18px 18px;
+  padding: 44px 12px 12px;
   background: color-mix(in srgb, var(--canvas) 72%, transparent);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(14px);
   animation: panel-appear 150ms ease;
 }
 
 .service-log-dialog {
   width: min(940px, 100%);
-  max-height: min(720px, calc(100svh - 72px));
-  min-height: min(520px, calc(100svh - 72px));
+  max-height: min(640px, calc(100vh - 58px));
+  min-height: min(460px, calc(100vh - 58px));
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 0;
   padding: 12px;
   border-radius: 16px;
   background: color-mix(in srgb, var(--surface) 98%, var(--canvas));
-  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
   box-shadow:
-    0 1px 2px color-mix(in srgb, var(--text) 10%, transparent),
-    0 32px 90px -54px color-mix(in srgb, var(--text) 56%, transparent);
+    0 4px 12px color-mix(in srgb, var(--text) 12%, transparent),
+    0 24px 48px -24px color-mix(in srgb, var(--text) 24%, transparent);
 }
 
 .service-log-head,
@@ -2205,10 +2211,10 @@ body:has(.loading-shell),
   grid-template-columns: minmax(380px, 1.15fr) minmax(260px, 0.85fr);
   align-items: end;
   gap: 8px;
-  padding: 7px;
+  padding: 8px;
   border: 1px solid color-mix(in srgb, var(--line) 66%, transparent);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-strong) 44%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
 }
 
 .service-log-toolbar {
@@ -2350,10 +2356,10 @@ body:has(.loading-shell),
   margin: 0;
   min-height: 0;
   overflow: auto;
-  padding: 10px;
+  padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+  background: var(--surface-strong);
   color: var(--text);
   font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.72rem;
@@ -2482,11 +2488,10 @@ body:has(.loading-shell),
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
-  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
   cursor: pointer;
   transition:
     border-color 160ms ease,
@@ -2518,8 +2523,8 @@ body:has(.loading-shell),
 }
 
 .theme-row-swatch {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
   position: relative;
   background: var(--accent);
@@ -3207,8 +3212,8 @@ body:has(.loading-shell),
   }
 
   .service-log-dialog {
-    max-height: calc(100svh - 50px);
-    min-height: calc(100svh - 50px);
+    max-height: calc(100vh - 50px);
+    min-height: calc(100vh - 50px);
     padding: 10px;
   }
 
