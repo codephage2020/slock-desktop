@@ -32,7 +32,6 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         daysAgo: "%dd ago",
         stop: "Stop",
         start: "Start",
-        restart: "Restart",
       },
       "zh-CN": {
         description: "描述",
@@ -47,7 +46,6 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         daysAgo: "%d天前",
         stop: "停止",
         start: "启动",
-        restart: "重启",
       },
     };
 
@@ -287,45 +285,59 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return null;
     }
 
-    // --- Detect agent card ---
+    // --- Detect agent card (hover popover only, not page-level cards/dialogs) ---
     function isAgentCard(el) {
       if (!el || !el.classList) return false;
-      // Detect by card-brutal class (web app's card component)
-      return el.classList.contains("card-brutal");
+      // Must have card-brutal class
+      if (!el.classList.contains("card-brutal")) return false;
+      // Only inject into hover popover cards, not agent detail page or dialog cards.
+      // Conservative strategy: only accept hover-specific Radix markers,
+      // explicitly reject dialogs/modals.
+      var parent = el.parentElement;
+      var depth = 0;
+      var foundPopoverMarker = false;
+      while (parent && depth < 15) {
+        // Explicit reject: dialogs and modals (restart dialog, agent detail page modal)
+        if (parent.getAttribute && (
+          parent.getAttribute("role") === "dialog" ||
+          parent.getAttribute("aria-modal") === "true"
+        )) {
+          return false;
+        }
+        // Positive match: Radix hover popover specific markers
+        if (parent.hasAttribute && (
+          parent.hasAttribute("data-radix-popper-content-wrapper") ||
+          parent.hasAttribute("data-side")
+        )) {
+          foundPopoverMarker = true;
+        }
+        parent = parent.parentElement;
+        depth++;
+      }
+      return foundPopoverMarker;
     }
 
-    // --- Build injected action buttons (compact icon group in card header) ---
-    // SVG icons for actions (20px display, 24px viewBox)
-    var SVG_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
-    var SVG_START = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 20,12 8,19"/></svg>';
-    var SVG_RESTART = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>';
+    // --- Build injected action button (single Start/Stop, appended to card bottom) ---
+    var SVG_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+    var SVG_START = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 20,12 8,19"/></svg>';
 
     function buildActionButtons(agent, serverSlug) {
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
       container.style.cssText =
-        "position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 10;";
+        "padding: 4px 12px 0; display: flex; justify-content: flex-end;";
 
       const isOnline = agent.status !== "offline";
 
-      function makeIconBtn(svgHtml, titleText, color) {
-        var btn = document.createElement("button");
-        btn.style.cssText =
-          "display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; border: none; background: transparent; cursor: pointer; padding: 0; color: " + color + "; transition: background 0.15s;";
-        btn.innerHTML = svgHtml;
-        btn.title = titleText;
-        btn.setAttribute("aria-label", titleText);
-        btn.addEventListener("mouseenter", function () { if (!btn.disabled) btn.style.background = "rgba(0,0,0,0.06)"; });
-        btn.addEventListener("mouseleave", function () { btn.style.background = "transparent"; });
-        return btn;
-      }
-
-      // Start/Stop button
-      var toggleBtn = makeIconBtn(
-        isOnline ? SVG_STOP : SVG_START,
-        isOnline ? t("stop") : t("start"),
-        isOnline ? "#dc2626" : "#16a34a"
-      );
+      var toggleBtn = document.createElement("button");
+      toggleBtn.style.cssText =
+        "display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; border: none; background: transparent; cursor: pointer; padding: 0; color: " +
+        (isOnline ? "#dc2626" : "#16a34a") + "; transition: background 0.15s;";
+      toggleBtn.innerHTML = isOnline ? SVG_STOP : SVG_START;
+      toggleBtn.title = isOnline ? t("stop") : t("start");
+      toggleBtn.setAttribute("aria-label", isOnline ? t("stop") : t("start"));
+      toggleBtn.addEventListener("mouseenter", function () { if (!toggleBtn.disabled) toggleBtn.style.background = "rgba(0,0,0,0.06)"; });
+      toggleBtn.addEventListener("mouseleave", function () { toggleBtn.style.background = "transparent"; });
       toggleBtn.addEventListener("click", async function (e) {
         e.stopPropagation();
         toggleBtn.disabled = true;
@@ -345,47 +357,33 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         toggleBtn.style.cursor = "pointer";
       });
 
-      // Restart button
-      var restartBtn = makeIconBtn(
-        SVG_RESTART,
-        t("restart"),
-        "#2563eb"
-      );
-      if (!isOnline) {
-        restartBtn.disabled = true;
-        restartBtn.style.opacity = "0.3";
-        restartBtn.style.cursor = "default";
-      }
-      restartBtn.addEventListener("click", async function (e) {
-        e.stopPropagation();
-        if (!isOnline) return;
-        restartBtn.disabled = true;
-        restartBtn.style.opacity = "0.3";
-        restartBtn.style.cursor = "default";
-        try {
-          await invoke("stop_agent", { serverSlug: serverSlug, agentId: agent.id });
-          await new Promise(function (r) { setTimeout(r, 1000); });
-          await invoke("start_agent", { serverSlug: serverSlug, agentId: agent.id });
-          lastFetchMs = 0;
-        } catch (err) {
-          console.warn("[Slock Desktop] agent card: restart failed", err);
-        }
-        restartBtn.disabled = false;
-        restartBtn.style.opacity = "1";
-        restartBtn.style.cursor = "pointer";
-      });
-
       container.appendChild(toggleBtn);
-      container.appendChild(restartBtn);
       return container;
     }
 
     // --- Build injected activity footer (bottom of card) ---
+    // Extract display text from an activity entry using fallback chain
+    function getEntryText(entry) {
+      return entry.activity || entry.detail || entry.action || entry.type || entry.event || entry.message || entry.id || "";
+    }
+
+    // Extract timestamp from an activity entry using fallback chain
+    function getEntryTime(entry) {
+      return entry.createdAt || entry.created_at || entry.timestamp || entry.updatedAt || entry.updated_at || "";
+    }
+
     function buildActivityFooter(activity) {
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
       container.style.cssText =
         "padding: 8px 12px; border-top: 1px solid rgba(0,0,0,0.06); margin-top: 6px;";
+
+      // Log first entry structure for diagnostics
+      if (activity && activity.length > 0) {
+        try {
+          console.log("[Slock Desktop] agent card: activity entry[0] keys =", Object.keys(activity[0]).join(","), "values =", JSON.stringify(activity[0]).substring(0, 200));
+        } catch (_) {}
+      }
 
       if (activity && activity.length > 0) {
         const actTitle = document.createElement("p");
@@ -401,6 +399,12 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         const maxItems = Math.min(activity.length, 5);
         for (let i = 0; i < maxItems; i++) {
           const entry = activity[i];
+          const entryText = getEntryText(entry);
+          const entryTime = getEntryTime(entry);
+
+          // Skip entries with no displayable text
+          if (!entryText) continue;
+
           const li = document.createElement("li");
           li.style.cssText =
             "display: flex; justify-content: space-between; gap: 6px; font-size: 11px; line-height: 1.5;";
@@ -408,17 +412,27 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
           const text = document.createElement("span");
           text.style.cssText =
             "flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #374151;";
-          text.textContent = entry.activity;
+          text.textContent = entryText;
 
           const time = document.createElement("span");
           time.style.cssText = "flex-shrink: 0; color: #9ca3af; font-size: 10px;";
-          time.textContent = formatRelativeTime(entry.createdAt);
+          time.textContent = formatRelativeTime(entryTime);
 
           li.appendChild(text);
           li.appendChild(time);
           list.appendChild(li);
         }
-        container.appendChild(list);
+
+        // If all entries had empty text, show no-activity message
+        if (list.children.length === 0) {
+          const noAct = document.createElement("p");
+          noAct.style.cssText =
+            "margin: 0; font-size: 11px; color: #9ca3af;";
+          noAct.textContent = t("noActivity");
+          container.appendChild(noAct);
+        } else {
+          container.appendChild(list);
+        }
       } else {
         const noAct = document.createElement("p");
         noAct.style.cssText =
@@ -527,13 +541,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       console.log("[Slock Desktop] agent card: injecting content for", agent.name);
       const serverSlug = getCurrentServerSlug();
 
-      // Ensure card has position context for absolute-positioned buttons
-      const cardPosition = window.getComputedStyle(cardEl).position;
-      if (cardPosition === "static") {
-        cardEl.style.position = "relative";
-      }
-
-      // Insert action buttons (absolute positioned top-right)
+      // Append action button (inline, no absolute positioning)
       const buttons = buildActionButtons(agent, serverSlug);
       cardEl.appendChild(buttons);
 
@@ -631,7 +639,6 @@ mod tests {
         assert!(script.contains("最近活动"));
         assert!(script.contains("停止"));
         assert!(script.contains("启动"));
-        assert!(script.contains("重启"));
     }
 
     #[test]
@@ -699,10 +706,12 @@ mod tests {
         assert!(script.contains("buildActionButtons"));
         assert!(script.contains("stop_agent"));
         assert!(script.contains("start_agent"));
-        assert!(script.contains("SVG_RESTART"));
         assert!(script.contains("SVG_STOP"));
         assert!(script.contains("SVG_START"));
         assert!(script.contains("aria-label"));
+        // Restart should NOT be present
+        assert!(!script.contains("SVG_RESTART"));
+        assert!(!script.contains("restart"));
     }
 
     #[test]
@@ -710,5 +719,20 @@ mod tests {
         let script = agent_card_inject_script("test", "en-US");
         assert!(script.contains("buildActivityFooter"));
         assert!(script.contains("appendChild(footer)"));
+        // Fallback chain for field names
+        assert!(script.contains("getEntryText"));
+        assert!(script.contains("getEntryTime"));
+    }
+
+    #[test]
+    fn script_limits_injection_to_popover() {
+        let script = agent_card_inject_script("test", "en-US");
+        // Must check for hover-specific popover markers
+        assert!(script.contains("data-radix-popper-content-wrapper"));
+        assert!(script.contains("data-side"));
+        // Must reject dialogs/modals
+        assert!(script.contains("role"));
+        assert!(script.contains("aria-modal"));
+        assert!(script.contains("foundPopoverMarker"));
     }
 }
