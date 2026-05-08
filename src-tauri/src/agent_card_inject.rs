@@ -115,10 +115,12 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       const slug = getCurrentServerSlug();
       if (!slug || !agentId) return [];
       try {
-        return await invoke("fetch_agent_activity", {
+        const result = await invoke("fetch_agent_activity", {
           serverSlug: slug,
           agentId: agentId,
         });
+        console.log("[Slock Desktop] agent card: fetch_agent_activity returned", (result || []).length, "entries for", agentId);
+        return result || [];
       } catch (e) {
         console.warn("[Slock Desktop] agent card: fetch_agent_activity failed", e);
         return [];
@@ -292,58 +294,76 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return el.classList.contains("card-brutal");
     }
 
-    // --- Build injected action buttons (top of card) ---
+    // --- Build injected action buttons (compact icon group in card header) ---
+    // SVG icons for actions (20px display, 24px viewBox)
+    var SVG_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+    var SVG_START = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 20,12 8,19"/></svg>';
+    var SVG_RESTART = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>';
+
     function buildActionButtons(agent, serverSlug) {
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
       container.style.cssText =
-        "padding: 6px 12px; border-bottom: 1px solid rgba(0,0,0,0.08); display: flex; gap: 6px; justify-content: flex-end;";
+        "position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 10;";
 
       const isOnline = agent.status !== "offline";
 
+      function makeIconBtn(svgHtml, titleText, color) {
+        var btn = document.createElement("button");
+        btn.style.cssText =
+          "display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; border: none; background: transparent; cursor: pointer; padding: 0; color: " + color + "; transition: background 0.15s;";
+        btn.innerHTML = svgHtml;
+        btn.title = titleText;
+        btn.setAttribute("aria-label", titleText);
+        btn.addEventListener("mouseenter", function () { if (!btn.disabled) btn.style.background = "rgba(0,0,0,0.06)"; });
+        btn.addEventListener("mouseleave", function () { btn.style.background = "transparent"; });
+        return btn;
+      }
+
       // Start/Stop button
-      const toggleBtn = document.createElement("button");
-      toggleBtn.style.cssText =
-        "padding: 3px 10px; font-size: 11px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.12); cursor: pointer; background: " +
-        (isOnline ? "rgba(239,68,68,0.08)" : "rgba(34,197,94,0.08)") +
-        "; color: " + (isOnline ? "#dc2626" : "#16a34a") + ";";
-      toggleBtn.textContent = isOnline ? t("stop") : t("start");
+      var toggleBtn = makeIconBtn(
+        isOnline ? SVG_STOP : SVG_START,
+        isOnline ? t("stop") : t("start"),
+        isOnline ? "#dc2626" : "#16a34a"
+      );
       toggleBtn.addEventListener("click", async function (e) {
         e.stopPropagation();
         toggleBtn.disabled = true;
-        toggleBtn.style.opacity = "0.5";
+        toggleBtn.style.opacity = "0.3";
+        toggleBtn.style.cursor = "default";
         try {
           await invoke(isOnline ? "stop_agent" : "start_agent", {
             serverSlug: serverSlug,
             agentId: agent.id,
           });
-          // Invalidate cache to refresh status
           lastFetchMs = 0;
         } catch (err) {
           console.warn("[Slock Desktop] agent card: action failed", err);
         }
         toggleBtn.disabled = false;
         toggleBtn.style.opacity = "1";
+        toggleBtn.style.cursor = "pointer";
       });
 
-      // Restart button (only when online)
-      const restartBtn = document.createElement("button");
-      restartBtn.style.cssText =
-        "padding: 3px 10px; font-size: 11px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.12); cursor: pointer; background: rgba(59,130,246,0.08); color: #2563eb;";
-      restartBtn.textContent = t("restart");
+      // Restart button
+      var restartBtn = makeIconBtn(
+        SVG_RESTART,
+        t("restart"),
+        "#2563eb"
+      );
       if (!isOnline) {
         restartBtn.disabled = true;
-        restartBtn.style.opacity = "0.4";
+        restartBtn.style.opacity = "0.3";
         restartBtn.style.cursor = "default";
       }
       restartBtn.addEventListener("click", async function (e) {
         e.stopPropagation();
         if (!isOnline) return;
         restartBtn.disabled = true;
-        restartBtn.style.opacity = "0.5";
+        restartBtn.style.opacity = "0.3";
+        restartBtn.style.cursor = "default";
         try {
           await invoke("stop_agent", { serverSlug: serverSlug, agentId: agent.id });
-          // Brief delay before restart
           await new Promise(function (r) { setTimeout(r, 1000); });
           await invoke("start_agent", { serverSlug: serverSlug, agentId: agent.id });
           lastFetchMs = 0;
@@ -352,6 +372,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         }
         restartBtn.disabled = false;
         restartBtn.style.opacity = "1";
+        restartBtn.style.cursor = "pointer";
       });
 
       container.appendChild(toggleBtn);
@@ -364,7 +385,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
       container.style.cssText =
-        "padding: 6px 12px 8px; border-top: 1px solid rgba(0,0,0,0.08);";
+        "padding: 8px 12px; border-top: 1px solid rgba(0,0,0,0.06); margin-top: 6px;";
 
       if (activity && activity.length > 0) {
         const actTitle = document.createElement("p");
@@ -506,9 +527,15 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       console.log("[Slock Desktop] agent card: injecting content for", agent.name);
       const serverSlug = getCurrentServerSlug();
 
-      // Insert action buttons at top of card
+      // Ensure card has position context for absolute-positioned buttons
+      const cardPosition = window.getComputedStyle(cardEl).position;
+      if (cardPosition === "static") {
+        cardEl.style.position = "relative";
+      }
+
+      // Insert action buttons (absolute positioned top-right)
       const buttons = buildActionButtons(agent, serverSlug);
-      cardEl.insertBefore(buttons, cardEl.firstChild);
+      cardEl.appendChild(buttons);
 
       // Append activity footer at bottom of card
       const footer = buildActivityFooter(activity);
@@ -672,7 +699,10 @@ mod tests {
         assert!(script.contains("buildActionButtons"));
         assert!(script.contains("stop_agent"));
         assert!(script.contains("start_agent"));
-        assert!(script.contains("Restart"));
+        assert!(script.contains("SVG_RESTART"));
+        assert!(script.contains("SVG_STOP"));
+        assert!(script.contains("SVG_START"));
+        assert!(script.contains("aria-label"));
     }
 
     #[test]
