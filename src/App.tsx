@@ -595,7 +595,7 @@ function App() {
       title: t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : null),
       subtitle: t.parentChannelName ? `#${t.parentChannelName}` : null,
       lastMessageAt: t.lastMessageAt,
-      unreadCount: inboxUnreadMap.get(t.id) ?? 0,
+      unreadCount: t.unreadCount || inboxUnreadMap.get(t.id) || 0,
       avatarInitial: '#',
       avatarUrl: null,
       channelId: t.id,
@@ -606,7 +606,7 @@ function App() {
       title: d.displayName ?? d.name,
       subtitle: null,
       lastMessageAt: d.lastMessageAt,
-      unreadCount: inboxUnreadMap.get(d.id) ?? 0,
+      unreadCount: d.unreadCount || inboxUnreadMap.get(d.id) || 0,
       avatarInitial: (d.displayName ?? d.name).charAt(0).toUpperCase(),
       avatarUrl: d.members[0]?.avatarUrl ?? null,
       channelId: d.id,
@@ -1200,12 +1200,15 @@ function App() {
     async function loadInbox() {
       setInboxLoading(true)
       try {
-        const [threads, dms, unreadEntries] = await Promise.all([
+        const [threadsResult, dmsResult, unreadResult] = await Promise.allSettled([
           fetchFollowedThreads(serverSlug),
           fetchDmChannels(serverSlug),
           fetchUnreadChannels(serverSlug),
         ])
         if (!cancelled) {
+          const threads = threadsResult.status === 'fulfilled' ? threadsResult.value : []
+          const dms = dmsResult.status === 'fulfilled' ? dmsResult.value : []
+          const unreadEntries = unreadResult.status === 'fulfilled' ? unreadResult.value : []
           setInboxThreads(threads)
           setInboxDms(dms)
           const map = new Map<string, number>()
@@ -1213,13 +1216,6 @@ function App() {
             map.set(entry.channelId, entry.unreadCount)
           }
           setInboxUnreadMap(map)
-        }
-      } catch {
-        // Inbox API may not be available yet, silently fallback to empty
-        if (!cancelled) {
-          setInboxThreads([])
-          setInboxDms([])
-          setInboxUnreadMap(new Map())
         }
       } finally {
         if (!cancelled) {
@@ -1252,11 +1248,18 @@ function App() {
         // Mark as read and zero out local unread count
         markChannelRead(serverSlug, inboxSelectedId!).then(() => {
           if (!cancelled) {
+            const chId = inboxSelectedId!
             setInboxUnreadMap((prev) => {
               const next = new Map(prev)
-              next.set(inboxSelectedId!, 0)
+              next.set(chId, 0)
               return next
             })
+            setInboxThreads((prev) =>
+              prev.map((t) => t.id === chId ? { ...t, unreadCount: 0 } : t)
+            )
+            setInboxDms((prev) =>
+              prev.map((d) => d.id === chId ? { ...d, unreadCount: 0 } : d)
+            )
           }
         }).catch(() => { /* ignore */ })
       } catch {
