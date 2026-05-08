@@ -285,50 +285,36 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return null;
     }
 
-    // --- Detect agent card (hover popover only, not page-level cards) ---
+    // --- Detect agent card (hover popover only, not page-level cards/dialogs) ---
     function isAgentCard(el) {
       if (!el || !el.classList) return false;
       // Must have card-brutal class
       if (!el.classList.contains("card-brutal")) return false;
-      // Only inject into hover popover cards, not agent detail page cards.
-      // Hover cards appear inside floating popover containers (Radix/portal).
-      // Check ancestors for popover-like wrappers:
-      // 1. data-radix-popper-content-wrapper (Radix UI)
-      // 2. data-radix-portal
-      // 3. data-side (Radix popover)
-      // 4. role="dialog" with position:fixed (floating overlay)
-      // 5. Element is near body (portal-rendered, shallow parent depth)
+      // Only inject into hover popover cards, not agent detail page or dialog cards.
+      // Conservative strategy: only accept hover-specific Radix markers,
+      // explicitly reject dialogs/modals.
       var parent = el.parentElement;
       var depth = 0;
+      var foundPopoverMarker = false;
       while (parent && depth < 15) {
-        // Radix UI popover markers
+        // Explicit reject: dialogs and modals (restart dialog, agent detail page modal)
+        if (parent.getAttribute && (
+          parent.getAttribute("role") === "dialog" ||
+          parent.getAttribute("aria-modal") === "true"
+        )) {
+          return false;
+        }
+        // Positive match: Radix hover popover specific markers
         if (parent.hasAttribute && (
           parent.hasAttribute("data-radix-popper-content-wrapper") ||
-          parent.hasAttribute("data-radix-portal") ||
           parent.hasAttribute("data-side")
         )) {
-          return true;
-        }
-        // Generic floating container (position:fixed or absolute with high z-index)
-        try {
-          var style = window.getComputedStyle(parent);
-          if ((style.position === "fixed" || style.position === "absolute") &&
-              parseInt(style.zIndex, 10) > 50) {
-            return true;
-          }
-        } catch (_) {}
-        // portal root: direct child of body
-        if (parent === document.body) {
-          // Card is very close to body — likely portal-rendered popover
-          if (depth <= 3) return true;
-          // Deep in body — likely page content, skip
-          return false;
+          foundPopoverMarker = true;
         }
         parent = parent.parentElement;
         depth++;
       }
-      // Could not determine context — skip to be safe
-      return false;
+      return foundPopoverMarker;
     }
 
     // --- Build injected action button (single Start/Stop, appended to card bottom) ---
@@ -741,9 +727,12 @@ mod tests {
     #[test]
     fn script_limits_injection_to_popover() {
         let script = agent_card_inject_script("test", "en-US");
-        // Must check for popover context, not just card-brutal class
+        // Must check for hover-specific popover markers
         assert!(script.contains("data-radix-popper-content-wrapper"));
-        assert!(script.contains("data-radix-portal"));
         assert!(script.contains("data-side"));
+        // Must reject dialogs/modals
+        assert!(script.contains("role"));
+        assert!(script.contains("aria-modal"));
+        assert!(script.contains("foundPopoverMarker"));
     }
 }

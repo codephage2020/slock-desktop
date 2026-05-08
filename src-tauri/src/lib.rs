@@ -486,6 +486,9 @@ struct AgentActivityEntry {
     // Additional fields the API may return (ignored by frontend but needed for deserialization)
     #[serde(default, alias = "agent_id")]
     agent_id: Option<String>,
+    // Catch-all: preserve any extra API fields so JS fallback chain can access them
+    #[serde(flatten)]
+    extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Envelope wrapper in case API wraps activity entries

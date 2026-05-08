@@ -299,6 +299,8 @@ export interface AgentActivityEntry {
   launchId: string | null
   createdAt: string | null
   agentId?: string | null
+  // Extra fields from API (catch-all via serde flatten)
+  [key: string]: unknown
 }
 
 export interface DashboardData {
