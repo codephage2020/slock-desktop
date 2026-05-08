@@ -385,7 +385,7 @@ body:has(.loading-shell),
   gap: 8px;
   appearance: none;
   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-xs, 8px);
   padding: 8px 10px;
   font: inherit;
   font-size: 0.78rem;
@@ -408,8 +408,10 @@ body:has(.loading-shell),
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: var(--radius-xs, 8px);
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--text) 10%, transparent),
+    0 24px 48px -24px color-mix(in srgb, var(--text) 20%, transparent);
   z-index: 10;
 }
 
@@ -445,7 +447,7 @@ body:has(.loading-shell),
   width: 100%;
   appearance: none;
   border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-xs, 8px);
   padding: 8px 10px;
   font: inherit;
   font-size: 0.78rem;
@@ -476,7 +478,7 @@ body:has(.loading-shell),
   color: var(--muted);
   display: inline-flex;
   align-items: center;
-  border-radius: 6px;
+  border-radius: var(--radius-xs, 8px);
   transition: color 0.12s, background 0.12s;
 }
 
