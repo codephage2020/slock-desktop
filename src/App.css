@@ -2141,6 +2141,7 @@ body:has(.loading-shell),
   padding: 48px 18px 18px;
   background: color-mix(in srgb, var(--canvas) 72%, transparent);
   backdrop-filter: blur(18px);
+  animation: panel-appear 150ms ease;
 }
 
 .service-log-dialog {

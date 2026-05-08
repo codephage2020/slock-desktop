@@ -2874,6 +2874,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       background: color-mix(in srgb, var(--desktop-canvas) 72%, transparent);
       backdrop-filter: blur(14px);
       pointer-events: auto;
+      animation: panel-appear 150ms ease;
     }
 
     .service-log-dialog {
