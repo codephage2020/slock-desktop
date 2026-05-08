@@ -327,6 +327,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       modeDark: "Dark",
       modeSystem: "System",
       theme: "Theme",
+      themeColor: "Accent color",
       language: "Language",
       languageEnglish: "English",
       languageChinese: "Chinese",
@@ -438,6 +439,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       modeDark: "暗黑",
       modeSystem: "系统",
       theme: "主题",
+      themeColor: "主题色",
       language: "语言",
       languageEnglish: "英文",
       languageChinese: "中文",
@@ -2315,6 +2317,37 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       overflow: visible;
     }
 
+    .titlebar-theme-menu-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 2px 6px;
+    }
+
+    .titlebar-theme-menu-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--desktop-text-secondary);
+    }
+
+    .titlebar-theme-menu-add {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: var(--desktop-radius-pill);
+      background: transparent;
+      color: var(--desktop-text);
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+    }
+
     .titlebar-theme-option-wrap {
       position: relative;
       width: 24px;
@@ -2417,22 +2450,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       font-size: 10px;
       color: var(--desktop-muted);
       text-transform: uppercase;
-    }
-
-    .titlebar-theme-option.add {
-      width: 100%;
-      height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--desktop-surface-secondary);
-      border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
-      border-radius: var(--desktop-radius-sm);
-      box-shadow: none;
-      font-size: 16px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
     }
 
     .titlebar-theme-delete {
@@ -3937,6 +3954,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       .titlebar-theme-button:hover,
       .titlebar-theme-delete:hover,
       .titlebar-theme-option:hover,
+      .titlebar-theme-menu-add:hover,
       .titlebar-version:hover {
         color: var(--desktop-text);
         background: color-mix(in srgb, var(--desktop-surface) 76%, transparent);
@@ -3969,6 +3987,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         .titlebar-theme-button:active,
         .titlebar-theme-delete:active,
         .titlebar-theme-option:active,
+        .titlebar-theme-menu-add:active,
         .titlebar-version:active {
 		      transform: scale(0.97);
 		    }
@@ -4427,8 +4446,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
             <span class="titlebar-theme-swatch"></span>
           </button>
           ${titlebarThemeMenuOpen ? `<div class="titlebar-theme-menu" role="menu" aria-label="${t("theme")}" data-titlebar-theme-menu>
+            <div class="titlebar-theme-menu-header">
+              <span class="titlebar-theme-menu-eyebrow">${t("themeColor")}</span>
+              <button class="titlebar-theme-menu-add" type="button" data-titlebar-theme-new title="${t("themeNewLabel")}" aria-label="${t("themeNewLabel")}">${plusIcon()}</button>
+            </div>
             ${themeOptions}
-            <button class="titlebar-theme-option add" type="button" data-titlebar-theme-new title="${t("themeNewLabel")}" aria-label="${t("themeNewLabel")}">${plusIcon()}</button>
             ${themeDraft}
           </div>` : ""}
         </div>
