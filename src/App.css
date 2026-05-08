@@ -1120,12 +1120,11 @@ body:has(.loading-shell),
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  min-width: 260px;
-  max-width: 320px;
-  max-height: 400px;
+  width: min(320px, calc(100vw - 20px));
+  max-height: min(400px, calc(100vh - 60px));
   overflow-y: auto;
   padding: 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-md, 12px);
   background: color-mix(in srgb, var(--surface) 98%, var(--canvas));
   border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
   box-shadow:
@@ -2108,14 +2107,6 @@ body:has(.loading-shell),
   opacity: 0.5;
 }
 
-.theme-style-rail {
-  max-height: 160px;
-}
-
-.theme-style-row {
-  grid-template-columns: 42px minmax(0, 1fr) 22px;
-}
-
 .theme-style-preview {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2240,8 +2231,10 @@ body:has(.loading-shell),
 
 .theme-row-summary {
   color: var(--muted);
-  font-size: 10px;
-  text-transform: uppercase;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .theme-row-actions {
