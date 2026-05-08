@@ -32,6 +32,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         daysAgo: "%dd ago",
         stop: "Stop",
         start: "Start",
+        restart: "Restart",
       },
       "zh-CN": {
         description: "描述",
@@ -46,6 +47,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         daysAgo: "%d天前",
         stop: "停止",
         start: "启动",
+        restart: "重启",
       },
     };
 
@@ -285,69 +287,119 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return null;
     }
 
-    // --- Detect agent card (reject dialog/modal, allow everything else) ---
+    // --- Detect agent card (reject dialog/modal/detail page, allow hover popover) ---
     function isAgentCard(el) {
       if (!el || !el.classList) return false;
       // Must have card-brutal class
       if (!el.classList.contains("card-brutal")) return false;
-      // Walk ancestors: reject if inside a dialog or modal (restart dialog, agent detail modal)
+      // Walk ancestors: reject if inside a dialog, modal, or Radix dialog content
       var parent = el.parentElement;
       var depth = 0;
-      while (parent && depth < 20) {
-        if (parent.getAttribute && (
-          parent.getAttribute("role") === "dialog" ||
-          parent.getAttribute("aria-modal") === "true"
-        )) {
-          console.log("[Slock Desktop] agent card: card-brutal skipped: inside dialog/modal at depth", depth);
-          return false;
+      var ancestors = [];
+      while (parent && depth < 30) {
+        // Collect ancestor info for diagnostics
+        var tag = parent.tagName || "";
+        var cls = (parent.className && typeof parent.className === "string") ? parent.className.substring(0, 60) : "";
+        var role = (parent.getAttribute && parent.getAttribute("role")) || "";
+        ancestors.push(tag + (cls ? "." + cls.split(" ")[0] : "") + (role ? "[role=" + role + "]" : ""));
+
+        if (parent.getAttribute) {
+          // Reject: inside a dialog/modal
+          if (parent.getAttribute("role") === "dialog" || parent.getAttribute("aria-modal") === "true") {
+            console.log("[Slock Desktop] agent card: card-brutal skipped: inside dialog/modal at depth", depth);
+            return false;
+          }
+          // Reject: inside a Radix dialog content
+          if (parent.hasAttribute("data-radix-dialog-content")) {
+            console.log("[Slock Desktop] agent card: card-brutal skipped: inside radix dialog at depth", depth);
+            return false;
+          }
+          // Reject: inside a page-level agent detail view (main content area, not a popover)
+          // Agent detail pages typically have a large containing element that is NOT a popover
+          if (parent.hasAttribute("data-radix-scroll-area-viewport") && depth > 3) {
+            console.log("[Slock Desktop] agent card: card-brutal skipped: inside scroll area (likely detail page) at depth", depth);
+            return false;
+          }
         }
         parent = parent.parentElement;
         depth++;
       }
+      // Log ancestor chain for diagnostics
+      console.log("[Slock Desktop] agent card: accepted card-brutal, ancestors:", ancestors.slice(0, 10).join(" > "));
       return true;
     }
 
     // --- Build injected action button (single Start/Stop, appended to card bottom) ---
     var SVG_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
     var SVG_START = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 20,12 8,19"/></svg>';
+    var SVG_RESTART = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><polyline points="3 22 3 16 9 16"/></svg>';
+
+    function createIconButton(svg, label, color, onClick) {
+      var btn = document.createElement("button");
+      btn.style.cssText =
+        "display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; border: none; background: transparent; cursor: pointer; padding: 0; color: " +
+        color + "; transition: background 0.15s;";
+      btn.innerHTML = svg;
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
+      btn.addEventListener("mouseenter", function () { if (!btn.disabled) btn.style.background = "rgba(0,0,0,0.06)"; });
+      btn.addEventListener("mouseleave", function () { btn.style.background = "transparent"; });
+      btn.addEventListener("click", async function (e) {
+        e.stopPropagation();
+        btn.disabled = true;
+        btn.style.opacity = "0.3";
+        btn.style.cursor = "default";
+        try {
+          await onClick();
+          lastFetchMs = 0;
+        } catch (err) {
+          console.warn("[Slock Desktop] agent card: action failed", err);
+        }
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        btn.style.cursor = "pointer";
+      });
+      return btn;
+    }
 
     function buildActionButtons(agent, serverSlug) {
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
       container.style.cssText =
-        "padding: 4px 12px 0; display: flex; justify-content: flex-end;";
+        "padding: 4px 12px 0; display: flex; justify-content: flex-end; gap: 4px;";
 
       const isOnline = agent.status !== "offline";
 
-      var toggleBtn = document.createElement("button");
-      toggleBtn.style.cssText =
-        "display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; border: none; background: transparent; cursor: pointer; padding: 0; color: " +
-        (isOnline ? "#dc2626" : "#16a34a") + "; transition: background 0.15s;";
-      toggleBtn.innerHTML = isOnline ? SVG_STOP : SVG_START;
-      toggleBtn.title = isOnline ? t("stop") : t("start");
-      toggleBtn.setAttribute("aria-label", isOnline ? t("stop") : t("start"));
-      toggleBtn.addEventListener("mouseenter", function () { if (!toggleBtn.disabled) toggleBtn.style.background = "rgba(0,0,0,0.06)"; });
-      toggleBtn.addEventListener("mouseleave", function () { toggleBtn.style.background = "transparent"; });
-      toggleBtn.addEventListener("click", async function (e) {
-        e.stopPropagation();
-        toggleBtn.disabled = true;
-        toggleBtn.style.opacity = "0.3";
-        toggleBtn.style.cursor = "default";
-        try {
-          await invoke(isOnline ? "stop_agent" : "start_agent", {
+      // Start/Stop toggle
+      var toggleBtn = createIconButton(
+        isOnline ? SVG_STOP : SVG_START,
+        isOnline ? t("stop") : t("start"),
+        isOnline ? "#dc2626" : "#16a34a",
+        function () {
+          return invoke(isOnline ? "stop_agent" : "start_agent", {
             serverSlug: serverSlug,
             agentId: agent.id,
           });
-          lastFetchMs = 0;
-        } catch (err) {
-          console.warn("[Slock Desktop] agent card: action failed", err);
         }
-        toggleBtn.disabled = false;
-        toggleBtn.style.opacity = "1";
-        toggleBtn.style.cursor = "pointer";
-      });
-
+      );
       container.appendChild(toggleBtn);
+
+      // Restart button (only when online)
+      if (isOnline) {
+        var restartBtn = createIconButton(
+          SVG_RESTART,
+          t("restart"),
+          "#d97706",
+          async function () {
+            await invoke("stop_agent", { serverSlug: serverSlug, agentId: agent.id });
+            // Brief delay before restart
+            await new Promise(function (r) { setTimeout(r, 1000); });
+            await invoke("start_agent", { serverSlug: serverSlug, agentId: agent.id });
+          }
+        );
+        container.appendChild(restartBtn);
+      }
+
       return container;
     }
 
@@ -723,10 +775,10 @@ mod tests {
         assert!(script.contains("start_agent"));
         assert!(script.contains("SVG_STOP"));
         assert!(script.contains("SVG_START"));
+        assert!(script.contains("SVG_RESTART"));
         assert!(script.contains("aria-label"));
-        // Restart should NOT be present
-        assert!(!script.contains("SVG_RESTART"));
-        assert!(!script.contains("restart"));
+        // Restart should be present (added back per user request)
+        assert!(script.contains("restart"));
     }
 
     #[test]
@@ -745,7 +797,13 @@ mod tests {
         // Must reject dialogs/modals
         assert!(script.contains("role"));
         assert!(script.contains("aria-modal"));
+        // Must reject Radix dialog content
+        assert!(script.contains("data-radix-dialog-content"));
+        // Must reject scroll area (detail page)
+        assert!(script.contains("data-radix-scroll-area-viewport"));
         // Must have skip diagnostic log
         assert!(script.contains("card-brutal skipped"));
+        // Must log ancestors for diagnostics
+        assert!(script.contains("ancestors:"));
     }
 }
