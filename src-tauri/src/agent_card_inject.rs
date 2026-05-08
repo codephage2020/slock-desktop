@@ -238,11 +238,24 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
           }
           el = el.parentElement;
         }
+        // No agent ID found on this interaction — clear stale hover data
+        // to prevent injecting old agent info into a non-agent card
+        lastHoveredAgentId = null;
+        lastHoveredTimestamp = 0;
       } catch (_) {}
     }
 
+    // Clean up previous capture listeners before registering new ones
+    // (script may be re-evaluated on theme/language changes)
+    if (window.__slockDesktopAgentCardCaptureCleanup) {
+      window.__slockDesktopAgentCardCaptureCleanup();
+    }
     document.addEventListener("pointerover", captureAgentFromTrigger, true);
     document.addEventListener("click", captureAgentFromTrigger, true);
+    window.__slockDesktopAgentCardCaptureCleanup = function () {
+      document.removeEventListener("pointerover", captureAgentFromTrigger, true);
+      document.removeEventListener("click", captureAgentFromTrigger, true);
+    };
 
     function getHoveredAgentId() {
       if (lastHoveredAgentId && (Date.now() - lastHoveredTimestamp) < HOVER_TTL) {
@@ -383,9 +396,24 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       }
 
       // Strategy 2: Use hover-captured agent ID (from pointerover/click on avatar)
+      // Verify the hovered agent's name appears in the card text to prevent cross-card mismatch
       if (!agentId) {
-        agentId = getHoveredAgentId();
-        if (agentId) idSource = "hover-capture";
+        const hoverId = getHoveredAgentId();
+        if (hoverId) {
+          const agents = await getAgents();
+          const hoverAgent = agents.find((a) => a.id === hoverId);
+          if (hoverAgent) {
+            const cardText = (cardEl.textContent || "").trim();
+            const dn = hoverAgent.displayName || "";
+            const n = hoverAgent.name || "";
+            if ((dn && cardText.indexOf(dn) !== -1) || (n && cardText.indexOf(n) !== -1)) {
+              agentId = hoverId;
+              idSource = "hover-capture";
+            } else {
+              console.log("[Slock Desktop] agent card: hover ID rejected (name mismatch)", hoverId, cardText.substring(0, 60));
+            }
+          }
+        }
       }
 
       // Strategy 3: Name-based fallback — match card text against known agents
@@ -546,6 +574,13 @@ mod tests {
         assert!(script.contains("pointerover"));
         assert!(script.contains("lastHoveredAgentId"));
         assert!(script.contains("getHoveredAgentId"));
+        // Verify listener cleanup on re-eval
+        assert!(script.contains("__slockDesktopAgentCardCaptureCleanup"));
+        assert!(script.contains("removeEventListener"));
+        // Verify stale hover ID cleared when no agent found
+        assert!(script.contains("lastHoveredAgentId = null"));
+        // Verify hover ID verified against card text before use
+        assert!(script.contains("hover ID rejected (name mismatch)"));
     }
 
     #[test]
