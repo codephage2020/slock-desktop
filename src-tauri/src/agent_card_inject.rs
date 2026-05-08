@@ -32,7 +32,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         daysAgo: "%dd ago",
         stop: "Stop",
         start: "Start",
-        restart: "Restart",
+        restart: "Quick Restart",
       },
       "zh-CN": {
         description: "描述",
@@ -47,7 +47,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         daysAgo: "%d天前",
         stop: "停止",
         start: "启动",
-        restart: "重启",
+        restart: "快速重启",
       },
     };
 
@@ -390,9 +390,21 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       );
       container.appendChild(toggleBtn);
 
-      // Restart button removed: native web uses a 3-option restart dialog
-      // that we cannot replicate here. Will be re-added once we can
-      // navigate to / trigger the native restart flow.
+      // Quick Restart button (only when online) — stop → 1s → start
+      if (isOnline) {
+        var restartBtn = createBrutalButton(
+          SVG_RESTART,
+          t("restart"),
+          async function () {
+            await invoke("stop_agent", { serverSlug: serverSlug, agentId: agent.id });
+            await new Promise(function (r) { setTimeout(r, 1000); });
+            await invoke("start_agent", { serverSlug: serverSlug, agentId: agent.id });
+          }
+        );
+        restartBtn.title = LOCALE === "zh-CN" ? "停止后立即启动此 Agent" : "Stop then start this agent";
+        restartBtn.setAttribute("aria-label", LOCALE === "zh-CN" ? "快速重启：停止后立即启动此 Agent" : "Quick restart: stop then start this agent");
+        container.appendChild(restartBtn);
+      }
 
       return container;
     }
