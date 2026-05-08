@@ -1655,7 +1655,7 @@ body:has(.loading-shell),
 }
 
 .service-loading-row {
-  min-height: 34px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1663,7 +1663,7 @@ body:has(.loading-shell),
   border-radius: 12px;
   color: var(--muted);
   background: color-mix(in srgb, var(--surface-strong) 60%, transparent);
-  font-size: 0.82rem;
+  font-size: 12px;
 }
 
 .service-loading-row .service-action-icon {
@@ -1847,6 +1847,11 @@ body:has(.loading-shell),
   padding-bottom: 8px;
 }
 
+.service-log-head .icon-action-button svg {
+  width: 16px;
+  height: 16px;
+}
+
 .service-log-heading {
   min-width: 0;
   display: grid;
@@ -1892,13 +1897,14 @@ body:has(.loading-shell),
 }
 
 .service-log-timebar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto 30px;
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 6px;
 }
 
 .service-log-time-field {
+  flex: 1 1 auto;
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.72fr);
@@ -1908,6 +1914,7 @@ body:has(.loading-shell),
   border: 0;
   color: var(--muted);
   font-size: 0.62rem;
+  font-weight: 700;
   font-family: 'Space Mono', monospace;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -2003,7 +2010,7 @@ body:has(.loading-shell),
 }
 
 .service-log-count {
-  min-width: 64px;
+  min-width: 54px;
 }
 
 .service-log-actions {
@@ -2046,7 +2053,7 @@ body:has(.loading-shell),
 }
 
 .service-log-content mark {
-  border-radius: 4px;
+  border-radius: var(--radius-xs, 8px);
   background: color-mix(in srgb, #facc15 58%, transparent);
   color: inherit;
   padding: 0 2px;
@@ -2501,6 +2508,21 @@ body:has(.loading-shell),
   height: 16px;
 }
 
+.service-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--surface-strong) 78%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  color: var(--muted);
+}
+
 .status-chip {
   display: inline-flex;
   align-items: center;
@@ -2930,20 +2952,19 @@ body:has(.loading-shell),
   }
 
   .service-log-timebar {
-    grid-template-columns: minmax(0, 1fr) 32px;
+    gap: 6px;
   }
 
   .service-log-time-field {
-    grid-column: 1 / -1;
+    flex: 1 1 100%;
   }
 
   .service-log-range-select {
-    grid-column: 1;
+    flex: 1 1 auto;
   }
 
   .service-log-range-button {
-    grid-column: 2;
-    grid-row: 3;
+    flex-shrink: 0;
   }
 
   .service-log-search {
