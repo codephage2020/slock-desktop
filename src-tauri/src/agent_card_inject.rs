@@ -32,6 +32,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         daysAgo: "%dd ago",
         stop: "Stop",
         start: "Start",
+        restart: "Restart",
       },
       "zh-CN": {
         description: "描述",
@@ -46,6 +47,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         daysAgo: "%d天前",
         stop: "停止",
         start: "启动",
+        restart: "重启",
       },
     };
 
@@ -285,114 +287,210 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return null;
     }
 
-    // --- Detect agent card (reject dialog/modal, allow everything else) ---
+    // --- Detect agent card (only hover popover, reject native page cards) ---
     function isAgentCard(el) {
       if (!el || !el.classList) return false;
-      // Must have card-brutal class
       if (!el.classList.contains("card-brutal")) return false;
-      // Walk ancestors: reject if inside a dialog or modal (restart dialog, agent detail modal)
+      // Reject: native page cards have layout classes like w-full, max-w-md, p-6
+      if (el.classList.contains("w-full") || el.classList.contains("max-w-md") || el.classList.contains("p-6")) {
+        console.log("[Slock Desktop] agent card: card-brutal skipped: native page layout class", el.className);
+        return false;
+      }
+      // Positive allowlist: hover popover cards always have overflow-hidden
+      if (!el.classList.contains("overflow-hidden")) {
+        console.log("[Slock Desktop] agent card: card-brutal skipped: missing overflow-hidden", el.className);
+        return false;
+      }
+      // Walk ancestors: reject if inside a dialog, modal, or Radix dialog content
       var parent = el.parentElement;
       var depth = 0;
-      while (parent && depth < 20) {
-        if (parent.getAttribute && (
-          parent.getAttribute("role") === "dialog" ||
-          parent.getAttribute("aria-modal") === "true"
-        )) {
-          console.log("[Slock Desktop] agent card: card-brutal skipped: inside dialog/modal at depth", depth);
-          return false;
+      var ancestors = [];
+      while (parent && depth < 30) {
+        var tag = parent.tagName || "";
+        var cls = (parent.className && typeof parent.className === "string") ? parent.className.substring(0, 60) : "";
+        var role = (parent.getAttribute && parent.getAttribute("role")) || "";
+        ancestors.push(tag + (cls ? "." + cls.split(" ")[0] : "") + (role ? "[role=" + role + "]" : ""));
+
+        if (parent.getAttribute) {
+          if (parent.getAttribute("role") === "dialog" || parent.getAttribute("aria-modal") === "true") {
+            console.log("[Slock Desktop] agent card: card-brutal skipped: inside dialog/modal at depth", depth);
+            return false;
+          }
+          if (parent.hasAttribute("data-radix-dialog-content")) {
+            console.log("[Slock Desktop] agent card: card-brutal skipped: inside radix dialog at depth", depth);
+            return false;
+          }
         }
         parent = parent.parentElement;
         depth++;
       }
+      console.log("[Slock Desktop] agent card: accepted card-brutal overflow-hidden, ancestors:", ancestors.slice(0, 10).join(" > "));
       return true;
     }
 
-    // --- Build injected action button (single Start/Stop, appended to card bottom) ---
+    // --- Build injected action buttons (neobrutalism btn-brutal style) ---
     var SVG_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
     var SVG_START = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 20,12 8,19"/></svg>';
+    var SVG_RESTART = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><polyline points="3 22 3 16 9 16"/></svg>';
+
+    function createBrutalButton(svg, label, onClick) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
+      btn.style.cssText =
+        "display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1.5px solid currentColor; background: transparent; cursor: pointer; font-size: 11px; font-weight: 700; font-family: inherit; color: inherit; transition: box-shadow 0.15s, transform 0.15s;";
+      btn.innerHTML = svg + '<span>' + label + '</span>';
+      btn.addEventListener("mouseenter", function () {
+        if (!btn.disabled) {
+          btn.style.boxShadow = "2px 2px 0 currentColor";
+          btn.style.transform = "translate(-1px, -1px)";
+        }
+      });
+      btn.addEventListener("mouseleave", function () {
+        btn.style.boxShadow = "none";
+        btn.style.transform = "none";
+      });
+      btn.addEventListener("click", async function (e) {
+        e.stopPropagation();
+        btn.disabled = true;
+        btn.style.opacity = "0.4";
+        btn.style.cursor = "default";
+        try {
+          await onClick();
+          lastFetchMs = 0;
+        } catch (err) {
+          console.warn("[Slock Desktop] agent card: action failed", err);
+        }
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        btn.style.cursor = "pointer";
+      });
+      return btn;
+    }
 
     function buildActionButtons(agent, serverSlug) {
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
       container.style.cssText =
-        "padding: 4px 12px 0; display: flex; justify-content: flex-end;";
+        "padding: 8px 12px 4px; display: flex; justify-content: flex-end; gap: 6px;";
 
       const isOnline = agent.status !== "offline";
 
-      var toggleBtn = document.createElement("button");
-      toggleBtn.style.cssText =
-        "display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; border: none; background: transparent; cursor: pointer; padding: 0; color: " +
-        (isOnline ? "#dc2626" : "#16a34a") + "; transition: background 0.15s;";
-      toggleBtn.innerHTML = isOnline ? SVG_STOP : SVG_START;
-      toggleBtn.title = isOnline ? t("stop") : t("start");
-      toggleBtn.setAttribute("aria-label", isOnline ? t("stop") : t("start"));
-      toggleBtn.addEventListener("mouseenter", function () { if (!toggleBtn.disabled) toggleBtn.style.background = "rgba(0,0,0,0.06)"; });
-      toggleBtn.addEventListener("mouseleave", function () { toggleBtn.style.background = "transparent"; });
-      toggleBtn.addEventListener("click", async function (e) {
-        e.stopPropagation();
-        toggleBtn.disabled = true;
-        toggleBtn.style.opacity = "0.3";
-        toggleBtn.style.cursor = "default";
-        try {
-          await invoke(isOnline ? "stop_agent" : "start_agent", {
+      // Start/Stop toggle
+      var toggleBtn = createBrutalButton(
+        isOnline ? SVG_STOP : SVG_START,
+        isOnline ? t("stop") : t("start"),
+        function () {
+          return invoke(isOnline ? "stop_agent" : "start_agent", {
             serverSlug: serverSlug,
             agentId: agent.id,
           });
-          lastFetchMs = 0;
-        } catch (err) {
-          console.warn("[Slock Desktop] agent card: action failed", err);
         }
-        toggleBtn.disabled = false;
-        toggleBtn.style.opacity = "1";
-        toggleBtn.style.cursor = "pointer";
-      });
-
+      );
       container.appendChild(toggleBtn);
+
+      // Restart button (only when online)
+      if (isOnline) {
+        var restartBtn = createBrutalButton(
+          SVG_RESTART,
+          t("restart"),
+          async function () {
+            await invoke("stop_agent", { serverSlug: serverSlug, agentId: agent.id });
+            await new Promise(function (r) { setTimeout(r, 1000); });
+            await invoke("start_agent", { serverSlug: serverSlug, agentId: agent.id });
+          }
+        );
+        container.appendChild(restartBtn);
+      }
+
       return container;
     }
 
     // --- Build injected activity footer (bottom of card) ---
+    // Unwrap nested entry: API returns { entry: { activity, detail, kind }, timestamp }
+    // Merge strategy: start with raw, overlay inner fields where inner is non-empty
+    function unwrapEntry(raw) {
+      if (!raw) return raw;
+      if (raw.entry && typeof raw.entry === "object") {
+        var inner = raw.entry;
+        var merged = {};
+        // Copy all top-level fields first (except entry itself)
+        for (var k in raw) {
+          if (k !== "entry" && raw.hasOwnProperty(k)) merged[k] = raw[k];
+        }
+        // Overlay inner fields: inner wins when it has a truthy value
+        for (var j in inner) {
+          if (inner.hasOwnProperty(j)) {
+            if (inner[j] || !merged[j]) merged[j] = inner[j];
+          }
+        }
+        return merged;
+      }
+      return raw;
+    }
+
     // Extract display text from an activity entry using fallback chain
-    function getEntryText(entry) {
-      return entry.activity || entry.detail || entry.action || entry.type || entry.event || entry.message || entry.id || "";
+    function getEntryText(rawEntry) {
+      var entry = unwrapEntry(rawEntry);
+      return entry.activity || entry.detail || entry.action || entry.type || entry.event || entry.message || entry.kind || entry.id || "";
     }
 
     // Extract timestamp from an activity entry using fallback chain
-    function getEntryTime(entry) {
-      return entry.createdAt || entry.created_at || entry.timestamp || entry.updatedAt || entry.updated_at || "";
+    function getEntryTime(rawEntry) {
+      var entry = unwrapEntry(rawEntry);
+      // Handle numeric epoch ms timestamps
+      var ts = entry.createdAt || entry.created_at || entry.timestamp || entry.updatedAt || entry.updated_at || "";
+      if (typeof ts === "number" && ts > 0) {
+        return new Date(ts).toISOString();
+      }
+      return ts;
     }
 
-    function buildActivityFooter(activity) {
+    // --- Activity cache (keyed by agent ID) ---
+    var activityCache = {};
+    var ACTIVITY_CACHE_TTL = 30000;
+
+    function buildActivitySkeleton() {
       const container = document.createElement("div");
       container.setAttribute(INJECT_ATTR, "true");
+      container.setAttribute("data-activity-placeholder", "true");
       container.style.cssText =
         "padding: 8px 12px; border-top: 1px solid rgba(0,0,0,0.06); margin-top: 6px;";
 
-      // Log first entry structure for diagnostics
+      const actTitle = document.createElement("p");
+      actTitle.style.cssText =
+        "margin: 0 0 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af;";
+      actTitle.textContent = t("activity");
+      container.appendChild(actTitle);
+
+      const loading = document.createElement("p");
+      loading.style.cssText = "margin: 0; font-size: 11px; color: #9ca3af;";
+      loading.textContent = "...";
+      container.appendChild(loading);
+
+      return container;
+    }
+
+    function fillActivityContent(container, activity) {
+      // Remove loading placeholder (keep title)
+      while (container.children.length > 1) {
+        container.removeChild(container.lastChild);
+      }
+
       if (activity && activity.length > 0) {
         try {
           console.log("[Slock Desktop] agent card: activity entry[0] keys =", Object.keys(activity[0]).join(","), "values =", JSON.stringify(activity[0]).substring(0, 200));
         } catch (_) {}
-      }
-
-      if (activity && activity.length > 0) {
-        const actTitle = document.createElement("p");
-        actTitle.style.cssText =
-          "margin: 0 0 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af;";
-        actTitle.textContent = t("activity");
-        container.appendChild(actTitle);
 
         const list = document.createElement("ul");
-        list.style.cssText =
-          "margin: 0; padding: 0; list-style: none;";
+        list.style.cssText = "margin: 0; padding: 0; list-style: none;";
 
         const maxItems = Math.min(activity.length, 5);
         for (let i = 0; i < maxItems; i++) {
           const entry = activity[i];
           const entryText = getEntryText(entry);
           const entryTime = getEntryTime(entry);
-
-          // Skip entries with no displayable text
           if (!entryText) continue;
 
           const li = document.createElement("li");
@@ -413,11 +511,9 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
           list.appendChild(li);
         }
 
-        // If all entries had empty text, show no-activity message
         if (list.children.length === 0) {
           const noAct = document.createElement("p");
-          noAct.style.cssText =
-            "margin: 0; font-size: 11px; color: #9ca3af;";
+          noAct.style.cssText = "margin: 0; font-size: 11px; color: #9ca3af;";
           noAct.textContent = t("noActivity");
           container.appendChild(noAct);
         } else {
@@ -425,61 +521,92 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         }
       } else {
         const noAct = document.createElement("p");
-        noAct.style.cssText =
-          "margin: 0; font-size: 11px; color: #9ca3af;";
+        noAct.style.cssText = "margin: 0; font-size: 11px; color: #9ca3af;";
         noAct.textContent = t("noActivity");
         container.appendChild(noAct);
       }
+      container.removeAttribute("data-activity-placeholder");
+    }
+
+    // --- Build placeholder buttons (disabled, no agent data yet) ---
+    function buildPlaceholderButtons() {
+      const container = document.createElement("div");
+      container.setAttribute(INJECT_ATTR, "true");
+      container.setAttribute("data-buttons-placeholder", "true");
+      container.style.cssText =
+        "padding: 8px 12px 4px; display: flex; justify-content: flex-end; gap: 6px;";
+
+      // Disabled placeholder buttons (no click handlers)
+      var stopBtn = document.createElement("button");
+      stopBtn.type = "button";
+      stopBtn.disabled = true;
+      stopBtn.style.cssText =
+        "display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1.5px solid currentColor; background: transparent; cursor: default; font-size: 11px; font-weight: 700; font-family: inherit; color: inherit; opacity: 0.3;";
+      stopBtn.innerHTML = SVG_STOP + '<span>...</span>';
+      container.appendChild(stopBtn);
 
       return container;
     }
 
-    // --- Injection logic ---
-    async function injectAgentCard(cardEl) {
+    // --- Injection logic (true sync-first: UI before any await) ---
+    function injectAgentCard(cardEl) {
       if (cardEl.hasAttribute(INJECT_ATTR)) return;
       cardEl.setAttribute(INJECT_ATTR, "pending");
       console.log("[Slock Desktop] agent card: injection started", cardEl.className);
 
-      // Strategy 1: Get agent ID from React fiber (card + siblings + parent)
-      let agentId = getAgentIdFromFiber(cardEl);
-      let idSource = "fiber-card";
+      // --- Immediate sync: render skeleton before any async work ---
+      cardEl.style.width = "auto";
+      cardEl.style.minWidth = "220px";
+      cardEl.style.maxWidth = "320px";
 
-      if (!agentId) {
-        const prev = cardEl.previousElementSibling;
-        if (prev) {
-          agentId = getAgentIdFromFiber(prev);
-          if (agentId) idSource = "fiber-sibling";
+      var placeholderButtons = buildPlaceholderButtons();
+      cardEl.appendChild(placeholderButtons);
+
+      var activityFooter = buildActivitySkeleton();
+      cardEl.appendChild(activityFooter);
+
+      cardEl.setAttribute(INJECT_ATTR, "loading");
+      console.log("[Slock Desktop] agent card: skeleton rendered (sync)");
+
+      // --- All async work happens after skeleton is visible ---
+      resolveAndFill(cardEl, placeholderButtons, activityFooter);
+    }
+
+    async function resolveAndFill(cardEl, placeholderButtons, activityFooter) {
+      try {
+        // --- Step 1: Determine agent ID (prefer sync strategies) ---
+        let agentId = getAgentIdFromFiber(cardEl);
+        let idSource = "fiber-card";
+
+        if (!agentId) {
+          const prev = cardEl.previousElementSibling;
+          if (prev) {
+            agentId = getAgentIdFromFiber(prev);
+            if (agentId) idSource = "fiber-sibling";
+          }
         }
-      }
 
-      if (!agentId && cardEl.parentElement) {
-        agentId = getAgentIdFromFiber(cardEl.parentElement);
-        if (agentId) idSource = "fiber-parent";
-      }
+        if (!agentId && cardEl.parentElement) {
+          agentId = getAgentIdFromFiber(cardEl.parentElement);
+          if (agentId) idSource = "fiber-parent";
+        }
 
-      // Strategy 2: Use hover-captured agent ID (from pointerover/click on avatar)
-      // Trust the capture if TTL is valid, but reject if card text contains
-      // a DIFFERENT known agent's name (cross-card mismatch protection).
-      // Note: original card may not contain the agent's name at all (e.g. only
-      // action buttons), so we can't require name presence — only reject on
-      // explicit mismatch with another agent.
-      if (!agentId) {
-        const hoverId = getHoveredAgentId();
-        if (hoverId) {
-          const agents = await getAgents();
-          const hoverAgent = agents.find((a) => a.id === hoverId);
-          if (hoverAgent) {
-            const cardText = (cardEl.textContent || "").trim();
-            // Check if card text contains a DIFFERENT agent's name
+        // Strategy 2: Hover-captured agent ID (sync check with cached agents)
+        if (!agentId) {
+          const hoverId = getHoveredAgentId();
+          if (hoverId) {
+            const agents = cachedAgents.length ? cachedAgents : [];
             let mismatch = false;
-            for (const other of agents) {
-              if (other.id === hoverId) continue;
-              const odn = other.displayName || "";
-              const on = other.name || "";
-              if ((odn && cardText.indexOf(odn) !== -1) || (on && cardText.indexOf(on) !== -1)) {
-                mismatch = true;
-                console.log("[Slock Desktop] agent card: hover ID rejected (card matches different agent)", hoverId, other.id);
-                break;
+            if (agents.length) {
+              const cardText = (cardEl.textContent || "").trim();
+              for (const other of agents) {
+                if (other.id === hoverId) continue;
+                const odn = other.displayName || "";
+                const on = other.name || "";
+                if ((odn && cardText.indexOf(odn) !== -1) || (on && cardText.indexOf(on) !== -1)) {
+                  mismatch = true;
+                  break;
+                }
               }
             }
             if (!mismatch) {
@@ -488,63 +615,84 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
             }
           }
         }
+
+        // Strategy 3: Name-match with cached agents (sync if cache warm)
+        if (!agentId && cachedAgents.length) {
+          agentId = getAgentIdByName(cardEl, cachedAgents);
+          if (agentId) idSource = "name-match-cached";
+        }
+
+        // Strategy 4: Async fallback — fetch agents then name-match
+        if (!agentId) {
+          const agents = await getAgents();
+          if (!document.body.contains(cardEl)) return;
+          agentId = getAgentIdByName(cardEl, agents);
+          if (agentId) idSource = "name-match";
+        }
+
+        if (!agentId) {
+          console.warn("[Slock Desktop] agent card: could not determine agent ID, removing skeleton");
+          if (document.body.contains(placeholderButtons)) placeholderButtons.remove();
+          if (document.body.contains(activityFooter)) activityFooter.remove();
+          cardEl.removeAttribute(INJECT_ATTR);
+          return;
+        }
+        console.log("[Slock Desktop] agent card: found agent ID", agentId, "via", idSource);
+
+        if (!document.body.contains(cardEl)) return;
+
+        // --- Step 2: Get agent data and replace placeholder buttons ---
+        let agents = cachedAgents.length ? cachedAgents : await getAgents();
+        if (!document.body.contains(cardEl)) return;
+
+        const agent = agents.find((a) => a.id === agentId);
+        if (!agent) {
+          console.warn("[Slock Desktop] agent card: agent not found", agentId);
+          if (document.body.contains(placeholderButtons)) placeholderButtons.remove();
+          if (document.body.contains(activityFooter)) activityFooter.remove();
+          cardEl.removeAttribute(INJECT_ATTR);
+          return;
+        }
+
+        console.log("[Slock Desktop] agent card: filling content for", agent.name);
+        const serverSlug = getCurrentServerSlug();
+
+        // Replace placeholder buttons with real action buttons
+        const realButtons = buildActionButtons(agent, serverSlug);
+        if (document.body.contains(placeholderButtons)) {
+          placeholderButtons.replaceWith(realButtons);
+        } else {
+          // Placeholder gone (card restructured?), insert before activity
+          if (document.body.contains(activityFooter)) {
+            cardEl.insertBefore(realButtons, activityFooter);
+          } else {
+            cardEl.appendChild(realButtons);
+          }
+        }
+
+        // --- Step 3: Fill activity (from cache or fetch) ---
+        var cached = activityCache[agentId];
+        if (cached && (Date.now() - cached.fetchedAt) < ACTIVITY_CACHE_TTL) {
+          if (document.body.contains(activityFooter)) {
+            fillActivityContent(activityFooter, cached.data);
+          }
+          cardEl.setAttribute(INJECT_ATTR, "done");
+          return;
+        }
+
+        const activity = await getAgentActivity(agentId);
+        activityCache[agentId] = { data: activity, fetchedAt: Date.now() };
+        if (document.body.contains(cardEl) && document.body.contains(activityFooter)) {
+          fillActivityContent(activityFooter, activity);
+        }
+        cardEl.setAttribute(INJECT_ATTR, "done");
+      } catch (e) {
+        console.warn("[Slock Desktop] agent card: resolveAndFill failed", e);
+        if (document.body.contains(activityFooter)) {
+          fillActivityContent(activityFooter, []);
+        }
+        cardEl.setAttribute(INJECT_ATTR, "done");
       }
-
-      // Strategy 3: Name-based fallback — match card text against known agents
-      if (!agentId) {
-        const agents = await getAgents();
-        agentId = getAgentIdByName(cardEl, agents);
-        if (agentId) idSource = "name-match";
-      }
-
-      if (!agentId) {
-        console.warn("[Slock Desktop] agent card: could not determine agent ID (all strategies failed)");
-        // Log card info for debugging
-        try {
-          console.log("[Slock Desktop] agent card debug: textContent =", (cardEl.textContent || "").substring(0, 100));
-          console.log("[Slock Desktop] agent card debug: innerHTML length =", (cardEl.innerHTML || "").length);
-          console.log("[Slock Desktop] agent card debug: children =", cardEl.children.length);
-        } catch (_) {}
-        cardEl.removeAttribute(INJECT_ATTR);
-        return;
-      }
-      console.log("[Slock Desktop] agent card: found agent ID", agentId, "via", idSource);
-
-      // Fetch agent info first (populates cached_servers), then activity
-      const agents = await getAgents();
-      console.log("[Slock Desktop] agent card: fetched", agents.length, "agents");
-      const activity = await getAgentActivity(agentId);
-
-      // Check card is still in DOM
-      if (!document.body.contains(cardEl)) {
-        console.log("[Slock Desktop] agent card: card removed from DOM during fetch");
-        return;
-      }
-
-      const agent = agents.find((a) => a.id === agentId);
-      if (!agent) {
-        console.warn("[Slock Desktop] agent card: agent not found in dashboard data", agentId);
-        cardEl.removeAttribute(INJECT_ATTR);
-        return;
-      }
-
-      console.log("[Slock Desktop] agent card: injecting content for", agent.name);
-      const serverSlug = getCurrentServerSlug();
-
-      // Append action button (inline, no absolute positioning)
-      const buttons = buildActionButtons(agent, serverSlug);
-      cardEl.appendChild(buttons);
-
-      // Append activity footer at bottom of card
-      const footer = buildActivityFooter(activity);
-      cardEl.appendChild(footer);
-
-      cardEl.setAttribute(INJECT_ATTR, "done");
-
-      // Widen card to fit content
-      cardEl.style.width = "auto";
-      cardEl.style.minWidth = "220px";
-      cardEl.style.maxWidth = "320px";
     }
 
     // --- MutationObserver ---
@@ -580,6 +728,9 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       childList: true,
       subtree: true,
     });
+
+    // Pre-warm agents cache in background so first hover has data ready
+    void getAgents();
   } catch (error) {
     console.warn("[Slock Desktop] agent card inject setup failed", error);
   }
@@ -664,7 +815,7 @@ mod tests {
         // Verify stale hover ID cleared when no agent found
         assert!(script.contains("lastHoveredAgentId = null"));
         // Verify hover ID verified against other agent names before use
-        assert!(script.contains("hover ID rejected (card matches different agent)"));
+        assert!(script.contains("mismatch"));
     }
 
     #[test]
@@ -698,29 +849,60 @@ mod tests {
         assert!(script.contains("start_agent"));
         assert!(script.contains("SVG_STOP"));
         assert!(script.contains("SVG_START"));
+        assert!(script.contains("SVG_RESTART"));
         assert!(script.contains("aria-label"));
-        // Restart should NOT be present
-        assert!(!script.contains("SVG_RESTART"));
-        assert!(!script.contains("restart"));
+        // Restart should be present (added back per user request)
+        assert!(script.contains("restart"));
     }
 
     #[test]
-    fn script_has_activity_footer() {
+    fn script_has_activity_two_phase() {
         let script = agent_card_inject_script("test", "en-US");
-        assert!(script.contains("buildActivityFooter"));
-        assert!(script.contains("appendChild(footer)"));
+        // Phase 2: skeleton injected synchronously
+        assert!(script.contains("buildActivitySkeleton"));
+        assert!(script.contains("data-activity-placeholder"));
+        // Phase 3: async fill replaces skeleton content
+        assert!(script.contains("fillActivityContent"));
+        // Activity cache (30s TTL)
+        assert!(script.contains("activityCache"));
+        assert!(script.contains("ACTIVITY_CACHE_TTL"));
         // Fallback chain for field names
         assert!(script.contains("getEntryText"));
         assert!(script.contains("getEntryTime"));
+        // unwrapEntry for nested API response
+        assert!(script.contains("unwrapEntry"));
     }
 
     #[test]
     fn script_limits_injection_to_popover() {
         let script = agent_card_inject_script("test", "en-US");
+        // Positive allowlist: must require overflow-hidden
+        assert!(script.contains("overflow-hidden"));
+        assert!(script.contains("missing overflow-hidden"));
+        // Must reject native page layout classes
+        assert!(script.contains("w-full"));
+        assert!(script.contains("max-w-md"));
+        assert!(script.contains("p-6"));
         // Must reject dialogs/modals
         assert!(script.contains("role"));
         assert!(script.contains("aria-modal"));
+        // Must reject Radix dialog content
+        assert!(script.contains("data-radix-dialog-content"));
         // Must have skip diagnostic log
         assert!(script.contains("card-brutal skipped"));
+        // Must log ancestors for diagnostics
+        assert!(script.contains("ancestors:"));
+    }
+
+    #[test]
+    fn script_has_true_sync_first_skeleton() {
+        let script = agent_card_inject_script("test", "en-US");
+        // Placeholder buttons rendered before any async work
+        assert!(script.contains("buildPlaceholderButtons"));
+        assert!(script.contains("data-buttons-placeholder"));
+        // Async resolution in separate function
+        assert!(script.contains("resolveAndFill"));
+        // Placeholder replaced with real buttons after agent data available
+        assert!(script.contains("replaceWith"));
     }
 }
