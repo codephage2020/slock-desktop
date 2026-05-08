@@ -409,3 +409,40 @@ export async function sendMessage(serverSlug: string, channelId: string, content
 export async function markChannelRead(serverSlug: string, channelId: string) {
   return invoke<void>('mark_channel_read', { serverSlug, channelId })
 }
+
+// Unified inbox types and commands
+
+export interface ServerMember {
+  id: string
+  name: string
+  displayName: string | null
+  avatarUrl: string | null
+  role: string | null
+}
+
+export interface ServerUnreadEntry {
+  serverId: string
+  unreadCount: number
+}
+
+export async function fetchChannelMessages(
+  serverSlug: string,
+  channelId: string,
+  options?: { limit?: number; before?: string; after?: string }
+) {
+  return invoke<InboxMessagesResponse>('fetch_channel_messages', {
+    serverSlug,
+    channelId,
+    limit: options?.limit,
+    before: options?.before,
+    after: options?.after,
+  })
+}
+
+export async function fetchServerMembers(serverSlug: string) {
+  return invoke<ServerMember[]>('fetch_server_members', { serverSlug })
+}
+
+export async function fetchServerUnreadSummary() {
+  return invoke<ServerUnreadEntry[]>('fetch_server_unread_summary')
+}
