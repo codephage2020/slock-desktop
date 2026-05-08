@@ -33,6 +33,13 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         stop: "Stop",
         start: "Start",
         restart: "Quick Restart",
+        actIdle: "Idle",
+        actWorking: "Working",
+        actThinking: "Thinking",
+        actDisconnected: "Disconnected",
+        actRunningCommand: "Running command",
+        actSendingMessage: "Sending message",
+        actOutput: "Output",
       },
       "zh-CN": {
         description: "描述",
@@ -48,6 +55,13 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         stop: "停止",
         start: "启动",
         restart: "快速重启",
+        actIdle: "空闲",
+        actWorking: "工作中",
+        actThinking: "思考中",
+        actDisconnected: "已断开",
+        actRunningCommand: "运行命令",
+        actSendingMessage: "发送消息",
+        actOutput: "输出",
       },
     };
 
@@ -66,6 +80,54 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       if (hours < 24) return t("hoursAgo").replace("%d", hours);
       const days = Math.floor(hours / 24);
       return t("daysAgo").replace("%d", days);
+    }
+
+    // Format timestamp as HH:MM:SS for activity entries
+    function formatTimeHMS(isoStr) {
+      if (!isoStr) return "";
+      try {
+        var d = new Date(isoStr);
+        if (isNaN(d.getTime())) return "";
+        var hh = String(d.getHours()).padStart(2, "0");
+        var mm = String(d.getMinutes()).padStart(2, "0");
+        var ss = String(d.getSeconds()).padStart(2, "0");
+        return hh + ":" + mm + ":" + ss;
+      } catch (_) { return ""; }
+    }
+
+    // Map API activity kind to display { label, detail, dotColor }
+    // API fields after unwrapEntry: kind, activity, detail, toolInput
+    function mapActivityKind(entry) {
+      var kind = entry.kind || "";
+      var activity = entry.activity || "";
+      var detail = entry.detail || "";
+      var toolInput = entry.toolInput || "";
+
+      // status entries: activity field contains the status text
+      if (kind === "status" || !kind) {
+        var act = (activity || detail || "").toLowerCase();
+        if (act.indexOf("idle") !== -1) return { label: t("actIdle"), detail: "", dotColor: "#22c55e" };
+        if (act.indexOf("working") !== -1) return { label: t("actWorking"), detail: detail || "", dotColor: "#eab308" };
+        if (act.indexOf("thinking") !== -1) return { label: t("actThinking"), detail: "", dotColor: "#eab308" };
+        if (act.indexOf("disconnect") !== -1) return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
+      }
+
+      if (kind === "tool_use" || kind === "tool_start") {
+        var input = toolInput || detail || "";
+        return { label: t("actRunningCommand"), detail: input, dotColor: "#eab308" };
+      }
+
+      if (kind === "message") {
+        return { label: t("actSendingMessage"), detail: detail || "", dotColor: "#eab308" };
+      }
+
+      if (kind === "output") {
+        return { label: t("actOutput"), detail: detail || "", dotColor: "#3b82f6" };
+      }
+
+      // Fallback: use activity/kind as label
+      var fallbackLabel = activity || kind || detail || "Activity";
+      return { label: fallbackLabel, detail: detail && detail !== fallbackLabel ? detail : "", dotColor: "#9ca3af" };
     }
 
     // --- Tauri invoke ---
@@ -432,12 +494,6 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return raw;
     }
 
-    // Extract display text from an activity entry using fallback chain
-    function getEntryText(rawEntry) {
-      var entry = unwrapEntry(rawEntry);
-      return entry.activity || entry.detail || entry.action || entry.type || entry.event || entry.message || entry.kind || entry.id || "";
-    }
-
     // Extract timestamp from an activity entry using fallback chain
     function getEntryTime(rawEntry) {
       var entry = unwrapEntry(rawEntry);
@@ -499,26 +555,43 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
 
         const maxItems = Math.min(sorted.length, 5);
         for (let i = 0; i < maxItems; i++) {
-          const entry = sorted[i];
-          const entryText = getEntryText(entry);
-          const entryTime = getEntryTime(entry);
-          if (!entryText) continue;
+          const rawEntry = sorted[i];
+          const entry = unwrapEntry(rawEntry);
+          const mapped = mapActivityKind(entry);
+          const entryTime = getEntryTime(rawEntry);
 
           const li = document.createElement("li");
           li.style.cssText =
-            "display: flex; justify-content: space-between; gap: 6px; font-size: 11px; line-height: 1.5;";
+            "display: flex; align-items: baseline; gap: 4px; font-size: 11px; line-height: 1.6; white-space: nowrap;";
 
-          const text = document.createElement("span");
-          text.style.cssText =
-            "flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #374151;";
-          text.textContent = entryText;
+          // Time (HH:MM:SS)
+          const timeSpan = document.createElement("span");
+          timeSpan.style.cssText = "flex-shrink: 0; color: #9ca3af; font-size: 10px; font-variant-numeric: tabular-nums;";
+          timeSpan.textContent = formatTimeHMS(entryTime);
+          li.appendChild(timeSpan);
 
-          const time = document.createElement("span");
-          time.style.cssText = "flex-shrink: 0; color: #9ca3af; font-size: 10px;";
-          time.textContent = formatRelativeTime(entryTime);
+          // Dot (colored by kind)
+          const dot = document.createElement("span");
+          dot.style.cssText = "flex-shrink: 0; color: " + mapped.dotColor + "; font-size: 8px; line-height: 1;";
+          dot.textContent = "\u25CF";
+          li.appendChild(dot);
 
-          li.appendChild(text);
-          li.appendChild(time);
+          // Label (bold)
+          const labelSpan = document.createElement("span");
+          labelSpan.style.cssText = "flex-shrink: 0; font-weight: 700; color: #374151;";
+          labelSpan.textContent = mapped.label;
+          li.appendChild(labelSpan);
+
+          // Detail (gray, truncated single line)
+          if (mapped.detail) {
+            const detailSpan = document.createElement("span");
+            detailSpan.style.cssText =
+              "flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #9ca3af;";
+            // Truncate to single line: collapse newlines
+            detailSpan.textContent = mapped.detail.replace(/[\r\n]+/g, " ").substring(0, 100);
+            li.appendChild(detailSpan);
+          }
+
           list.appendChild(li);
         }
 
@@ -878,12 +951,25 @@ mod tests {
         assert!(script.contains("activityCache"));
         assert!(script.contains("ACTIVITY_CACHE_TTL"));
         // Fallback chain for field names
-        assert!(script.contains("getEntryText"));
         assert!(script.contains("getEntryTime"));
         // unwrapEntry for nested API response
         assert!(script.contains("unwrapEntry"));
         // Activity sorted by timestamp descending (newest first)
         assert!(script.contains(".sort("));
+        // Kind-based mapping to label/detail/dotColor
+        assert!(script.contains("mapActivityKind"));
+        assert!(script.contains("dotColor"));
+        // HH:MM:SS time format
+        assert!(script.contains("formatTimeHMS"));
+        assert!(script.contains("padStart"));
+        // Activity kind labels
+        assert!(script.contains("actIdle"));
+        assert!(script.contains("actWorking"));
+        assert!(script.contains("actThinking"));
+        assert!(script.contains("actDisconnected"));
+        assert!(script.contains("actRunningCommand"));
+        assert!(script.contains("actSendingMessage"));
+        assert!(script.contains("actOutput"));
     }
 
     #[test]
