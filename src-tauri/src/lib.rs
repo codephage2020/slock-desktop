@@ -2788,7 +2788,7 @@ fn fetch_agent_activity(
     }
 
     // Both failed — log raw body prefix for debugging
-    let preview = if body.len() > 200 { &body[..200] } else { &body };
+    let preview: String = body.chars().take(200).collect();
     Err(format!(
         "Failed to parse agent activity: body preview: {preview}"
     ))
