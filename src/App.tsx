@@ -1183,7 +1183,7 @@ function App() {
             }
 
             // Track unread items for message fetching
-            const unreadChannelIds: { channelId: string; channelName: string; type: UnifiedItem['type'] }[] = []
+            const unreadChannelIds: { channelId: string; channelName: string; type: UnifiedItem['type']; unreadCount: number }[] = []
 
             // Channels from dashboard
             if (dashResult.status === 'fulfilled') {
@@ -1213,7 +1213,7 @@ function App() {
                   unreadCount: unread,
                 })
                 if (unread > 0) {
-                  unreadChannelIds.push({ channelId: ch.id, channelName: `#${ch.name}`, type: 'channel' })
+                  unreadChannelIds.push({ channelId: ch.id, channelName: `#${ch.name}`, type: 'channel', unreadCount: unread })
                 }
               }
             }
@@ -1237,7 +1237,7 @@ function App() {
                   avatarUrl: null,
                 })
                 if (unread > 0) {
-                  unreadChannelIds.push({ channelId: t.id, channelName: name, type: 'thread' })
+                  unreadChannelIds.push({ channelId: t.id, channelName: name, type: 'thread', unreadCount: unread })
                 }
               }
             }
@@ -1261,20 +1261,24 @@ function App() {
                   avatarUrl: d.members[0]?.avatarUrl ?? null,
                 })
                 if (unread > 0) {
-                  unreadChannelIds.push({ channelId: d.id, channelName: name, type: 'dm' })
+                  unreadChannelIds.push({ channelId: d.id, channelName: name, type: 'dm', unreadCount: unread })
                 }
               }
             }
 
-            // Step 3: For unread channels, fetch recent messages
+            // Step 3: For unread channels, fetch only the unread messages
             let unreadMsgs: UnreadMessageItem[] = []
             if (hasUnread && unreadChannelIds.length > 0) {
               const msgResults = await Promise.allSettled(
                 unreadChannelIds.map(async (ch) => {
+                  // Fetch exactly the number of unread messages (capped at 50 for safety)
+                  const fetchLimit = Math.min(ch.unreadCount, 50)
                   const resp = ch.type === 'channel'
-                    ? await fetchChannelMessages(server.slug, ch.channelId, { limit: 10 })
-                    : await fetchThreadMessages(server.slug, ch.channelId, { limit: 10 })
-                  return resp.messages.map((msg) => ({
+                    ? await fetchChannelMessages(server.slug, ch.channelId, { limit: fetchLimit })
+                    : await fetchThreadMessages(server.slug, ch.channelId, { limit: fetchLimit })
+                  // Take only the latest N messages matching unreadCount
+                  const msgs = resp.messages.slice(-ch.unreadCount)
+                  return msgs.map((msg) => ({
                     ...msg,
                     serverSlug: server.slug,
                     serverName: server.name,
@@ -1309,11 +1313,12 @@ function App() {
             .filter((r): r is PromiseFulfilledResult<ServerResult> => r.status === 'fulfilled')
           const allItems = fulfilled.flatMap((r) => r.value.items)
           const groups = fulfilled.map((r) => r.value.group)
-          // Build member map
+          // Build member map keyed by serverSlug:memberId for cross-server uniqueness
           const newMemberMap = new Map<string, ServerMember>()
           for (const r of fulfilled) {
+            const slug = r.value.group.serverSlug
             for (const m of r.value.members) {
-              newMemberMap.set(m.id, m)
+              newMemberMap.set(`${slug}:${m.id}`, m)
             }
           }
           // Combine and sort unread messages by time (newest first)
@@ -1358,7 +1363,7 @@ function App() {
         if (!cancelled) {
           setInboxMessages(resp.messages)
         }
-        // Mark as read and zero out local unread count
+        // Mark as read and zero out local unread count + remove from feed
         markChannelRead(serverSlug, channelId).then(() => {
           if (!cancelled) {
             setUnifiedItems((prev) =>
@@ -1367,6 +1372,10 @@ function App() {
                   ? { ...i, unreadCount: 0 }
                   : i,
               ),
+            )
+            // Remove this channel's messages from the unread feed
+            setUnreadMessagesFeed((prev) =>
+              prev.filter((msg) => !(msg.serverSlug === serverSlug && msg.channelId === channelId)),
             )
           }
         }).catch(() => { /* ignore */ })
@@ -2820,8 +2829,8 @@ function App() {
                     )
                   }
                   return filtered.map((msg) => {
-                    const senderMember = msg.senderId ? memberMap.get(msg.senderId) : null
-                    const displayName = msg.senderDisplayName ?? senderMember?.displayName ?? msg.senderName ?? copy.inboxUnknownSender
+                    const senderMember = msg.senderId ? memberMap.get(`${msg.serverSlug}:${msg.senderId}`) : null
+                    const displayName = msg.senderDisplayName ?? senderMember?.displayName ?? msg.senderName ?? senderMember?.name ?? copy.inboxUnknownSender
                     const avatarUrl = msg.senderAvatarUrl ?? senderMember?.avatarUrl ?? null
                     // Find the item type for routing
                     const item = unifiedItems.find(
@@ -2947,26 +2956,31 @@ function App() {
                       <p className="inline-note">{copy.inboxEmpty}</p>
                     </div>
                   ) : (
-                    inboxMessages.map((msg) => (
+                    inboxMessages.map((msg) => {
+                      const senderMember = msg.senderId && selectedChannel ? memberMap.get(`${selectedChannel.serverSlug}:${msg.senderId}`) : null
+                      const resolvedName = msg.senderDisplayName ?? senderMember?.displayName ?? msg.senderName ?? senderMember?.name ?? copy.inboxUnknownSender
+                      const resolvedAvatar = msg.senderAvatarUrl ?? senderMember?.avatarUrl ?? null
+                      return (
                       <div key={msg.id} className={`inbox-msg${msg.senderType === 'agent' ? ' agent' : ''}`}>
                         <div className="inbox-msg-avatar">
-                          {msg.senderAvatarUrl ? (
-                            <img src={msg.senderAvatarUrl} alt="" className="inbox-avatar-img" />
+                          {resolvedAvatar ? (
+                            <img src={resolvedAvatar} alt="" className="inbox-avatar-img" />
                           ) : (
                             <span className="inbox-avatar-placeholder">
-                              {msg.senderType === 'agent' ? 'A' : (msg.senderName ?? '?').charAt(0).toUpperCase()}
+                              {msg.senderType === 'agent' ? 'A' : resolvedName.charAt(0).toUpperCase()}
                             </span>
                           )}
                         </div>
                         <div className="inbox-msg-body">
                           <div className="inbox-msg-meta">
-                            <span className="inbox-msg-name">{msg.senderDisplayName ?? msg.senderName ?? copy.inboxUnknownSender}</span>
+                            <span className="inbox-msg-name">{resolvedName}</span>
                             <span className="inbox-msg-time">{formatRelativeTime(msg.createdAt)}</span>
                           </div>
                           <div className="inbox-msg-content">{msg.content}</div>
                         </div>
                       </div>
-                    ))
+                      )
+                    })
                   )}
                   <div ref={inboxMessagesEndRef} />
                 </div>
