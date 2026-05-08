@@ -172,13 +172,8 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
     // --- Detect agent card ---
     function isAgentCard(el) {
       if (!el || !el.classList) return false;
-      if (!el.classList.contains("card-brutal")) return false;
-      const buttons = el.querySelectorAll("button");
-      for (const btn of buttons) {
-        const text = (btn.textContent || "").trim().toLowerCase();
-        if (text === "stop" || text === "start" || text === "reset") return true;
-      }
-      return false;
+      // Detect by card-brutal class (web app's card component)
+      return el.classList.contains("card-brutal");
     }
 
     // --- Build injected content ---
@@ -271,6 +266,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
     async function injectAgentCard(cardEl) {
       if (cardEl.hasAttribute(INJECT_ATTR)) return;
       cardEl.setAttribute(INJECT_ATTR, "pending");
+      console.log("[Slock Desktop] agent card: injection started", cardEl.className);
 
       // Get agent ID from React fiber
       let agentId = getAgentIdFromFiber(cardEl);
@@ -281,27 +277,37 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         if (prev) agentId = getAgentIdFromFiber(prev);
       }
 
+      // Try parent element as well
+      if (!agentId && cardEl.parentElement) {
+        agentId = getAgentIdFromFiber(cardEl.parentElement);
+      }
+
       if (!agentId) {
         console.warn("[Slock Desktop] agent card: could not determine agent ID");
         cardEl.removeAttribute(INJECT_ATTR);
         return;
       }
+      console.log("[Slock Desktop] agent card: found agent ID", agentId);
 
-      // Fetch agent info and activity in parallel
-      const [agents, activity] = await Promise.all([
-        getAgents(),
-        getAgentActivity(agentId),
-      ]);
+      // Fetch agent info first (populates cached_servers), then activity
+      const agents = await getAgents();
+      console.log("[Slock Desktop] agent card: fetched", agents.length, "agents");
+      const activity = await getAgentActivity(agentId);
 
       // Check card is still in DOM
-      if (!document.body.contains(cardEl)) return;
+      if (!document.body.contains(cardEl)) {
+        console.log("[Slock Desktop] agent card: card removed from DOM during fetch");
+        return;
+      }
 
       const agent = agents.find((a) => a.id === agentId);
       if (!agent) {
+        console.warn("[Slock Desktop] agent card: agent not found in dashboard data", agentId);
         cardEl.removeAttribute(INJECT_ATTR);
         return;
       }
 
+      console.log("[Slock Desktop] agent card: injecting content for", agent.name);
       const header = buildInjectedHeader(agent, activity);
       cardEl.insertBefore(header, cardEl.firstChild);
       cardEl.setAttribute(INJECT_ATTR, "done");
@@ -321,16 +327,21 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (!(node instanceof HTMLElement)) continue;
-          // Direct child of body — portal-rendered card
+          // Check the node itself
           if (isAgentCard(node)) {
+            console.log("[Slock Desktop] agent card: detected (direct)", node.className);
             void injectAgentCard(node);
-            return;
+            continue;
           }
-          // The card might be inside a wrapper div
-          const card = node.querySelector?.(".card-brutal");
-          if (card && isAgentCard(card)) {
-            void injectAgentCard(card);
-            return;
+          // Search descendants for agent cards (handles portal wrappers)
+          const cards = node.querySelectorAll?.(".card-brutal");
+          if (cards) {
+            for (const el of cards) {
+              if (el instanceof HTMLElement && isAgentCard(el)) {
+                console.log("[Slock Desktop] agent card: detected (nested)", el.className);
+                void injectAgentCard(el);
+              }
+            }
           }
         }
       }
@@ -338,6 +349,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
 
     window.__slockDesktopAgentCardObserver.observe(document.body, {
       childList: true,
+      subtree: true,
     });
   } catch (error) {
     console.warn("[Slock Desktop] agent card inject setup failed", error);
@@ -389,11 +401,16 @@ mod tests {
     }
 
     #[test]
-    fn script_detects_agent_cards_by_buttons() {
+    fn script_detects_agent_cards_by_class_and_fiber() {
         let script = agent_card_inject_script("test", "en-US");
-        assert!(script.contains(r#"text === "stop""#));
-        assert!(script.contains(r#"text === "start""#));
-        assert!(script.contains(r#"text === "reset""#));
+        assert!(script.contains("card-brutal"));
+        assert!(script.contains("getAgentIdFromFiber"));
+    }
+
+    #[test]
+    fn script_observes_subtree() {
+        let script = agent_card_inject_script("test", "en-US");
+        assert!(script.contains("subtree: true"));
     }
 
     #[test]
