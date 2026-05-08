@@ -352,14 +352,39 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
     }
 
     // --- Build injected activity footer (bottom of card) ---
+    // Unwrap nested entry: API returns { entry: { activity, detail, kind }, timestamp }
+    function unwrapEntry(raw) {
+      if (!raw) return raw;
+      if (raw.entry && typeof raw.entry === "object") {
+        // Merge nested entry fields onto top level (nested wins over empty top-level)
+        var inner = raw.entry;
+        return {
+          activity: inner.activity || raw.activity || "",
+          detail: inner.detail || raw.detail || null,
+          kind: inner.kind || null,
+          timestamp: raw.timestamp || inner.timestamp || null,
+          createdAt: raw.createdAt || raw.created_at || inner.createdAt || inner.created_at || null,
+          id: raw.id || inner.id || "",
+        };
+      }
+      return raw;
+    }
+
     // Extract display text from an activity entry using fallback chain
-    function getEntryText(entry) {
-      return entry.activity || entry.detail || entry.action || entry.type || entry.event || entry.message || entry.id || "";
+    function getEntryText(rawEntry) {
+      var entry = unwrapEntry(rawEntry);
+      return entry.activity || entry.detail || entry.action || entry.type || entry.event || entry.message || entry.kind || entry.id || "";
     }
 
     // Extract timestamp from an activity entry using fallback chain
-    function getEntryTime(entry) {
-      return entry.createdAt || entry.created_at || entry.timestamp || entry.updatedAt || entry.updated_at || "";
+    function getEntryTime(rawEntry) {
+      var entry = unwrapEntry(rawEntry);
+      // Handle numeric epoch ms timestamps
+      var ts = entry.createdAt || entry.created_at || entry.timestamp || entry.updatedAt || entry.updated_at || "";
+      if (typeof ts === "number" && ts > 0) {
+        return new Date(ts).toISOString();
+      }
+      return ts;
     }
 
     function buildActivityFooter(activity) {
