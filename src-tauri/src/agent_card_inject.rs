@@ -296,6 +296,11 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         console.log("[Slock Desktop] agent card: card-brutal skipped: native page layout class", el.className);
         return false;
       }
+      // Positive allowlist: hover popover cards always have overflow-hidden
+      if (!el.classList.contains("overflow-hidden")) {
+        console.log("[Slock Desktop] agent card: card-brutal skipped: missing overflow-hidden", el.className);
+        return false;
+      }
       // Walk ancestors: reject if inside a dialog, modal, or Radix dialog content
       var parent = el.parentElement;
       var depth = 0;
@@ -319,7 +324,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         parent = parent.parentElement;
         depth++;
       }
-      console.log("[Slock Desktop] agent card: accepted card-brutal, ancestors:", ancestors.slice(0, 10).join(" > "));
+      console.log("[Slock Desktop] agent card: accepted card-brutal overflow-hidden, ancestors:", ancestors.slice(0, 10).join(" > "));
       return true;
     }
 
@@ -523,132 +528,170 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       container.removeAttribute("data-activity-placeholder");
     }
 
-    // --- Injection logic (two-phase: sync buttons + async activity) ---
-    async function injectAgentCard(cardEl) {
+    // --- Build placeholder buttons (disabled, no agent data yet) ---
+    function buildPlaceholderButtons() {
+      const container = document.createElement("div");
+      container.setAttribute(INJECT_ATTR, "true");
+      container.setAttribute("data-buttons-placeholder", "true");
+      container.style.cssText =
+        "padding: 8px 12px 4px; display: flex; justify-content: flex-end; gap: 6px;";
+
+      // Disabled placeholder buttons (no click handlers)
+      var stopBtn = document.createElement("button");
+      stopBtn.type = "button";
+      stopBtn.disabled = true;
+      stopBtn.style.cssText =
+        "display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1.5px solid currentColor; background: transparent; cursor: default; font-size: 11px; font-weight: 700; font-family: inherit; color: inherit; opacity: 0.3;";
+      stopBtn.innerHTML = SVG_STOP + '<span>...</span>';
+      container.appendChild(stopBtn);
+
+      return container;
+    }
+
+    // --- Injection logic (true sync-first: UI before any await) ---
+    function injectAgentCard(cardEl) {
       if (cardEl.hasAttribute(INJECT_ATTR)) return;
       cardEl.setAttribute(INJECT_ATTR, "pending");
       console.log("[Slock Desktop] agent card: injection started", cardEl.className);
 
-      // --- Phase 1: Determine agent ID (prefer sync strategies) ---
-      let agentId = getAgentIdFromFiber(cardEl);
-      let idSource = "fiber-card";
-
-      if (!agentId) {
-        const prev = cardEl.previousElementSibling;
-        if (prev) {
-          agentId = getAgentIdFromFiber(prev);
-          if (agentId) idSource = "fiber-sibling";
-        }
-      }
-
-      if (!agentId && cardEl.parentElement) {
-        agentId = getAgentIdFromFiber(cardEl.parentElement);
-        if (agentId) idSource = "fiber-parent";
-      }
-
-      // Strategy 2: Hover-captured agent ID (sync check with cached agents)
-      if (!agentId) {
-        const hoverId = getHoveredAgentId();
-        if (hoverId) {
-          const agents = cachedAgents.length ? cachedAgents : [];
-          let mismatch = false;
-          if (agents.length) {
-            const cardText = (cardEl.textContent || "").trim();
-            for (const other of agents) {
-              if (other.id === hoverId) continue;
-              const odn = other.displayName || "";
-              const on = other.name || "";
-              if ((odn && cardText.indexOf(odn) !== -1) || (on && cardText.indexOf(on) !== -1)) {
-                mismatch = true;
-                break;
-              }
-            }
-          }
-          if (!mismatch) {
-            agentId = hoverId;
-            idSource = "hover-capture";
-          }
-        }
-      }
-
-      // Strategy 3: Name-match with cached agents (sync if cache warm)
-      if (!agentId && cachedAgents.length) {
-        agentId = getAgentIdByName(cardEl, cachedAgents);
-        if (agentId) idSource = "name-match-cached";
-      }
-
-      // Strategy 4: Async fallback — fetch agents then name-match
-      if (!agentId) {
-        const agents = await getAgents();
-        agentId = getAgentIdByName(cardEl, agents);
-        if (agentId) idSource = "name-match";
-      }
-
-      if (!agentId) {
-        console.warn("[Slock Desktop] agent card: could not determine agent ID");
-        cardEl.removeAttribute(INJECT_ATTR);
-        return;
-      }
-      console.log("[Slock Desktop] agent card: found agent ID", agentId, "via", idSource);
-
-      if (!document.body.contains(cardEl)) {
-        console.log("[Slock Desktop] agent card: card removed before injection");
-        return;
-      }
-
-      // --- Phase 2: Immediate sync injection (buttons + skeleton) ---
-      let agents = cachedAgents.length ? cachedAgents : await getAgents();
-      const agent = agents.find((a) => a.id === agentId);
-      if (!agent) {
-        console.warn("[Slock Desktop] agent card: agent not found", agentId);
-        cardEl.removeAttribute(INJECT_ATTR);
-        return;
-      }
-
-      if (!document.body.contains(cardEl)) {
-        console.log("[Slock Desktop] agent card: card removed before injection");
-        return;
-      }
-
-      console.log("[Slock Desktop] agent card: injecting content for", agent.name);
-      const serverSlug = getCurrentServerSlug();
-
-      // Widen card immediately
+      // --- Immediate sync: render skeleton before any async work ---
       cardEl.style.width = "auto";
       cardEl.style.minWidth = "220px";
       cardEl.style.maxWidth = "320px";
 
-      // Inject buttons immediately (sync)
-      const buttons = buildActionButtons(agent, serverSlug);
-      cardEl.appendChild(buttons);
+      var placeholderButtons = buildPlaceholderButtons();
+      cardEl.appendChild(placeholderButtons);
 
-      // Check activity cache first
-      var cached = activityCache[agentId];
-      if (cached && (Date.now() - cached.fetchedAt) < ACTIVITY_CACHE_TTL) {
-        const footer = buildActivitySkeleton();
-        cardEl.appendChild(footer);
-        fillActivityContent(footer, cached.data);
-        cardEl.setAttribute(INJECT_ATTR, "done");
-        return;
-      }
-
-      // Inject activity skeleton immediately, fill async
-      const activityFooter = buildActivitySkeleton();
+      var activityFooter = buildActivitySkeleton();
       cardEl.appendChild(activityFooter);
-      cardEl.setAttribute(INJECT_ATTR, "done");
 
-      // --- Phase 3: Async activity fetch ---
+      cardEl.setAttribute(INJECT_ATTR, "loading");
+      console.log("[Slock Desktop] agent card: skeleton rendered (sync)");
+
+      // --- All async work happens after skeleton is visible ---
+      resolveAndFill(cardEl, placeholderButtons, activityFooter);
+    }
+
+    async function resolveAndFill(cardEl, placeholderButtons, activityFooter) {
       try {
+        // --- Step 1: Determine agent ID (prefer sync strategies) ---
+        let agentId = getAgentIdFromFiber(cardEl);
+        let idSource = "fiber-card";
+
+        if (!agentId) {
+          const prev = cardEl.previousElementSibling;
+          if (prev) {
+            agentId = getAgentIdFromFiber(prev);
+            if (agentId) idSource = "fiber-sibling";
+          }
+        }
+
+        if (!agentId && cardEl.parentElement) {
+          agentId = getAgentIdFromFiber(cardEl.parentElement);
+          if (agentId) idSource = "fiber-parent";
+        }
+
+        // Strategy 2: Hover-captured agent ID (sync check with cached agents)
+        if (!agentId) {
+          const hoverId = getHoveredAgentId();
+          if (hoverId) {
+            const agents = cachedAgents.length ? cachedAgents : [];
+            let mismatch = false;
+            if (agents.length) {
+              const cardText = (cardEl.textContent || "").trim();
+              for (const other of agents) {
+                if (other.id === hoverId) continue;
+                const odn = other.displayName || "";
+                const on = other.name || "";
+                if ((odn && cardText.indexOf(odn) !== -1) || (on && cardText.indexOf(on) !== -1)) {
+                  mismatch = true;
+                  break;
+                }
+              }
+            }
+            if (!mismatch) {
+              agentId = hoverId;
+              idSource = "hover-capture";
+            }
+          }
+        }
+
+        // Strategy 3: Name-match with cached agents (sync if cache warm)
+        if (!agentId && cachedAgents.length) {
+          agentId = getAgentIdByName(cardEl, cachedAgents);
+          if (agentId) idSource = "name-match-cached";
+        }
+
+        // Strategy 4: Async fallback — fetch agents then name-match
+        if (!agentId) {
+          const agents = await getAgents();
+          if (!document.body.contains(cardEl)) return;
+          agentId = getAgentIdByName(cardEl, agents);
+          if (agentId) idSource = "name-match";
+        }
+
+        if (!agentId) {
+          console.warn("[Slock Desktop] agent card: could not determine agent ID, removing skeleton");
+          if (document.body.contains(placeholderButtons)) placeholderButtons.remove();
+          if (document.body.contains(activityFooter)) activityFooter.remove();
+          cardEl.removeAttribute(INJECT_ATTR);
+          return;
+        }
+        console.log("[Slock Desktop] agent card: found agent ID", agentId, "via", idSource);
+
+        if (!document.body.contains(cardEl)) return;
+
+        // --- Step 2: Get agent data and replace placeholder buttons ---
+        let agents = cachedAgents.length ? cachedAgents : await getAgents();
+        if (!document.body.contains(cardEl)) return;
+
+        const agent = agents.find((a) => a.id === agentId);
+        if (!agent) {
+          console.warn("[Slock Desktop] agent card: agent not found", agentId);
+          if (document.body.contains(placeholderButtons)) placeholderButtons.remove();
+          if (document.body.contains(activityFooter)) activityFooter.remove();
+          cardEl.removeAttribute(INJECT_ATTR);
+          return;
+        }
+
+        console.log("[Slock Desktop] agent card: filling content for", agent.name);
+        const serverSlug = getCurrentServerSlug();
+
+        // Replace placeholder buttons with real action buttons
+        const realButtons = buildActionButtons(agent, serverSlug);
+        if (document.body.contains(placeholderButtons)) {
+          placeholderButtons.replaceWith(realButtons);
+        } else {
+          // Placeholder gone (card restructured?), insert before activity
+          if (document.body.contains(activityFooter)) {
+            cardEl.insertBefore(realButtons, activityFooter);
+          } else {
+            cardEl.appendChild(realButtons);
+          }
+        }
+
+        // --- Step 3: Fill activity (from cache or fetch) ---
+        var cached = activityCache[agentId];
+        if (cached && (Date.now() - cached.fetchedAt) < ACTIVITY_CACHE_TTL) {
+          if (document.body.contains(activityFooter)) {
+            fillActivityContent(activityFooter, cached.data);
+          }
+          cardEl.setAttribute(INJECT_ATTR, "done");
+          return;
+        }
+
         const activity = await getAgentActivity(agentId);
         activityCache[agentId] = { data: activity, fetchedAt: Date.now() };
         if (document.body.contains(cardEl) && document.body.contains(activityFooter)) {
           fillActivityContent(activityFooter, activity);
         }
+        cardEl.setAttribute(INJECT_ATTR, "done");
       } catch (e) {
-        console.warn("[Slock Desktop] agent card: activity fetch failed", e);
+        console.warn("[Slock Desktop] agent card: resolveAndFill failed", e);
         if (document.body.contains(activityFooter)) {
           fillActivityContent(activityFooter, []);
         }
+        cardEl.setAttribute(INJECT_ATTR, "done");
       }
     }
 
@@ -685,6 +728,9 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       childList: true,
       subtree: true,
     });
+
+    // Pre-warm agents cache in background so first hover has data ready
+    void getAgents();
   } catch (error) {
     console.warn("[Slock Desktop] agent card inject setup failed", error);
   }
@@ -769,7 +815,7 @@ mod tests {
         // Verify stale hover ID cleared when no agent found
         assert!(script.contains("lastHoveredAgentId = null"));
         // Verify hover ID verified against other agent names before use
-        assert!(script.contains("hover ID rejected (card matches different agent)"));
+        assert!(script.contains("mismatch"));
     }
 
     #[test]
@@ -830,6 +876,9 @@ mod tests {
     #[test]
     fn script_limits_injection_to_popover() {
         let script = agent_card_inject_script("test", "en-US");
+        // Positive allowlist: must require overflow-hidden
+        assert!(script.contains("overflow-hidden"));
+        assert!(script.contains("missing overflow-hidden"));
         // Must reject native page layout classes
         assert!(script.contains("w-full"));
         assert!(script.contains("max-w-md"));
@@ -843,5 +892,17 @@ mod tests {
         assert!(script.contains("card-brutal skipped"));
         // Must log ancestors for diagnostics
         assert!(script.contains("ancestors:"));
+    }
+
+    #[test]
+    fn script_has_true_sync_first_skeleton() {
+        let script = agent_card_inject_script("test", "en-US");
+        // Placeholder buttons rendered before any async work
+        assert!(script.contains("buildPlaceholderButtons"));
+        assert!(script.contains("data-buttons-placeholder"));
+        // Async resolution in separate function
+        assert!(script.contains("resolveAndFill"));
+        // Placeholder replaced with real buttons after agent data available
+        assert!(script.contains("replaceWith"));
     }
 }
