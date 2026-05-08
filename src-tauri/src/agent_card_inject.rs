@@ -130,41 +130,151 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       return key ? el[key] : null;
     }
 
+    // UUID-like pattern for agent IDs
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Check a single state object for agent ID (exact or broad match)
+    function extractAgentId(obj) {
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+      // Exact match: { type: "member-agent", id }
+      if (obj.type === "member-agent" && obj.id) return obj.id;
+      // Broad match: any object with type containing "agent" and a UUID id
+      if (typeof obj.type === "string" && obj.type.indexOf("agent") !== -1
+          && typeof obj.id === "string" && UUID_RE.test(obj.id)) return obj.id;
+      // Check nested popover: { popover: { type: "member-agent", id } }
+      if (obj.popover) {
+        const pid = extractAgentId(obj.popover);
+        if (pid) return pid;
+      }
+      return null;
+    }
+
+    // Walk a single fiber's state/props for agent ID
+    function scanFiberForAgentId(fiber) {
+      if (!fiber) return null;
+      // Walk memoizedState linked list
+      let state = fiber.memoizedState;
+      for (let s = 0; s < 30 && state; s++) {
+        const ms = state.memoizedState;
+        const id = extractAgentId(ms);
+        if (id) return id;
+        // Check queue.lastRenderedState
+        if (state.queue && state.queue.lastRenderedState) {
+          const id2 = extractAgentId(state.queue.lastRenderedState);
+          if (id2) return id2;
+        }
+        state = state.next;
+      }
+      // Check pendingProps
+      if (fiber.pendingProps) {
+        const id = extractAgentId(fiber.pendingProps);
+        if (id) return id;
+      }
+      // Check memoizedProps
+      if (fiber.memoizedProps) {
+        const id = extractAgentId(fiber.memoizedProps);
+        if (id) return id;
+      }
+      return null;
+    }
+
     function getAgentIdFromFiber(cardEl) {
       try {
         let fiber = getReactFiber(cardEl);
-        for (let depth = 0; depth < 40 && fiber; depth++) {
-          // Walk memoizedState linked list
-          let state = fiber.memoizedState;
-          for (let s = 0; s < 20 && state; s++) {
-            const ms = state.memoizedState;
-            if (ms && typeof ms === "object" && !Array.isArray(ms)) {
-              if (ms.type === "member-agent" && ms.id) return ms.id;
-            }
-            // Check queue.lastRenderedState
-            if (state.queue && state.queue.lastRenderedState) {
-              const lrs = state.queue.lastRenderedState;
-              if (
-                lrs &&
-                typeof lrs === "object" &&
-                lrs.type === "member-agent" &&
-                lrs.id
-              )
-                return lrs.id;
-            }
-            state = state.next;
-          }
-          // Check pendingProps
-          if (fiber.pendingProps) {
-            const p = fiber.pendingProps;
-            if (p.type === "member-agent" && p.id) return p.id;
-            if (p.popover && p.popover.type === "member-agent" && p.popover.id)
-              return p.popover.id;
+        // Phase 1: Walk parent chain (return)
+        for (let depth = 0; depth < 50 && fiber; depth++) {
+          const id = scanFiberForAgentId(fiber);
+          if (id) return id;
+          // Also check alternate fiber (previous render)
+          if (fiber.alternate) {
+            const altId = scanFiberForAgentId(fiber.alternate);
+            if (altId) return altId;
           }
           fiber = fiber.return;
         }
+        // Phase 2: Walk child/sibling tree from root fiber (up to 60 nodes)
+        fiber = getReactFiber(cardEl);
+        if (fiber) {
+          const queue = [fiber];
+          let visited = 0;
+          while (queue.length > 0 && visited < 60) {
+            const f = queue.shift();
+            visited++;
+            const id = scanFiberForAgentId(f);
+            if (id) return id;
+            if (f.child) queue.push(f.child);
+            if (f.sibling) queue.push(f.sibling);
+          }
+        }
       } catch (e) {
         console.warn("[Slock Desktop] agent card: fiber walk failed", e);
+      }
+      return null;
+    }
+
+    // --- Hover capture: track last-interacted agent trigger ---
+    let lastHoveredAgentId = null;
+    let lastHoveredTimestamp = 0;
+    const HOVER_TTL = 5000; // 5 seconds
+
+    function captureAgentFromTrigger(event) {
+      try {
+        // Walk up from event target to find an element with agent data in fiber
+        let el = event.target;
+        for (let i = 0; i < 10 && el; i++) {
+          const fiber = getReactFiber(el);
+          if (fiber) {
+            // Walk parent chain briefly
+            let f = fiber;
+            for (let d = 0; d < 15 && f; d++) {
+              const id = scanFiberForAgentId(f);
+              if (id) {
+                lastHoveredAgentId = id;
+                lastHoveredTimestamp = Date.now();
+                return;
+              }
+              f = f.return;
+            }
+          }
+          el = el.parentElement;
+        }
+        // No agent ID found on this interaction — clear stale hover data
+        // to prevent injecting old agent info into a non-agent card
+        lastHoveredAgentId = null;
+        lastHoveredTimestamp = 0;
+      } catch (_) {}
+    }
+
+    // Clean up previous capture listeners before registering new ones
+    // (script may be re-evaluated on theme/language changes)
+    if (window.__slockDesktopAgentCardCaptureCleanup) {
+      window.__slockDesktopAgentCardCaptureCleanup();
+    }
+    document.addEventListener("pointerover", captureAgentFromTrigger, true);
+    document.addEventListener("click", captureAgentFromTrigger, true);
+    window.__slockDesktopAgentCardCaptureCleanup = function () {
+      document.removeEventListener("pointerover", captureAgentFromTrigger, true);
+      document.removeEventListener("click", captureAgentFromTrigger, true);
+    };
+
+    function getHoveredAgentId() {
+      if (lastHoveredAgentId && (Date.now() - lastHoveredTimestamp) < HOVER_TTL) {
+        return lastHoveredAgentId;
+      }
+      return null;
+    }
+
+    // --- Name-based fallback: match card text against known agents ---
+    function getAgentIdByName(cardEl, agents) {
+      if (!agents || !agents.length) return null;
+      const cardText = (cardEl.textContent || "").trim();
+      if (!cardText) return null;
+      // Try matching against agent names (prefer exact match on displayName or name)
+      for (const agent of agents) {
+        const dn = agent.displayName || "";
+        const n = agent.name || "";
+        if (dn && cardText.indexOf(dn) !== -1) return agent.id;
+        if (n && cardText.indexOf(n) !== -1) return agent.id;
       }
       return null;
     }
@@ -268,26 +378,75 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       cardEl.setAttribute(INJECT_ATTR, "pending");
       console.log("[Slock Desktop] agent card: injection started", cardEl.className);
 
-      // Get agent ID from React fiber
+      // Strategy 1: Get agent ID from React fiber (card + siblings + parent)
       let agentId = getAgentIdFromFiber(cardEl);
+      let idSource = "fiber-card";
 
-      // Also try walking from the backdrop (sibling element)
       if (!agentId) {
         const prev = cardEl.previousElementSibling;
-        if (prev) agentId = getAgentIdFromFiber(prev);
+        if (prev) {
+          agentId = getAgentIdFromFiber(prev);
+          if (agentId) idSource = "fiber-sibling";
+        }
       }
 
-      // Try parent element as well
       if (!agentId && cardEl.parentElement) {
         agentId = getAgentIdFromFiber(cardEl.parentElement);
+        if (agentId) idSource = "fiber-parent";
+      }
+
+      // Strategy 2: Use hover-captured agent ID (from pointerover/click on avatar)
+      // Trust the capture if TTL is valid, but reject if card text contains
+      // a DIFFERENT known agent's name (cross-card mismatch protection).
+      // Note: original card may not contain the agent's name at all (e.g. only
+      // action buttons), so we can't require name presence — only reject on
+      // explicit mismatch with another agent.
+      if (!agentId) {
+        const hoverId = getHoveredAgentId();
+        if (hoverId) {
+          const agents = await getAgents();
+          const hoverAgent = agents.find((a) => a.id === hoverId);
+          if (hoverAgent) {
+            const cardText = (cardEl.textContent || "").trim();
+            // Check if card text contains a DIFFERENT agent's name
+            let mismatch = false;
+            for (const other of agents) {
+              if (other.id === hoverId) continue;
+              const odn = other.displayName || "";
+              const on = other.name || "";
+              if ((odn && cardText.indexOf(odn) !== -1) || (on && cardText.indexOf(on) !== -1)) {
+                mismatch = true;
+                console.log("[Slock Desktop] agent card: hover ID rejected (card matches different agent)", hoverId, other.id);
+                break;
+              }
+            }
+            if (!mismatch) {
+              agentId = hoverId;
+              idSource = "hover-capture";
+            }
+          }
+        }
+      }
+
+      // Strategy 3: Name-based fallback — match card text against known agents
+      if (!agentId) {
+        const agents = await getAgents();
+        agentId = getAgentIdByName(cardEl, agents);
+        if (agentId) idSource = "name-match";
       }
 
       if (!agentId) {
-        console.warn("[Slock Desktop] agent card: could not determine agent ID");
+        console.warn("[Slock Desktop] agent card: could not determine agent ID (all strategies failed)");
+        // Log card info for debugging
+        try {
+          console.log("[Slock Desktop] agent card debug: textContent =", (cardEl.textContent || "").substring(0, 100));
+          console.log("[Slock Desktop] agent card debug: innerHTML length =", (cardEl.innerHTML || "").length);
+          console.log("[Slock Desktop] agent card debug: children =", cardEl.children.length);
+        } catch (_) {}
         cardEl.removeAttribute(INJECT_ATTR);
         return;
       }
-      console.log("[Slock Desktop] agent card: found agent ID", agentId);
+      console.log("[Slock Desktop] agent card: found agent ID", agentId, "via", idSource);
 
       // Fetch agent info first (populates cached_servers), then activity
       const agents = await getAgents();
@@ -418,5 +577,44 @@ mod tests {
         let script = agent_card_inject_script("test", "en-US");
         assert!(script.contains("__reactFiber$"));
         assert!(script.contains("member-agent"));
+    }
+
+    #[test]
+    fn script_has_hover_capture_fallback() {
+        let script = agent_card_inject_script("test", "en-US");
+        assert!(script.contains("captureAgentFromTrigger"));
+        assert!(script.contains("pointerover"));
+        assert!(script.contains("lastHoveredAgentId"));
+        assert!(script.contains("getHoveredAgentId"));
+        // Verify listener cleanup on re-eval
+        assert!(script.contains("__slockDesktopAgentCardCaptureCleanup"));
+        assert!(script.contains("removeEventListener"));
+        // Verify stale hover ID cleared when no agent found
+        assert!(script.contains("lastHoveredAgentId = null"));
+        // Verify hover ID verified against other agent names before use
+        assert!(script.contains("hover ID rejected (card matches different agent)"));
+    }
+
+    #[test]
+    fn script_has_name_based_fallback() {
+        let script = agent_card_inject_script("test", "en-US");
+        assert!(script.contains("getAgentIdByName"));
+        assert!(script.contains("name-match"));
+    }
+
+    #[test]
+    fn script_searches_child_and_sibling_fibers() {
+        let script = agent_card_inject_script("test", "en-US");
+        assert!(script.contains("f.child"));
+        assert!(script.contains("f.sibling"));
+        assert!(script.contains("fiber.alternate"));
+    }
+
+    #[test]
+    fn script_has_broad_agent_type_matching() {
+        let script = agent_card_inject_script("test", "en-US");
+        assert!(script.contains("extractAgentId"));
+        assert!(script.contains("UUID_RE"));
+        assert!(script.contains("indexOf(\"agent\")"));
     }
 }
