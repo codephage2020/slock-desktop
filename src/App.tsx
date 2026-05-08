@@ -548,10 +548,12 @@ function App() {
   const [serverPanelOpen, setServerPanelOpen] = useState(false)
   const [themePanelOpen, setThemePanelOpen] = useState(false)
   const [stylePanelOpen, setStylePanelOpen] = useState(false)
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const serverPanelRef = useRef<HTMLDivElement | null>(null)
   const themePanelRef = useRef<HTMLDivElement | null>(null)
   const stylePanelRef = useRef<HTMLDivElement | null>(null)
+  const releaseNotesRef = useRef<HTMLDivElement | null>(null)
   const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
@@ -1064,6 +1066,26 @@ function App() {
     document.addEventListener('pointerdown', closeStylePanelOnOutsidePointer)
     return () => document.removeEventListener('pointerdown', closeStylePanelOnOutsidePointer)
   }, [stylePanelOpen])
+
+  useEffect(() => {
+    if (!releaseNotesOpen) {
+      return
+    }
+
+    const closeReleaseNotesOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (releaseNotesRef.current?.contains(target)) {
+        return
+      }
+      setReleaseNotesOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeReleaseNotesOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeReleaseNotesOnOutsidePointer)
+  }, [releaseNotesOpen])
 
   useEffect(() => {
     let unlisten: (() => void) | undefined
@@ -2658,28 +2680,61 @@ function App() {
         {snapshot.workspaceOpen ? (
           <span className="status-pill live">{copy.workspaceActive}</span>
         ) : null}
-        <span
-          className={`status-chip titlebar-version${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
-          title={releaseStatusTitle}
-        >
-          v{snapshot.updates.currentVersion}
-          {releaseStatusLabel ? ` · ${releaseStatusLabel}` : ''}
-        </span>
-        {releaseUpdateAvailable ? (
+        <div className="titlebar-release-wrap" ref={releaseNotesRef}>
           <button
             type="button"
-            className="titlebar-update-button accent"
-            onClick={handleDesktopUpdateInstall}
-            disabled={releaseState.installing || releaseState.loading}
+            className={`status-chip titlebar-version${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
+            title={releaseStatusTitle}
+            aria-expanded={releaseNotesOpen}
+            onClick={() => setReleaseNotesOpen((open) => !open)}
           >
-            {releaseState.installing ? <SpinnerIcon /> : null}
-            <span>
-              {releaseState.installing
-                ? copy.installingDesktopUpdate
-                : copy.installDesktopUpdate}
-            </span>
+            v{snapshot.updates.currentVersion}
+            {releaseStatusLabel ? ` · ${releaseStatusLabel}` : ''}
           </button>
-        ) : null}
+          {releaseNotesOpen ? (
+            <div className="release-notes-popover" role="dialog" aria-label={copy.releaseCheck}>
+              <header className="release-notes-head">
+                <div className="release-notes-title">
+                  <span className="eyebrow">{copy.releaseCheck}</span>
+                  <strong>{releaseState.latest?.version ? `v${releaseState.latest.version}` : `v${snapshot.updates.currentVersion}`}</strong>
+                </div>
+                <button
+                  type="button"
+                  className="titlebar-icon-button"
+                  onClick={() => setReleaseNotesOpen(false)}
+                  aria-label={copy.close}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </header>
+              {releaseState.latest?.date ? (
+                <p className="release-notes-date">{copy.published}: {new Date(releaseState.latest.date).toLocaleDateString()}</p>
+              ) : null}
+              <div className="release-notes-body">
+                {releaseState.latest?.body
+                  ? releaseState.latest.body
+                  : copy.noReleaseNotes}
+              </div>
+              {releaseUpdateAvailable ? (
+                <button
+                  type="button"
+                  className="titlebar-update-button accent"
+                  onClick={handleDesktopUpdateInstall}
+                  disabled={releaseState.installing || releaseState.loading}
+                >
+                  {releaseState.installing ? <SpinnerIcon /> : null}
+                  <span>
+                    {releaseState.installing
+                      ? copy.installingDesktopUpdate
+                      : copy.installDesktopUpdate}
+                  </span>
+                </button>
+              ) : (
+                <span className="release-notes-status">{copy.current}</span>
+              )}
+            </div>
+          ) : null}
+        </div>
       </header>
 
       <section className="launch-board" aria-label={copy.openSlock}>

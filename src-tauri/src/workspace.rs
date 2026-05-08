@@ -2198,7 +2198,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       z-index: 1;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       padding: 0;
     }
 
@@ -2306,6 +2306,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       box-shadow:
         0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
         0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
+      animation: panel-appear 150ms ease;
     }
 
     .titlebar-theme-menu:has(.titlebar-accent-wheel-popover) {
@@ -2721,6 +2722,17 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       pointer-events: none;
     }
 
+    @keyframes panel-appear {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     @keyframes accent-wheel-pop {
       0% {
         opacity: 0;
@@ -2773,7 +2785,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     .titlebar-version.has-update {
       color: var(--desktop-text);
-      border-color: color-mix(in srgb, #d63232 36%, var(--desktop-line));
+      border-color: color-mix(in srgb, var(--desktop-danger) 36%, var(--desktop-line));
     }
 
     .titlebar-version.has-update::after {
@@ -2784,8 +2796,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       width: 7px;
       height: 7px;
       border-radius: var(--desktop-radius-pill);
-      background: #d63232;
-      box-shadow: 0 0 0 2px color-mix(in srgb, #d63232 16%, var(--desktop-surface));
+      background: var(--desktop-danger);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--desktop-danger) 16%, var(--desktop-surface));
     }
 
     .titlebar-version.error {
@@ -2810,6 +2822,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       box-shadow:
         0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
         0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
+      animation: panel-appear 150ms ease;
     }
 
     .titlebar-release-head {
@@ -4060,6 +4073,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       box-shadow:
         0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
         0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
+      animation: panel-appear 150ms ease;
     }
 
     .titlebar-style-head {
