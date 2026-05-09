@@ -301,11 +301,16 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
 
     function captureAgentFromTrigger(event) {
       try {
+        var targetTag = event.target ? event.target.tagName : "?";
+        var targetCls = (event.target && event.target.className && typeof event.target.className === "string") ? event.target.className.substring(0, 60) : "";
         // Walk up from event target to find an element with agent data in fiber
         let el = event.target;
+        var fiberFound = false;
+        var walkDepth = 0;
         for (let i = 0; i < 10 && el; i++) {
           const fiber = getReactFiber(el);
           if (fiber) {
+            fiberFound = true;
             // Walk parent chain briefly
             let f = fiber;
             for (let d = 0; d < 15 && f; d++) {
@@ -313,13 +318,16 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
               if (id) {
                 lastHoveredAgentId = id;
                 lastHoveredTimestamp = Date.now();
+                console.log("[Slock Desktop] agent card: capture", event.type, targetTag + "." + targetCls, "→ agentId:", id, "at dom depth", i, "fiber depth", d);
                 return;
               }
               f = f.return;
             }
           }
+          walkDepth = i;
           el = el.parentElement;
         }
+        console.log("[Slock Desktop] agent card: capture", event.type, targetTag + "." + targetCls, "→ no agentId found, fiberFound:", fiberFound, "walkDepth:", walkDepth);
         // No agent ID found on this interaction — only clear on click (not pointerover)
         // pointerover fires on the hover card itself, which would clear the captured ID
         // before MutationObserver fires. Click-only clear prevents server switcher injection.
