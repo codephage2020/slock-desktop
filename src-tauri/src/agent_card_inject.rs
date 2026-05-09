@@ -409,11 +409,13 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         parent = parent.parentElement;
         depth++;
       }
-      // Gate: require active hover on an agent element
-      // Server switcher and other non-agent popovers won't have a recent agent hover
-      var hoverId = getHoveredAgentId();
-      if (!hoverId) {
-        console.log("[Slock Desktop] agent card: card-brutal skipped: no active agent hover within " + HOVER_TTL + "ms");
+      // Reject: server switcher and similar non-agent panels by content
+      var cardText = (el.textContent || "").toLowerCase();
+      if ((cardText.indexOf("switch") !== -1 && cardText.indexOf("server") !== -1) ||
+          (cardText.indexOf("切换") !== -1 && cardText.indexOf("服务器") !== -1) ||
+          (cardText.indexOf("create server") !== -1) ||
+          (cardText.indexOf("创建服务器") !== -1)) {
+        console.log("[Slock Desktop] agent card: card-brutal skipped: server switcher content detected");
         return false;
       }
       // Diagnostic: log element attributes, parent, and children to distinguish card types
