@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react'
 import { listen } from '@tauri-apps/api/event'
+import { io, type Socket } from 'socket.io-client'
 import './App.css'
 import './Settings.css'
 import {
@@ -27,6 +28,7 @@ import {
   deleteCustomTheme,
   fetchDashboard,
   fetchInbox,
+  getSocketAuth,
   installDesktopUpdate,
   forgetAccount,
   loadBootstrap,
@@ -1281,6 +1283,106 @@ function App() {
 
     void loadUnifiedInbox()
     return () => { cancelled = true }
+  }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone, inboxFilter, copy.inboxThread, mapInboxFeedItem])
+
+  // Socket.IO real-time feed updates (#64)
+  useEffect(() => {
+    if (!snapshot?.service.authenticated || !initialServiceRefreshDone) return
+
+    const servers = snapshot.service.servers.filter((s) => s.apiKeyReady)
+    if (servers.length === 0) return
+
+    let socket: Socket | null = null
+    let cancelled = false
+    // Debounce timer for high-frequency events — coalesce into a single re-fetch
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const DEBOUNCE_MS = 800
+
+    function scheduleRefresh() {
+      if (debounceTimer !== null) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        if (cancelled) return
+        // Re-fetch the inbox to get updated data (same logic as loadUnifiedInbox)
+        const apiFilter = inboxFilter === 'unread' ? 'unread' : 'all'
+        Promise.allSettled(
+          servers.map(async (server) => {
+            const resp = await fetchInbox(server.slug, { filter: apiFilter, limit: 30, offset: 0 })
+            return { server, resp }
+          })
+        ).then((serverResults) => {
+          if (cancelled) return
+          const allItems: UnifiedItem[] = []
+          let anyHasMore = false
+          for (const r of serverResults) {
+            if (r.status !== 'fulfilled') continue
+            const { server, resp } = r.value
+            if (resp.hasMore) anyHasMore = true
+            for (const item of resp.items) {
+              const mapped = mapInboxFeedItem(item, server.slug, server.name, copy.inboxThread)
+              if (mapped) allItems.push(mapped)
+            }
+          }
+          setUnifiedItems(allItems)
+          setInboxHasMore(anyHasMore)
+          setInboxOffset(30)
+        })
+      }, DEBOUNCE_MS)
+    }
+
+    async function connectSocket() {
+      try {
+        const auth = await getSocketAuth()
+        if (cancelled) return
+
+        socket = io(auth.serverUrl, {
+          auth: { token: auth.accessToken },
+          transports: ['websocket'],
+          reconnection: true,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+        })
+
+        socket.on('connect', () => {
+          console.log('[socket.io] connected')
+          // Refresh on connect/reconnect to catch messages missed while offline
+          scheduleRefresh()
+        })
+
+        socket.on('disconnect', (reason) => {
+          console.log('[socket.io] disconnected:', reason)
+        })
+
+        socket.on('connect_error', (err) => {
+          console.warn('[socket.io] connect error:', err.message)
+        })
+
+        // Listen for real-time feed events
+        socket.on('message:new', () => {
+          scheduleRefresh()
+        })
+
+        socket.on('message:updated', () => {
+          scheduleRefresh()
+        })
+
+        socket.on('message:deleted', () => {
+          scheduleRefresh()
+        })
+      } catch (err) {
+        console.warn('[socket.io] failed to get auth:', err)
+      }
+    }
+
+    void connectSocket()
+
+    return () => {
+      cancelled = true
+      if (debounceTimer !== null) clearTimeout(debounceTimer)
+      if (socket) {
+        socket.disconnect()
+        socket = null
+      }
+    }
   }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone, inboxFilter, copy.inboxThread, mapInboxFeedItem])
 
   // Fetch joined channels for Quick Send target list (separate from feed)

@@ -1899,6 +1899,35 @@ fn prepare_daemon_command(
     })
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SocketAuthInfo {
+    server_url: String,
+    access_token: String,
+}
+
+#[tauri::command]
+fn get_socket_auth(
+    state: State<'_, DesktopState>,
+) -> Result<SocketAuthInfo, String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+
+    let access_token = settings.session.access_token.trim().to_string();
+    if access_token.is_empty() {
+        return Err("Not authenticated".to_string());
+    }
+
+    let server_url = sanitize_service_server_url(&settings.service.server_url);
+
+    Ok(SocketAuthInfo {
+        server_url,
+        access_token,
+    })
+}
+
 #[tauri::command]
 fn resolve_app_close_request(
     app: AppHandle,
@@ -9272,7 +9301,8 @@ pub fn run() {
             bind_local_machine,
             check_server_machines,
             open_computer_create_page,
-            prepare_daemon_command
+            prepare_daemon_command,
+            get_socket_auth
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
