@@ -410,11 +410,17 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         depth++;
       }
       // Reject: server switcher and similar non-agent panels by content
-      var cardText = (el.textContent || "").toLowerCase();
-      if ((cardText.indexOf("switch") !== -1 && cardText.indexOf("server") !== -1) ||
-          (cardText.indexOf("切换") !== -1 && cardText.indexOf("服务器") !== -1) ||
-          (cardText.indexOf("create server") !== -1) ||
-          (cardText.indexOf("创建服务器") !== -1)) {
+      var cardText = (el.textContent || "");
+      // Agent hover cards have short text (name + status + role); large panels are not agent cards
+      if (cardText.length > 300) {
+        console.log("[Slock Desktop] agent card: card-brutal skipped: text too long (" + cardText.length + "), likely non-agent panel");
+        return false;
+      }
+      var lowerText = cardText.toLowerCase();
+      if ((lowerText.indexOf("switch") !== -1 && lowerText.indexOf("server") !== -1) ||
+          (lowerText.indexOf("切换") !== -1 && lowerText.indexOf("服务器") !== -1) ||
+          (lowerText.indexOf("create server") !== -1) ||
+          (lowerText.indexOf("创建服务器") !== -1)) {
         console.log("[Slock Desktop] agent card: card-brutal skipped: server switcher content detected");
         return false;
       }
