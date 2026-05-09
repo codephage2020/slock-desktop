@@ -457,6 +457,42 @@ export async function bindLocalMachine(serverSlug: string, machineId: string) {
   return invoke<BootstrapPayload>('bind_local_machine', { serverSlug, machineId })
 }
 
+// Computer creation flow types and commands
+
+export interface ServerMachineInfo {
+  id: string
+  name: string
+  status: string
+}
+
+export interface ServerMachinesCheck {
+  hasMachines: boolean
+  machineCount: number
+  serverSlug: string
+  createUrl: string
+  machines: ServerMachineInfo[]
+}
+
+export interface DaemonCommandInfo {
+  command: string
+  displayCommand: string
+  serverSlug: string
+  machineId: string
+  machineName: string
+}
+
+export async function checkServerMachines(serverSlug: string) {
+  return invoke<ServerMachinesCheck>('check_server_machines', { serverSlug })
+}
+
+export async function openComputerCreatePage(serverSlug: string) {
+  return invoke<void>('open_computer_create_page', { serverSlug })
+}
+
+export async function prepareDaemonCommand(serverSlug: string, machineId: string) {
+  return invoke<DaemonCommandInfo>('prepare_daemon_command', { serverSlug, machineId })
+}
+
 // Unified inbox types and commands
 
 export interface ServerMember {

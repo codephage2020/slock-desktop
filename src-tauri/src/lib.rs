@@ -360,6 +360,34 @@ struct ApiRefreshSession {
     refresh_token: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ServerMachineInfo {
+    id: String,
+    name: String,
+    status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ServerMachinesCheck {
+    has_machines: bool,
+    machine_count: usize,
+    server_slug: String,
+    create_url: String,
+    machines: Vec<ServerMachineInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DaemonCommandInfo {
+    command: String,
+    display_command: String,
+    server_slug: String,
+    machine_id: String,
+    machine_name: String,
+}
+
 #[derive(Debug, Default, Clone)]
 struct SessionAccountProfile {
     display_name: Option<String>,
@@ -1628,6 +1656,163 @@ fn stop_service(
         selected_server_slug.as_deref(),
     )?;
     build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn check_server_machines(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<ServerMachinesCheck, String> {
+    let service_settings = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        settings.service.clone()
+    };
+
+    let server = resolve_service_server(&app, &state, &service_settings, &server_slug)?;
+    let machines = fetch_server_machines(&app, &state, &service_settings.server_url, &server.id)?;
+    let create_url = format!("{WORKSPACE_URL}/s/{}/computer/new", server.slug);
+
+    Ok(ServerMachinesCheck {
+        has_machines: !machines.is_empty(),
+        machine_count: machines.len(),
+        server_slug: server.slug,
+        create_url,
+        machines: machines
+            .iter()
+            .map(|m| ServerMachineInfo {
+                id: m.id.clone(),
+                name: m.name.clone(),
+                status: m.status.clone(),
+            })
+            .collect(),
+    })
+}
+
+#[tauri::command]
+fn open_computer_create_page(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<(), String> {
+    let url = format!("{WORKSPACE_URL}/s/{server_slug}/computer/new");
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|err| format!("Failed to open browser: {err}"))?;
+    log::info!("[computer] opened computer create page: {url}");
+    let _ = &state; // suppress unused warning
+    Ok(())
+}
+
+#[tauri::command]
+fn prepare_daemon_command(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    machine_id: String,
+) -> Result<DaemonCommandInfo, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+    let machine_id_trimmed = machine_id.trim();
+    if machine_id_trimmed.is_empty() {
+        return Err("Machine ID is required".to_string());
+    }
+
+    // Resolve server from cache
+    let (server_id, server_url) = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+
+        let server = runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .ok_or_else(|| format!("Server '{slug}' not found in cache"))?;
+
+        (server.id.clone(), settings.service.server_url.clone())
+    };
+
+    // Fetch machines to find name
+    let machines = fetch_server_machines(&app, &state, &server_url, &server_id)
+        .unwrap_or_default();
+    let machine = machines
+        .iter()
+        .find(|m| m.id == machine_id_trimmed)
+        .ok_or_else(|| format!("Machine '{machine_id_trimmed}' not found on server"))?;
+    let machine_name = machine.name.clone();
+
+    // Bind machine locally
+    let binding = ServiceMachineBinding {
+        server_id: server_id.clone(),
+        server_slug: slug.to_string(),
+        machine_id: machine_id_trimmed.to_string(),
+        machine_name: machine_name.clone(),
+        api_key: String::new(),
+        source: "user_bound".to_string(),
+    };
+    upsert_service_binding(&app, &state, binding)?;
+
+    // Rotate API key
+    let api_key = rotate_machine_api_key(
+        &app,
+        &state,
+        &server_url,
+        &server_id,
+        machine_id_trimmed,
+    )?;
+
+    // Build real command (for Copy) and masked display command (for UI)
+    let command_args = format!(
+        "{} {} {} {} {} {}",
+        DAEMON_SERVER_SLUG_ARG,
+        slug,
+        DAEMON_MACHINE_ID_ARG,
+        machine_id_trimmed,
+        DAEMON_DESKTOP_MANAGED_ARG,
+        "",
+    )
+    .trim()
+    .to_string();
+
+    let command = format!(
+        "npx --yes {} --server-url {} --api-key {} {}",
+        DAEMON_PACKAGE, server_url, api_key, command_args,
+    );
+
+    let masked_key = if api_key.len() > 8 {
+        format!("{}…{}", &api_key[..4], &api_key[api_key.len() - 4..])
+    } else {
+        "****".to_string()
+    };
+    let display_command = format!(
+        "npx --yes {} --server-url {} --api-key {} {}",
+        DAEMON_PACKAGE, server_url, masked_key, command_args,
+    );
+
+    log::info!(
+        "[computer] prepared daemon command for machine {} on server {}",
+        machine_id_trimmed,
+        slug
+    );
+
+    Ok(DaemonCommandInfo {
+        command,
+        display_command,
+        server_slug: slug.to_string(),
+        machine_id: machine_id_trimmed.to_string(),
+        machine_name,
+    })
 }
 
 #[tauri::command]
@@ -8787,7 +8972,10 @@ pub fn run() {
             fetch_server_unread_summary,
             send_message,
             mark_channel_read,
-            bind_local_machine
+            bind_local_machine,
+            check_server_machines,
+            open_computer_create_page,
+            prepare_daemon_command
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
