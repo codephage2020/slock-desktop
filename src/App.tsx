@@ -3347,13 +3347,7 @@ function ServiceLogTimeField({
 }
 
 function buildShellStyle(theme: ThemeDefinition) {
-  if (theme.mode === 'system') {
-    return {
-      '--accent': theme.accent,
-    } as CSSProperties
-  }
-
-  const style: Record<string, string> = {
+  return {
     '--canvas': theme.canvas,
     '--toolbar': theme.toolbar,
     '--sidebar': theme.sidebar,
@@ -3379,16 +3373,7 @@ function buildShellStyle(theme: ThemeDefinition) {
     '--radius-lg': theme.radiusLg + 'px',
     '--radius-xl': theme.radiusXl + 'px',
     '--radius-pill': theme.radiusPill + 'px',
-  }
-
-  if (theme.fontFamily) {
-    style['--font-family'] = theme.fontFamily
-  }
-  if (theme.fontFamilyMono) {
-    style['--font-family-mono'] = theme.fontFamilyMono
-  }
-
-  return style as CSSProperties
+  } as CSSProperties
 }
 
 const LOG_SEARCH_CHUNK_SIZE = 64 * 1024
