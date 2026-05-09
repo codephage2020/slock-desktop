@@ -18,7 +18,6 @@ import {
   type DesktopUpdateCheck,
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
-  type ServerMember,
   type ThemeDefinition,
   type ThemeStyleConfig,
   type ThemeStyleDefinition,
@@ -29,7 +28,6 @@ import {
   fetchDashboard,
   fetchDmChannels,
   fetchFollowedThreads,
-  fetchServerMembers,
   fetchThreadMessages,
   fetchUnreadChannels,
   installDesktopUpdate,
@@ -575,6 +573,7 @@ function App() {
     // Preview from latest message
     lastSenderName: string | null
     lastPreview: string | null
+    latestMessageId: string | null
     replyCount: number | null
   }
   type ServerChannelGroup = {
@@ -584,7 +583,6 @@ function App() {
   }
   const [unifiedItems, setUnifiedItems] = useState<UnifiedItem[]>([])
   const [serverChannelGroups, setServerChannelGroups] = useState<ServerChannelGroup[]>([])
-  const [memberMap, setMemberMap] = useState<Map<string, ServerMember>>(new Map())
   const [inboxLoading, setInboxLoading] = useState(false)
   const [inboxFilter, setInboxFilter] = useState<'all' | 'mentions' | 'dms'>('all')
   const [inboxSearch, setInboxSearch] = useState('')
@@ -1129,7 +1127,7 @@ function App() {
     async function loadUnifiedInbox() {
       setInboxLoading(true)
       try {
-        // Fetch data per server: dashboard, threads, DMs, unread, members
+        // Fetch data per server: dashboard, threads, DMs, unread
         const serverResults = await Promise.allSettled(
           servers.map(async (server) => {
             const calls = [
@@ -1137,16 +1135,13 @@ function App() {
               fetchFollowedThreads(server.slug),
               fetchDmChannels(server.slug),
               fetchUnreadChannels(server.slug),
-              fetchServerMembers(server.slug),
             ] as const
 
-            const [dashResult, threadsResult, dmsResult, unreadResult, membersResult] =
+            const [dashResult, threadsResult, dmsResult, unreadResult] =
               await Promise.allSettled(calls)
 
             const items: UnifiedItem[] = []
             const channelList: ServerChannelGroup['channels'] = []
-            const members: ServerMember[] =
-              membersResult.status === 'fulfilled' ? membersResult.value : []
 
             // Build unread map for this server
             const unreadMap = new Map<string, number>()
@@ -1180,6 +1175,7 @@ function App() {
                   lastSenderName: null,
                   lastPreview: null,
                   replyCount: null,
+                  latestMessageId: null,
                 })
                 channelList.push({
                   id: ch.id,
@@ -1211,6 +1207,7 @@ function App() {
                   lastSenderName: null,
                   lastPreview: null,
                   replyCount: null,
+                  latestMessageId: null,
                 })
               }
             }
@@ -1236,6 +1233,7 @@ function App() {
                   lastSenderName: null,
                   lastPreview: null,
                   replyCount: null,
+                  latestMessageId: null,
                 })
               }
             }
@@ -1261,13 +1259,14 @@ function App() {
                   return { channelId: item.channelId, msg, replyCount }
                 })
               )
-              const previewMap = new Map<string, { senderName: string; content: string; replyCount: number | null }>()
+              const previewMap = new Map<string, { senderName: string; content: string; replyCount: number | null; messageId: string }>()
               for (const r of previewResults) {
                 if (r.status === 'fulfilled' && r.value.msg) {
                   previewMap.set(r.value.channelId, {
                     senderName: r.value.msg.senderDisplayName ?? r.value.msg.senderName ?? '',
                     content: r.value.msg.content,
                     replyCount: r.value.replyCount,
+                    messageId: r.value.msg.id,
                   })
                 }
               }
@@ -1277,6 +1276,7 @@ function App() {
                   item.lastSenderName = preview.senderName
                   item.lastPreview = preview.content
                   item.replyCount = preview.replyCount
+                  item.latestMessageId = preview.messageId
                 }
               }
             }
@@ -1284,7 +1284,6 @@ function App() {
             return {
               items,
               group: { serverSlug: server.slug, serverName: server.name, channels: channelList },
-              members,
             }
           })
         )
@@ -1293,24 +1292,14 @@ function App() {
           type ServerResult = {
             items: UnifiedItem[]
             group: ServerChannelGroup
-            members: ServerMember[]
           }
           const fulfilled = serverResults
             .filter((r): r is PromiseFulfilledResult<ServerResult> => r.status === 'fulfilled')
           const allItems = fulfilled.flatMap((r) => r.value.items)
           const groups = fulfilled.map((r) => r.value.group)
-          // Build member map keyed by serverSlug:memberId for cross-server uniqueness
-          const newMemberMap = new Map<string, ServerMember>()
-          for (const r of fulfilled) {
-            const slug = r.value.group.serverSlug
-            for (const m of r.value.members) {
-              newMemberMap.set(`${slug}:${m.id}`, m)
-            }
-          }
 
           setUnifiedItems(allItems)
           setServerChannelGroups(groups)
-          setMemberMap(newMemberMap)
         }
       } finally {
         if (!cancelled) {
@@ -2851,13 +2840,14 @@ function App() {
                       (i) => i.serverSlug === selectedChannel.serverSlug && i.channelId === selectedChannel.channelId,
                     )
                     const base = snapshot?.workspaceUrl?.replace(/\/s\/[^/]+\/?$/, '') ?? 'https://app.slock.ai'
+                    const msgParam = item?.latestMessageId ? `msg=${item.latestMessageId}` : ''
                     if (item?.type === 'dm') {
-                      return `${base}/s/${selectedChannel.serverSlug}/dm/${selectedChannel.channelId}`
+                      return `${base}/s/${selectedChannel.serverSlug}/dm/${selectedChannel.channelId}${msgParam ? `?${msgParam}` : ''}`
                     }
                     if (item?.type === 'thread' && item.parentChannelId) {
-                      return `${base}/s/${selectedChannel.serverSlug}/channel/${item.parentChannelId}?thread=${selectedChannel.channelId}`
+                      return `${base}/s/${selectedChannel.serverSlug}/channel/${item.parentChannelId}?${msgParam ? `${msgParam}&` : ''}thread=${selectedChannel.channelId}`
                     }
-                    return `${base}/s/${selectedChannel.serverSlug}/channel/${selectedChannel.channelId}`
+                    return `${base}/s/${selectedChannel.serverSlug}/channel/${selectedChannel.channelId}${msgParam ? `?${msgParam}` : ''}`
                   })()}
                   title={copy.inboxConversation}
                 />
