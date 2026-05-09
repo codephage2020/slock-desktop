@@ -301,17 +301,27 @@ struct ServiceLogSnapshot {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct RunningDaemonEntry {
+    server_slug: String,
+    server_name: String,
+    machine_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CloseAppPromptCopy {
     title: &'static str,
     description: String,
     server_label: String,
     keep_server: &'static str,
     close_server: &'static str,
+    close_selected: &'static str,
     cancel: &'static str,
     remember: &'static str,
     processing_keep_server: &'static str,
     processing_close_server: &'static str,
     error: &'static str,
+    daemons: Vec<RunningDaemonEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1895,6 +1905,7 @@ fn resolve_app_close_request(
     state: State<'_, DesktopState>,
     action: String,
     remember: bool,
+    slugs_to_stop: Option<Vec<String>>,
 ) -> Result<(), String> {
     let Some(behavior) = close_app_behavior_from_action(&action) else {
         mark_app_close_prompt_visible(&state, false);
@@ -1913,7 +1924,15 @@ fn resolve_app_close_request(
         settings.service.clone()
     };
 
-    finish_app_close_async(app, behavior, Some(service_settings));
+    if action == "closeSelected" {
+        if let Some(slugs) = slugs_to_stop {
+            finish_app_close_selected_async(app, slugs, service_settings);
+        } else {
+            finish_app_close_async(app, behavior, Some(service_settings));
+        }
+    } else {
+        finish_app_close_async(app, behavior, Some(service_settings));
+    }
     Ok(())
 }
 
@@ -3947,6 +3966,38 @@ fn finish_app_close_async(
     });
 }
 
+fn finish_app_close_selected_async(
+    app: AppHandle,
+    slugs: Vec<String>,
+    service_settings: ServiceSettings,
+) {
+    thread::spawn(move || {
+        let state = app.state::<DesktopState>();
+        let mut errors = Vec::new();
+        for slug in &slugs {
+            if let Err(err) = stop_service_process(
+                &app,
+                &state,
+                Some(&service_settings),
+                Some(slug.as_str()),
+            ) {
+                log::warn!("failed to stop daemon for {slug}: {err}");
+                errors.push(format!("{slug}: {err}"));
+            }
+        }
+
+        if errors.is_empty() {
+            mark_app_close_service_stop_completed(&state);
+            mark_app_close_confirmed(&state);
+            app.exit(0);
+        } else {
+            let message = errors.join("; ");
+            mark_app_close_prompt_visible(&state, false);
+            show_app_close_error(&app, &message);
+        }
+    });
+}
+
 fn current_close_app_behavior(state: &DesktopState) -> CloseAppServiceBehavior {
     state
         .settings
@@ -4033,16 +4084,33 @@ fn show_app_close_error(app: &AppHandle, message: &str) {
 }
 
 fn app_close_prompt_copy(state: &DesktopState) -> CloseAppPromptCopy {
-    let (language, selected_server_slug) = state
+    let (language, selected_server_slug, daemons) = state
         .settings
         .lock()
         .map(|settings| {
-            (
-                resolve_desktop_language(&settings.language).to_string(),
-                settings.service.selected_server_slug.clone(),
-            )
+            let lang = resolve_desktop_language(&settings.language).to_string();
+            let slug = settings.service.selected_server_slug.clone();
+            (lang, slug, Vec::new())
         })
-        .unwrap_or_else(|_| ("en-US".to_string(), String::new()));
+        .unwrap_or_else(|_| ("en-US".to_string(), String::new(), Vec::new()));
+
+    // Build running daemon list from cached servers
+    let mut daemons = daemons;
+    if let Ok(runtime) = state.service.lock() {
+        for server in &runtime.cached_servers {
+            if machine_counts_as_started(&server.machine_status) {
+                daemons.push(RunningDaemonEntry {
+                    server_slug: server.slug.clone(),
+                    server_name: server.name.clone(),
+                    machine_name: server
+                        .machine_name
+                        .clone()
+                        .unwrap_or_else(|| "Daemon".to_string()),
+                });
+            }
+        }
+    }
+
     let server_label = if selected_server_slug.trim().is_empty() {
         "Slock daemon".to_string()
     } else {
@@ -4054,13 +4122,15 @@ fn app_close_prompt_copy(state: &DesktopState) -> CloseAppPromptCopy {
             title: "退出 Slock",
             description: "退出 Slock 后，Server 可以继续运行，也可以随应用一起关闭。".to_string(),
             server_label: format!("当前 Server：{server_label}"),
-            keep_server: "保留 Server 并退出",
-            close_server: "关闭 Server 并退出",
+            keep_server: "保持运行并退出",
+            close_server: "全部关闭并退出",
+            close_selected: "关闭选中并退出",
             cancel: "取消",
             remember: "记住这次选择",
             processing_keep_server: "正在保留 Server 并退出…",
             processing_close_server: "正在关闭 Server 并退出…",
             error: "关闭处理失败，请重试。",
+            daemons,
         }
     } else {
         CloseAppPromptCopy {
@@ -4068,13 +4138,15 @@ fn app_close_prompt_copy(state: &DesktopState) -> CloseAppPromptCopy {
             description: "After Slock quits, the server can stay running or close with the app."
                 .to_string(),
             server_label: format!("Current server: {server_label}"),
-            keep_server: "Keep server running and quit",
-            close_server: "Close server and quit",
+            keep_server: "Keep Running",
+            close_server: "Close All",
+            close_selected: "Close Selected",
             cancel: "Cancel",
             remember: "Remember this choice",
             processing_keep_server: "Keeping server running and quitting…",
             processing_close_server: "Closing server and quitting…",
             error: "Close handling failed. Try again.",
+            daemons,
         }
     }
 }
@@ -4123,6 +4195,8 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
         primaryBg: "#10a37f",
         primaryText: "#fff",
         primaryBorder: "#10a37f",
+        rowBg: "rgba(255,255,255,.04)",
+        statusDot: "#34d399",
       }}
     : {{
         scrim: "rgba(15,23,42,.32)",
@@ -4142,13 +4216,28 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
         primaryBg: "#10a37f",
         primaryText: "#fff",
         primaryBorder: "#10a37f",
+        rowBg: "rgba(0,0,0,.03)",
+        statusDot: "#10b981",
       }};
+  const daemons = copy.daemons || [];
+  const daemonListHtml = daemons.length > 0
+    ? `<div style="margin:14px 0 0;border:1px solid ${{tone.panelBorder}};border-radius:10px;overflow:hidden;">
+        ${{daemons.map((d, i) => `<label style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${{i % 2 === 0 ? tone.rowBg : "transparent"}};cursor:pointer;font-size:13px;color:${{tone.body}};">
+          <input type="checkbox" data-daemon-slug="${{d.serverSlug}}" checked style="width:16px;height:16px;accent-color:#10a37f;flex-shrink:0;" />
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            <span style="font-weight:600;color:${{tone.title}};">${{d.serverName}}</span>
+            <span style="margin-left:6px;color:${{tone.muted}};font-size:12px;">${{d.machineName}}</span>
+          </span>
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${{tone.statusDot}};flex-shrink:0;" title="Running"></span>
+        </label>`).join("")}}
+      </div>`
+    : "";
   host.style.cssText = `position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:${{tone.scrim}};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:${{tone.title}};cursor:default;`;
   host.innerHTML = `
-    <div role="dialog" aria-modal="true" aria-labelledby="slock-close-title" style="width:min(420px,calc(100vw - 32px));border:1px solid ${{tone.panelBorder}};border-radius:18px;background:${{tone.panel}};box-shadow:0 24px 80px rgba(2,6,23,.38);padding:22px;">
+    <div role="dialog" aria-modal="true" aria-labelledby="slock-close-title" style="width:min(460px,calc(100vw - 32px));border:1px solid ${{tone.panelBorder}};border-radius:18px;background:${{tone.panel}};box-shadow:0 24px 80px rgba(2,6,23,.38);padding:22px;">
       <h2 id="slock-close-title" data-close-copy="title" style="margin:0;font-size:18px;line-height:1.3;font-weight:700;color:${{tone.title}};"></h2>
       <p data-close-copy="description" style="margin:10px 0 0;font-size:14px;line-height:1.55;color:${{tone.body}};"></p>
-      <p data-close-copy="serverLabel" style="margin:12px 0 0;font-size:12px;line-height:1.4;color:${{tone.muted}};"></p>
+      ${{daemonListHtml}}
       <label style="display:flex;align-items:center;gap:8px;margin:18px 0 0;font-size:13px;color:${{tone.label}};">
         <input data-close-remember type="checkbox" style="width:16px;height:16px;accent-color:#10a37f;" />
         <span data-close-copy="remember"></span>
@@ -4158,6 +4247,7 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap;">
         <button type="button" data-close-action="cancel" data-close-copy="cancel" style="appearance:none;-webkit-appearance:none;border:1px solid ${{tone.secondaryBorder}};border-radius:10px;background:${{tone.secondaryBg}};color:${{tone.secondaryText}};font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>
         <button type="button" data-close-action="closeServer" data-close-copy="closeServer" style="appearance:none;-webkit-appearance:none;border:1px solid ${{tone.dangerBorder}};border-radius:10px;background:${{tone.dangerBg}};color:${{tone.dangerText}};font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>
+        ${{daemons.length > 1 ? `<button type="button" data-close-action="closeSelected" data-close-copy="closeSelected" style="appearance:none;-webkit-appearance:none;border:1px solid ${{tone.dangerBorder}};border-radius:10px;background:${{tone.dangerBg}};color:${{tone.dangerText}};font-size:13px;font-weight:650;padding:9px 12px;cursor:pointer;"></button>` : ""}}
         <button type="button" data-close-action="keepServer" data-close-copy="keepServer" style="appearance:none;-webkit-appearance:none;border:1px solid ${{tone.primaryBorder}};border-radius:10px;background:${{tone.primaryBg}};color:${{tone.primaryText}};font-size:13px;font-weight:700;padding:9px 12px;cursor:pointer;"></button>
       </div>
     </div>`;
@@ -4170,9 +4260,16 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
   const busyMessage = host.querySelector("[data-close-busy]");
   const error = host.querySelector("[data-close-error]");
   const remember = host.querySelector("[data-close-remember]");
+  const getCheckedSlugs = () => {{
+    const checked = [];
+    host.querySelectorAll("[data-daemon-slug]").forEach((cb) => {{
+      if (cb.checked) checked.push(cb.getAttribute("data-daemon-slug"));
+    }});
+    return checked;
+  }};
   const setBusy = (busy, action) => {{
     if (busyMessage) {{
-      busyMessage.textContent = action === "closeServer" ? copy.processingCloseServer : copy.processingKeepServer;
+      busyMessage.textContent = action === "closeServer" || action === "closeSelected" ? copy.processingCloseServer : copy.processingKeepServer;
       busyMessage.style.display = busy ? "block" : "none";
     }}
     host.querySelectorAll("button").forEach((button) => {{
@@ -4199,7 +4296,7 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
     const action = button.getAttribute("data-close-action");
     if (action === "cancel") {{
       host.remove();
-      if (invoke) await invoke("resolve_app_close_request", {{ action, remember: false }});
+      if (invoke) await invoke("resolve_app_close_request", {{ action, remember: false, slugsToStop: null }});
       return;
     }}
     if (!invoke) {{
@@ -4210,7 +4307,8 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
     try {{
       setBusy(true, action);
       error.style.display = "none";
-      await invoke("resolve_app_close_request", {{ action, remember: !!remember?.checked }});
+      const slugsToStop = action === "closeSelected" ? getCheckedSlugs() : null;
+      await invoke("resolve_app_close_request", {{ action, remember: !!remember?.checked, slugsToStop }});
     }} catch (err) {{
       setBusy(false, action);
       error.textContent = err && typeof err === "object" && "message" in err ? err.message : String(err || copy.error);
@@ -4220,7 +4318,7 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
   host.addEventListener("keydown", async (event) => {{
     if (event.key !== "Escape") return;
     host.remove();
-    if (invoke) await invoke("resolve_app_close_request", {{ action: "cancel", remember: false }});
+    if (invoke) await invoke("resolve_app_close_request", {{ action: "cancel", remember: false, slugsToStop: null }});
   }});
   host.tabIndex = -1;
   host.focus();
@@ -4360,6 +4458,7 @@ fn close_app_behavior_from_action(action: &str) -> Option<CloseAppServiceBehavio
     match action {
         "keepServer" => Some(CloseAppServiceBehavior::Keep),
         "closeServer" => Some(CloseAppServiceBehavior::Stop),
+        "closeSelected" => Some(CloseAppServiceBehavior::Stop),
         _ => None,
     }
 }
@@ -10281,19 +10380,33 @@ mod tests {
             description: "After Slock quits, the server can stay running or close with the app."
                 .to_string(),
             server_label: "Current server: open-have".to_string(),
-            keep_server: "Keep server running and quit",
-            close_server: "Close server and quit",
+            keep_server: "Keep Running",
+            close_server: "Close All",
+            close_selected: "Close Selected",
             cancel: "Cancel",
             remember: "Remember this choice",
             processing_keep_server: "Keeping server running and quitting…",
             processing_close_server: "Closing server and quitting…",
             error: "Close handling failed. Try again.",
+            daemons: vec![
+                RunningDaemonEntry {
+                    server_slug: "test-server".to_string(),
+                    server_name: "Test Server".to_string(),
+                    machine_name: "my-machine".to_string(),
+                },
+                RunningDaemonEntry {
+                    server_slug: "prod-server".to_string(),
+                    server_name: "Prod Server".to_string(),
+                    machine_name: "prod-machine".to_string(),
+                },
+            ],
         });
 
         assert!(script.contains("slock-desktop-close-host"));
         assert!(script.contains("data-close-remember"));
         assert!(script.contains("data-close-action=\"keepServer\""));
         assert!(script.contains("data-close-action=\"closeServer\""));
+        assert!(script.contains("data-close-action=\"closeSelected\""));
         assert!(script.contains("resolve_app_close_request"));
         assert!(script.contains("data-close-busy"));
         assert!(script.contains("__slockDesktopCloseSetBusy"));
@@ -10304,6 +10417,12 @@ mod tests {
         assert!(script.contains("secondaryBg: \"#252b25\""));
         assert!(script.contains("dangerText: \"#fecaca\""));
         assert!(script.contains("appearance:none;-webkit-appearance:none"));
+        assert!(script.contains("data-daemon-slug=\"test-server\""));
+        assert!(script.contains("data-daemon-slug=\"prod-server\""));
+        assert!(script.contains("Test Server"));
+        assert!(script.contains("my-machine"));
+        assert!(script.contains("slugsToStop"));
+        assert!(script.contains("getCheckedSlugs"));
     }
 
     #[test]
