@@ -3932,7 +3932,32 @@ fn handle_app_exit(app: &AppHandle, state: &DesktopState) {
             .lock()
             .ok()
             .map(|settings| settings.service.clone());
-        let _ = stop_service_process(app, state, service_settings.as_ref(), None);
+        let slugs = running_daemon_slugs(state);
+        if slugs.is_empty() {
+            let _ = stop_service_process(app, state, service_settings.as_ref(), None);
+        } else {
+            for slug in &slugs {
+                let _ = stop_service_process(
+                    app,
+                    state,
+                    service_settings.as_ref(),
+                    Some(slug.as_str()),
+                );
+            }
+        }
+    }
+}
+
+fn running_daemon_slugs(state: &DesktopState) -> Vec<String> {
+    if let Ok(runtime) = state.service.lock() {
+        runtime
+            .cached_servers
+            .iter()
+            .filter(|server| machine_counts_as_started(&server.machine_status))
+            .map(|server| server.slug.clone())
+            .collect()
+    } else {
+        Vec::new()
     }
 }
 
@@ -3944,7 +3969,28 @@ fn finish_app_close_async(
     thread::spawn(move || {
         let state = app.state::<DesktopState>();
         let result = if behavior == CloseAppServiceBehavior::Stop {
-            stop_service_process(&app, &state, service_settings.as_ref(), None)
+            let slugs = running_daemon_slugs(&state);
+            if slugs.is_empty() {
+                stop_service_process(&app, &state, service_settings.as_ref(), None)
+            } else {
+                let mut errors = Vec::new();
+                for slug in &slugs {
+                    if let Err(err) = stop_service_process(
+                        &app,
+                        &state,
+                        service_settings.as_ref(),
+                        Some(slug.as_str()),
+                    ) {
+                        log::warn!("failed to stop daemon for {slug}: {err}");
+                        errors.push(format!("{slug}: {err}"));
+                    }
+                }
+                if errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(errors.join("; "))
+                }
+            }
         } else {
             Ok(())
         };
@@ -4220,24 +4266,12 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
         statusDot: "#10b981",
       }};
   const daemons = copy.daemons || [];
-  const daemonListHtml = daemons.length > 0
-    ? `<div style="margin:14px 0 0;border:1px solid ${{tone.panelBorder}};border-radius:10px;overflow:hidden;">
-        ${{daemons.map((d, i) => `<label style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${{i % 2 === 0 ? tone.rowBg : "transparent"}};cursor:pointer;font-size:13px;color:${{tone.body}};">
-          <input type="checkbox" data-daemon-slug="${{d.serverSlug}}" checked style="width:16px;height:16px;accent-color:#10a37f;flex-shrink:0;" />
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-            <span style="font-weight:600;color:${{tone.title}};">${{d.serverName}}</span>
-            <span style="margin-left:6px;color:${{tone.muted}};font-size:12px;">${{d.machineName}}</span>
-          </span>
-          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${{tone.statusDot}};flex-shrink:0;" title="Running"></span>
-        </label>`).join("")}}
-      </div>`
-    : "";
   host.style.cssText = `position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:${{tone.scrim}};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:${{tone.title}};cursor:default;`;
   host.innerHTML = `
     <div role="dialog" aria-modal="true" aria-labelledby="slock-close-title" style="width:min(460px,calc(100vw - 32px));border:1px solid ${{tone.panelBorder}};border-radius:18px;background:${{tone.panel}};box-shadow:0 24px 80px rgba(2,6,23,.38);padding:22px;">
       <h2 id="slock-close-title" data-close-copy="title" style="margin:0;font-size:18px;line-height:1.3;font-weight:700;color:${{tone.title}};"></h2>
       <p data-close-copy="description" style="margin:10px 0 0;font-size:14px;line-height:1.55;color:${{tone.body}};"></p>
-      ${{daemonListHtml}}
+      <div data-daemon-list></div>
       <label style="display:flex;align-items:center;gap:8px;margin:18px 0 0;font-size:13px;color:${{tone.label}};">
         <input data-close-remember type="checkbox" style="width:16px;height:16px;accent-color:#10a37f;" />
         <span data-close-copy="remember"></span>
@@ -4251,6 +4285,36 @@ fn app_close_prompt_script(copy: &CloseAppPromptCopy) -> String {
         <button type="button" data-close-action="keepServer" data-close-copy="keepServer" style="appearance:none;-webkit-appearance:none;border:1px solid ${{tone.primaryBorder}};border-radius:10px;background:${{tone.primaryBg}};color:${{tone.primaryText}};font-size:13px;font-weight:700;padding:9px 12px;cursor:pointer;"></button>
       </div>
     </div>`;
+  const listEl = host.querySelector("[data-daemon-list]");
+  if (listEl && daemons.length > 0) {{
+    listEl.style.cssText = "margin:14px 0 0;border:1px solid " + tone.panelBorder + ";border-radius:10px;overflow:hidden;";
+    daemons.forEach((d, i) => {{
+      const row = document.createElement("label");
+      row.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px 14px;background:" + (i % 2 === 0 ? tone.rowBg : "transparent") + ";cursor:pointer;font-size:13px;color:" + tone.body + ";";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.dataset.daemonSlug = d.serverSlug;
+      cb.checked = true;
+      cb.style.cssText = "width:16px;height:16px;accent-color:#10a37f;flex-shrink:0;";
+      const nameWrap = document.createElement("span");
+      nameWrap.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      const sName = document.createElement("span");
+      sName.style.cssText = "font-weight:600;color:" + tone.title + ";";
+      sName.textContent = d.serverName;
+      const mName = document.createElement("span");
+      mName.style.cssText = "margin-left:6px;color:" + tone.muted + ";font-size:12px;";
+      mName.textContent = d.machineName;
+      nameWrap.appendChild(sName);
+      nameWrap.appendChild(mName);
+      const dot = document.createElement("span");
+      dot.style.cssText = "display:inline-block;width:8px;height:8px;border-radius:50%;background:" + tone.statusDot + ";flex-shrink:0;";
+      dot.title = "Running";
+      row.appendChild(cb);
+      row.appendChild(nameWrap);
+      row.appendChild(dot);
+      listEl.appendChild(row);
+    }});
+  }}
   document.body.appendChild(host);
   host.querySelectorAll("[data-close-copy]").forEach((element) => {{
     const key = element.getAttribute("data-close-copy");
@@ -4401,6 +4465,12 @@ fn service_may_be_running(_app: &AppHandle, state: &DesktopState) -> bool {
             }
             runtime.child = None;
         }
+        // Check ALL cached servers for any running daemon
+        for server in &runtime.cached_servers {
+            if machine_counts_as_started(&server.machine_status) {
+                return true;
+            }
+        }
         runtime_active_slug = runtime.active_server_slug.clone();
         runtime_active_machine_id = runtime.active_machine_id.clone();
         cached_server = runtime
@@ -4413,12 +4483,7 @@ fn service_may_be_running(_app: &AppHandle, state: &DesktopState) -> bool {
         return false;
     }
 
-    if runtime_active_slug.as_deref() == Some(target_slug.as_str())
-        || cached_server
-            .as_ref()
-            .map(|server| machine_counts_as_started(&server.machine_status))
-            .unwrap_or(false)
-    {
+    if runtime_active_slug.as_deref() == Some(target_slug.as_str()) {
         return true;
     }
 
@@ -10418,8 +10483,8 @@ mod tests {
         assert!(script.contains("secondaryBg: \"#252b25\""));
         assert!(script.contains("dangerText: \"#fecaca\""));
         assert!(script.contains("appearance:none;-webkit-appearance:none"));
-        assert!(script.contains("data-daemon-slug=\"test-server\""));
-        assert!(script.contains("data-daemon-slug=\"prod-server\""));
+        assert!(script.contains("dataset.daemonSlug"));
+        assert!(script.contains("data-daemon-list"));
         assert!(script.contains("Test Server"));
         assert!(script.contains("my-machine"));
         assert!(script.contains("slugsToStop"));
