@@ -81,6 +81,24 @@ pub struct ThemeStyleConfig {
     pub accent_soft_light_mix: u8,
     #[serde(default = "default_accent_soft_dark_mix")]
     pub accent_soft_dark_mix: u8,
+    // Shape tokens
+    #[serde(default = "default_radius_xs")]
+    pub radius_xs: f64,
+    #[serde(default = "default_radius_sm")]
+    pub radius_sm: f64,
+    #[serde(default = "default_radius_md")]
+    pub radius_md: f64,
+    #[serde(default = "default_radius_lg")]
+    pub radius_lg: f64,
+    #[serde(default = "default_radius_xl")]
+    pub radius_xl: f64,
+    #[serde(default = "default_radius_pill")]
+    pub radius_pill: f64,
+    // Typography tokens
+    #[serde(default = "default_font_family")]
+    pub font_family: String,
+    #[serde(default = "default_font_family_mono")]
+    pub font_family_mono: String,
 }
 
 impl Default for ThemeStyleConfig {
@@ -94,16 +112,38 @@ impl Default for ThemeStyleConfig {
 pub struct ThemeStylePalette {
     #[serde(default = "default_light_canvas")]
     pub canvas: String,
+    #[serde(default = "default_light_toolbar")]
+    pub toolbar: String,
+    #[serde(default = "default_light_sidebar")]
+    pub sidebar: String,
+    #[serde(default = "default_light_panel")]
+    pub panel: String,
     #[serde(default = "default_light_surface")]
     pub surface: String,
     #[serde(default = "default_light_surface_strong")]
     pub surface_strong: String,
+    #[serde(default = "default_light_surface_secondary")]
+    pub surface_secondary: String,
+    #[serde(default = "default_light_surface_tertiary")]
+    pub surface_tertiary: String,
     #[serde(default = "default_light_line")]
     pub line: String,
+    #[serde(default = "default_light_line_strong")]
+    pub line_strong: String,
     #[serde(default = "default_light_text")]
     pub text: String,
     #[serde(default = "default_light_muted")]
     pub muted: String,
+    #[serde(default = "default_light_tertiary")]
+    pub tertiary: String,
+    #[serde(default = "default_light_danger")]
+    pub danger: String,
+    #[serde(default = "default_light_selection")]
+    pub selection: String,
+    #[serde(default = "default_light_hover")]
+    pub hover: String,
+    #[serde(default = "default_light_focus_ring")]
+    pub focus_ring: String,
 }
 
 impl Default for ThemeStylePalette {
@@ -139,6 +179,14 @@ fn original_style_config() -> ThemeStyleConfig {
         dark: default_dark_palette(),
         accent_soft_light_mix: default_accent_soft_light_mix(),
         accent_soft_dark_mix: default_accent_soft_dark_mix(),
+        radius_xs: default_radius_xs(),
+        radius_sm: default_radius_sm(),
+        radius_md: default_radius_md(),
+        radius_lg: default_radius_lg(),
+        radius_xl: default_radius_xl(),
+        radius_pill: default_radius_pill(),
+        font_family: default_font_family(),
+        font_family_mono: default_font_family_mono(),
     }
 }
 
@@ -153,6 +201,14 @@ fn default_style_config() -> ThemeStyleConfig {
         dark: default_dark_palette(),
         accent_soft_light_mix: default_accent_soft_light_mix(),
         accent_soft_dark_mix: default_accent_soft_dark_mix(),
+        radius_xs: default_radius_xs(),
+        radius_sm: default_radius_sm(),
+        radius_md: default_radius_md(),
+        radius_lg: default_radius_lg(),
+        radius_xl: default_radius_xl(),
+        radius_pill: default_radius_pill(),
+        font_family: default_font_family(),
+        font_family_mono: default_font_family_mono(),
     }
 }
 
@@ -171,27 +227,61 @@ pub fn default_style_scheme() -> &'static str {
 fn default_light_palette() -> ThemeStylePalette {
     ThemeStylePalette {
         canvas: default_light_canvas(),
+        toolbar: default_light_toolbar(),
+        sidebar: default_light_sidebar(),
+        panel: default_light_panel(),
         surface: default_light_surface(),
         surface_strong: default_light_surface_strong(),
+        surface_secondary: default_light_surface_secondary(),
+        surface_tertiary: default_light_surface_tertiary(),
         line: default_light_line(),
+        line_strong: default_light_line_strong(),
         text: default_light_text(),
         muted: default_light_muted(),
+        tertiary: default_light_tertiary(),
+        danger: default_light_danger(),
+        selection: default_light_selection(),
+        hover: default_light_hover(),
+        focus_ring: default_light_focus_ring(),
     }
 }
 
 fn default_dark_palette() -> ThemeStylePalette {
     ThemeStylePalette {
         canvas: default_dark_canvas(),
+        toolbar: default_dark_toolbar(),
+        sidebar: default_dark_sidebar(),
+        panel: default_dark_panel(),
         surface: default_dark_surface(),
         surface_strong: default_dark_surface_strong(),
+        surface_secondary: default_dark_surface_secondary(),
+        surface_tertiary: default_dark_surface_tertiary(),
         line: default_dark_line(),
+        line_strong: default_dark_line_strong(),
         text: default_dark_text(),
         muted: default_dark_muted(),
+        tertiary: default_dark_tertiary(),
+        danger: default_dark_danger(),
+        selection: default_dark_selection(),
+        hover: default_dark_hover(),
+        focus_ring: default_dark_focus_ring(),
     }
 }
 
 fn default_light_canvas() -> String {
     "#f7f7f5".to_string()
+}
+
+fn default_light_toolbar() -> String {
+    "#ffffff".to_string()
+}
+
+fn default_light_sidebar() -> String {
+    "#f3f4f1".to_string()
+}
+
+fn default_light_panel() -> String {
+    "#ffffff".to_string()
 }
 
 fn default_light_surface() -> String {
@@ -202,8 +292,20 @@ fn default_light_surface_strong() -> String {
     "#f3f4f1".to_string()
 }
 
+fn default_light_surface_secondary() -> String {
+    "#f3f4f1".to_string()
+}
+
+fn default_light_surface_tertiary() -> String {
+    "#ebebea".to_string()
+}
+
 fn default_light_line() -> String {
     "#e2e4de".to_string()
+}
+
+fn default_light_line_strong() -> String {
+    "#cfd1cb".to_string()
 }
 
 fn default_light_text() -> String {
@@ -214,8 +316,40 @@ fn default_light_muted() -> String {
     "#6b6f67".to_string()
 }
 
+fn default_light_tertiary() -> String {
+    "#9a9e95".to_string()
+}
+
+fn default_light_danger() -> String {
+    "#dc3545".to_string()
+}
+
+fn default_light_selection() -> String {
+    "#e8f5e9".to_string()
+}
+
+fn default_light_hover() -> String {
+    "#f0f0ed".to_string()
+}
+
+fn default_light_focus_ring() -> String {
+    "#10a37f".to_string()
+}
+
 fn default_dark_canvas() -> String {
     "#1f1f1c".to_string()
+}
+
+fn default_dark_toolbar() -> String {
+    "#252623".to_string()
+}
+
+fn default_dark_sidebar() -> String {
+    "#2f302c".to_string()
+}
+
+fn default_dark_panel() -> String {
+    "#252623".to_string()
 }
 
 fn default_dark_surface() -> String {
@@ -226,8 +360,20 @@ fn default_dark_surface_strong() -> String {
     "#2f302c".to_string()
 }
 
+fn default_dark_surface_secondary() -> String {
+    "#2f302c".to_string()
+}
+
+fn default_dark_surface_tertiary() -> String {
+    "#383930".to_string()
+}
+
 fn default_dark_line() -> String {
     "#3e413a".to_string()
+}
+
+fn default_dark_line_strong() -> String {
+    "#51544c".to_string()
 }
 
 fn default_dark_text() -> String {
@@ -238,12 +384,64 @@ fn default_dark_muted() -> String {
     "#b7bbae".to_string()
 }
 
+fn default_dark_tertiary() -> String {
+    "#8a8e82".to_string()
+}
+
+fn default_dark_danger() -> String {
+    "#e53e3e".to_string()
+}
+
+fn default_dark_selection() -> String {
+    "#1e352e".to_string()
+}
+
+fn default_dark_hover() -> String {
+    "#2d2e2a".to_string()
+}
+
+fn default_dark_focus_ring() -> String {
+    "#19c99b".to_string()
+}
+
 fn default_accent_soft_light_mix() -> u8 {
     12
 }
 
 fn default_accent_soft_dark_mix() -> u8 {
     22
+}
+
+fn default_radius_xs() -> f64 {
+    2.0
+}
+
+fn default_radius_sm() -> f64 {
+    4.0
+}
+
+fn default_radius_md() -> f64 {
+    8.0
+}
+
+fn default_radius_lg() -> f64 {
+    12.0
+}
+
+fn default_radius_xl() -> f64 {
+    16.0
+}
+
+fn default_radius_pill() -> f64 {
+    9999.0
+}
+
+fn default_font_family() -> String {
+    "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif".to_string()
+}
+
+fn default_font_family_mono() -> String {
+    "'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace".to_string()
 }
 
 pub fn normalize_mode(mode: &str) -> &'static str {
@@ -557,11 +755,22 @@ pub fn sanitize_hex(value: &str) -> Option<String> {
 fn sanitize_palette(value: ThemeStylePalette, fallback: ThemeStylePalette) -> ThemeStylePalette {
     ThemeStylePalette {
         canvas: sanitize_hex(&value.canvas).unwrap_or(fallback.canvas),
+        toolbar: sanitize_hex(&value.toolbar).unwrap_or(fallback.toolbar),
+        sidebar: sanitize_hex(&value.sidebar).unwrap_or(fallback.sidebar),
+        panel: sanitize_hex(&value.panel).unwrap_or(fallback.panel),
         surface: sanitize_hex(&value.surface).unwrap_or(fallback.surface),
         surface_strong: sanitize_hex(&value.surface_strong).unwrap_or(fallback.surface_strong),
+        surface_secondary: sanitize_hex(&value.surface_secondary).unwrap_or(fallback.surface_secondary),
+        surface_tertiary: sanitize_hex(&value.surface_tertiary).unwrap_or(fallback.surface_tertiary),
         line: sanitize_hex(&value.line).unwrap_or(fallback.line),
+        line_strong: sanitize_hex(&value.line_strong).unwrap_or(fallback.line_strong),
         text: sanitize_hex(&value.text).unwrap_or(fallback.text),
         muted: sanitize_hex(&value.muted).unwrap_or(fallback.muted),
+        tertiary: sanitize_hex(&value.tertiary).unwrap_or(fallback.tertiary),
+        danger: sanitize_hex(&value.danger).unwrap_or(fallback.danger),
+        selection: sanitize_hex(&value.selection).unwrap_or(fallback.selection),
+        hover: sanitize_hex(&value.hover).unwrap_or(fallback.hover),
+        focus_ring: sanitize_hex(&value.focus_ring).unwrap_or(fallback.focus_ring),
     }
 }
 
