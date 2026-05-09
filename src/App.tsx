@@ -18,7 +18,6 @@ import {
   type DesktopUpdateCheck,
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
-  type ServerMember,
   type ThemeDefinition,
   type ThemeStyleConfig,
   type ThemeStyleDefinition,
@@ -29,7 +28,6 @@ import {
   fetchDashboard,
   fetchDmChannels,
   fetchFollowedThreads,
-  fetchServerMembers,
   fetchThreadMessages,
   fetchUnreadChannels,
   installDesktopUpdate,
@@ -558,37 +556,33 @@ function App() {
   const styleImportInputRef = useRef<HTMLInputElement | null>(null)
   const serviceLogSearchRef = useRef<HTMLInputElement | null>(null)
   const serviceLogContentRef = useRef<HTMLPreElement | null>(null)
-  // Unified inbox state (multi-server)
-  type UnifiedItem = {
-    id: string
+  // Unified inbox state (multi-server, message-level feed)
+  type FeedMessage = {
+    id: string              // unique key: serverSlug:messageId
+    messageId: string       // actual message ID for URL routing
+    channelId: string
+    channelName: string     // #channel or @name (DM display name)
+    type: 'channel' | 'thread' | 'dm'
     serverSlug: string
     serverName: string
-    channelId: string
-    channelName: string
-    type: 'channel' | 'thread' | 'dm'
-    unreadCount: number
-    lastMessageAt: string | null
-    displayName: string | null
-    parentChannelName: string | null
-    parentChannelId: string | null
-    avatarUrl: string | null
-    // Preview from latest message
-    lastSenderName: string | null
-    lastPreview: string | null
-    replyCount: number | null
+    senderName: string
+    content: string
+    createdAt: string
+    parentChannelId: string | null  // for thread URL routing
+    replyCount: number | null       // for thread items
+    unread: boolean
   }
   type ServerChannelGroup = {
     serverSlug: string
     serverName: string
     channels: { id: string; name: string; type: string; unreadCount: number }[]
   }
-  const [unifiedItems, setUnifiedItems] = useState<UnifiedItem[]>([])
+  const [feedMessages, setFeedMessages] = useState<FeedMessage[]>([])
   const [serverChannelGroups, setServerChannelGroups] = useState<ServerChannelGroup[]>([])
-  const [memberMap, setMemberMap] = useState<Map<string, ServerMember>>(new Map())
   const [inboxLoading, setInboxLoading] = useState(false)
   const [inboxFilter, setInboxFilter] = useState<'all' | 'mentions' | 'dms'>('all')
   const [inboxSearch, setInboxSearch] = useState('')
-  const [selectedChannel, setSelectedChannel] = useState<{ serverSlug: string; channelId: string; itemType?: 'channel' | 'thread' | 'dm' } | null>(null)
+  const [selectedMessage, setSelectedMessage] = useState<FeedMessage | null>(null)
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
   // Quick send state
   const [quickSendTarget, setQuickSendTarget] = useState<{ serverSlug: string; channelId: string; label: string } | null>(null)
@@ -1109,17 +1103,17 @@ function App() {
     }
   }, [])
 
-  // Fetch unified inbox data from all servers
+  // Fetch unified inbox data from all servers (message-level feed)
   useEffect(() => {
     if (!snapshot?.service.authenticated || !initialServiceRefreshDone) {
-      setUnifiedItems([])
+      setFeedMessages([])
       setServerChannelGroups([])
       return
     }
 
     const servers = snapshot.service.servers.filter((s) => s.apiKeyReady)
     if (servers.length === 0) {
-      setUnifiedItems([])
+      setFeedMessages([])
       setServerChannelGroups([])
       return
     }
@@ -1129,7 +1123,6 @@ function App() {
     async function loadUnifiedInbox() {
       setInboxLoading(true)
       try {
-        // Fetch data per server: dashboard, threads, DMs, unread, members
         const serverResults = await Promise.allSettled(
           servers.map(async (server) => {
             const calls = [
@@ -1137,18 +1130,24 @@ function App() {
               fetchFollowedThreads(server.slug),
               fetchDmChannels(server.slug),
               fetchUnreadChannels(server.slug),
-              fetchServerMembers(server.slug),
             ] as const
 
-            const [dashResult, threadsResult, dmsResult, unreadResult, membersResult] =
+            const [dashResult, threadsResult, dmsResult, unreadResult] =
               await Promise.allSettled(calls)
 
-            const items: UnifiedItem[] = []
+            // Build channel metadata for message fetching
+            type ChannelMeta = {
+              channelId: string
+              channelName: string
+              type: 'channel' | 'thread' | 'dm'
+              lastMessageAt: string | null
+              parentChannelId: string | null
+              unreadCount: number
+            }
+            const channelMetas: ChannelMeta[] = []
             const channelList: ServerChannelGroup['channels'] = []
-            const members: ServerMember[] =
-              membersResult.status === 'fulfilled' ? membersResult.value : []
 
-            // Build unread map for this server
+            // Build unread map
             const unreadMap = new Map<string, number>()
             if (unreadResult.status === 'fulfilled') {
               for (const entry of unreadResult.value) {
@@ -1164,29 +1163,15 @@ function App() {
               for (const ch of dashResult.value.channels) {
                 if (ch.isArchived) continue
                 const unread = dashUnreadMap.get(ch.id) ?? unreadMap.get(ch.id) ?? 0
-                items.push({
-                  id: `${server.slug}:${ch.id}`,
-                  serverSlug: server.slug,
-                  serverName: server.name,
+                channelMetas.push({
                   channelId: ch.id,
                   channelName: `#${ch.name}`,
                   type: 'channel',
-                  unreadCount: unread,
                   lastMessageAt: ch.lastMessageAt,
-                  displayName: null,
-                  parentChannelName: null,
                   parentChannelId: null,
-                  avatarUrl: null,
-                  lastSenderName: null,
-                  lastPreview: null,
-                  replyCount: null,
-                })
-                channelList.push({
-                  id: ch.id,
-                  name: ch.name,
-                  type: ch.type,
                   unreadCount: unread,
                 })
+                channelList.push({ id: ch.id, name: ch.name, type: ch.type, unreadCount: unread })
               }
             }
 
@@ -1195,22 +1180,13 @@ function App() {
               for (const t of threadsResult.value) {
                 const unread = t.unreadCount || unreadMap.get(t.id) || 0
                 const name = t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : copy.inboxThread)
-                items.push({
-                  id: `${server.slug}:${t.id}`,
-                  serverSlug: server.slug,
-                  serverName: server.name,
+                channelMetas.push({
                   channelId: t.id,
                   channelName: name,
                   type: 'thread',
-                  unreadCount: unread,
                   lastMessageAt: t.lastMessageAt,
-                  displayName: null,
-                  parentChannelName: t.parentChannelName,
-                  parentChannelId: t.parentChannelId,
-                  avatarUrl: null,
-                  lastSenderName: null,
-                  lastPreview: null,
-                  replyCount: null,
+                  parentChannelId: t.parentChannelId ?? null,
+                  unreadCount: unread,
                 })
               }
             }
@@ -1220,97 +1196,80 @@ function App() {
               for (const d of dmsResult.value) {
                 const unread = d.unreadCount || unreadMap.get(d.id) || 0
                 const name = d.displayName ?? d.name
-                items.push({
-                  id: `${server.slug}:${d.id}`,
-                  serverSlug: server.slug,
-                  serverName: server.name,
+                channelMetas.push({
                   channelId: d.id,
-                  channelName: name,
+                  channelName: `@${name}`,
                   type: 'dm',
-                  unreadCount: unread,
                   lastMessageAt: d.lastMessageAt,
-                  displayName: d.displayName,
-                  parentChannelName: null,
                   parentChannelId: null,
-                  avatarUrl: d.members[0]?.avatarUrl ?? null,
-                  lastSenderName: null,
-                  lastPreview: null,
-                  replyCount: null,
+                  unreadCount: unread,
                 })
               }
             }
 
-            // Sort items by lastMessageAt desc, take top 10 for preview fetching
-            const sorted = items
-              .filter((i) => i.lastMessageAt)
+            // Sort channels by lastMessageAt desc, take top 10 most active
+            const sortedChannels = channelMetas
+              .filter((c) => c.lastMessageAt)
               .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
-            const topItems = sorted.slice(0, 10)
+              .slice(0, 10)
 
-            // Fetch latest message for top items to populate preview
-            // For threads, use higher limit to count replies
-            if (topItems.length > 0) {
-              const previewResults = await Promise.allSettled(
-                topItems.map(async (item) => {
-                  const isThread = item.type === 'thread'
-                  const limit = isThread ? 100 : 1
-                  const resp = item.type === 'channel'
-                    ? await fetchChannelMessages(server.slug, item.channelId, { limit })
-                    : await fetchThreadMessages(server.slug, item.channelId, { limit })
-                  const msg = resp.messages[resp.messages.length - 1]
-                  const replyCount = isThread ? resp.messages.length + (resp.hasMore ? 1 : 0) : null
-                  return { channelId: item.channelId, msg, replyCount }
+            // Fetch recent messages from each active channel
+            const messages: FeedMessage[] = []
+            if (sortedChannels.length > 0) {
+              const msgResults = await Promise.allSettled(
+                sortedChannels.map(async (ch) => {
+                  const limit = 5
+                  const resp = ch.type === 'channel'
+                    ? await fetchChannelMessages(server.slug, ch.channelId, { limit })
+                    : await fetchThreadMessages(server.slug, ch.channelId, { limit })
+                  const replyCount = ch.type === 'thread'
+                    ? resp.messages.length + (resp.hasMore ? 1 : 0)
+                    : null
+                  return resp.messages.map((msg) => ({
+                    id: `${server.slug}:${msg.id}`,
+                    messageId: msg.id,
+                    channelId: ch.channelId,
+                    channelName: ch.channelName,
+                    type: ch.type,
+                    serverSlug: server.slug,
+                    serverName: server.name,
+                    senderName: msg.senderDisplayName ?? msg.senderName ?? '',
+                    content: msg.content,
+                    createdAt: msg.createdAt,
+                    parentChannelId: ch.parentChannelId,
+                    replyCount,
+                    unread: ch.unreadCount > 0,
+                  } satisfies FeedMessage))
                 })
               )
-              const previewMap = new Map<string, { senderName: string; content: string; replyCount: number | null }>()
-              for (const r of previewResults) {
-                if (r.status === 'fulfilled' && r.value.msg) {
-                  previewMap.set(r.value.channelId, {
-                    senderName: r.value.msg.senderDisplayName ?? r.value.msg.senderName ?? '',
-                    content: r.value.msg.content,
-                    replyCount: r.value.replyCount,
-                  })
-                }
-              }
-              for (const item of items) {
-                const preview = previewMap.get(item.channelId)
-                if (preview) {
-                  item.lastSenderName = preview.senderName
-                  item.lastPreview = preview.content
-                  item.replyCount = preview.replyCount
+              for (const r of msgResults) {
+                if (r.status === 'fulfilled') {
+                  messages.push(...r.value)
                 }
               }
             }
 
             return {
-              items,
+              messages,
               group: { serverSlug: server.slug, serverName: server.name, channels: channelList },
-              members,
             }
           })
         )
 
         if (!cancelled) {
           type ServerResult = {
-            items: UnifiedItem[]
+            messages: FeedMessage[]
             group: ServerChannelGroup
-            members: ServerMember[]
           }
           const fulfilled = serverResults
             .filter((r): r is PromiseFulfilledResult<ServerResult> => r.status === 'fulfilled')
-          const allItems = fulfilled.flatMap((r) => r.value.items)
+          const allMessages = fulfilled
+            .flatMap((r) => r.value.messages)
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           const groups = fulfilled.map((r) => r.value.group)
-          // Build member map keyed by serverSlug:memberId for cross-server uniqueness
-          const newMemberMap = new Map<string, ServerMember>()
-          for (const r of fulfilled) {
-            const slug = r.value.group.serverSlug
-            for (const m of r.value.members) {
-              newMemberMap.set(`${slug}:${m.id}`, m)
-            }
-          }
 
-          setUnifiedItems(allItems)
+          setFeedMessages(allMessages)
           setServerChannelGroups(groups)
-          setMemberMap(newMemberMap)
         }
       } finally {
         if (!cancelled) {
@@ -1323,21 +1282,21 @@ function App() {
     return () => { cancelled = true }
   }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone, copy.inboxThread])
 
-  // Mark as read when a conversation is selected (for unread badge cleanup)
+  // Mark as read when a message is selected
   useEffect(() => {
-    if (!selectedChannel) return
-    const { serverSlug, channelId } = selectedChannel
+    if (!selectedMessage) return
+    const { serverSlug, channelId } = selectedMessage
     markChannelRead(serverSlug, channelId).then(() => {
-      setUnifiedItems((prev) =>
-        prev.map((i) =>
-          i.serverSlug === serverSlug && i.channelId === channelId
-            ? { ...i, unreadCount: 0 }
-            : i,
+      setFeedMessages((prev) =>
+        prev.map((m) =>
+          m.serverSlug === serverSlug && m.channelId === channelId
+            ? { ...m, unread: false }
+            : m,
         ),
       )
     }).catch(() => { /* ignore */ })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: use primitive fields
-  }, [selectedChannel?.serverSlug, selectedChannel?.channelId])
+  }, [selectedMessage?.serverSlug, selectedMessage?.channelId])
 
   useEffect(() => {
     if (
@@ -2658,7 +2617,7 @@ function App() {
         ) : null}
 
         <div className="inbox-layout">
-          {/* Left — Server-Grouped Feed */}
+          {/* Left — Message-Level Server-Grouped Feed */}
           <aside className="inbox-sidebar" aria-label={copy.inbox}>
             <div className="inbox-sidebar-header">
               <input
@@ -2672,9 +2631,9 @@ function App() {
                 {(['all', 'mentions', 'dms'] as const).map((filter) => {
                   const label = filter === 'all' ? copy.inboxAll : filter === 'mentions' ? copy.inboxMentions : copy.inboxDMs
                   const count = filter === 'all'
-                    ? unifiedItems.filter((i) => i.unreadCount > 0).length
+                    ? feedMessages.filter((m) => m.unread).length
                     : filter === 'dms'
-                      ? unifiedItems.filter((i) => i.type === 'dm' && i.unreadCount > 0).length
+                      ? feedMessages.filter((m) => m.type === 'dm' && m.unread).length
                       : 0
                   return (
                     <button
@@ -2700,35 +2659,28 @@ function App() {
 
                 const normalizedSearch = inboxSearch.trim().toLowerCase()
 
-                // Build server-grouped feed from unifiedItems
-                // 1. Filter by type
-                let items = unifiedItems
+                // Filter messages by type and search
+                let messages = feedMessages
                 if (inboxFilter === 'dms') {
-                  items = items.filter((i) => i.type === 'dm')
+                  messages = messages.filter((m) => m.type === 'dm')
                 }
-                // 2. Search filter
                 if (normalizedSearch) {
-                  items = items.filter((i) => {
-                    const name = i.channelName.toLowerCase()
-                    const sender = (i.lastSenderName ?? '').toLowerCase()
-                    const preview = (i.lastPreview ?? '').toLowerCase()
-                    return name.includes(normalizedSearch) || sender.includes(normalizedSearch) || preview.includes(normalizedSearch)
+                  messages = messages.filter((m) => {
+                    return m.channelName.toLowerCase().includes(normalizedSearch)
+                      || m.senderName.toLowerCase().includes(normalizedSearch)
+                      || m.content.toLowerCase().includes(normalizedSearch)
                   })
                 }
 
-                // 3. Group by server, sort each group by lastMessageAt desc
-                const serverMap = new Map<string, { serverName: string; items: typeof items }>()
-                for (const item of items) {
-                  const group = serverMap.get(item.serverSlug)
+                // Group by server (messages already sorted by createdAt desc)
+                const serverMap = new Map<string, { serverName: string; messages: typeof messages }>()
+                for (const msg of messages) {
+                  const group = serverMap.get(msg.serverSlug)
                   if (group) {
-                    group.items.push(item)
+                    group.messages.push(msg)
                   } else {
-                    serverMap.set(item.serverSlug, { serverName: item.serverName, items: [item] })
+                    serverMap.set(msg.serverSlug, { serverName: msg.serverName, messages: [msg] })
                   }
-                }
-                // Sort items within each server by lastMessageAt desc
-                for (const group of serverMap.values()) {
-                  group.items.sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
                 }
 
                 const serverGroups = Array.from(serverMap.entries())
@@ -2743,48 +2695,36 @@ function App() {
                 return serverGroups.map(([slug, group]) => {
                   const isExpanded = expandedServers.has(slug)
                   const displayLimit = isExpanded ? 10 : 5
-                  const visibleItems = group.items.slice(0, displayLimit)
-                  const hasMore = group.items.length > displayLimit
-                  const serverUnread = group.items.reduce((sum, i) => sum + i.unreadCount, 0)
+                  const visibleMsgs = group.messages.slice(0, displayLimit)
+                  const hasMore = group.messages.length > displayLimit
+                  const unreadCount = group.messages.filter((m) => m.unread).length
 
                   return (
                     <div key={slug} className="inbox-server-group">
                       <div className="inbox-feed-server-header">
                         <span className="inbox-feed-server-name">{group.serverName}</span>
-                        {serverUnread > 0 ? (
-                          <span className="inbox-feed-server-badge">{serverUnread}</span>
+                        {unreadCount > 0 ? (
+                          <span className="inbox-feed-server-badge">{unreadCount}</span>
                         ) : null}
                       </div>
-                      {visibleItems.map((item) => {
-                        const isSelected = selectedChannel?.serverSlug === item.serverSlug && selectedChannel?.channelId === item.channelId
-                        const sourceLabel = item.type === 'dm'
-                          ? `@${item.displayName ?? item.channelName}`
-                          : item.channelName
+                      {visibleMsgs.map((msg) => {
+                        const isSelected = selectedMessage?.id === msg.id
                         return (
                           <button
-                            key={item.id}
+                            key={msg.id}
                             type="button"
-                            className={`inbox-feed-item-v2${isSelected ? ' selected' : ''}${item.unreadCount > 0 ? ' unread' : ''}`}
-                            onClick={() => setSelectedChannel({ serverSlug: item.serverSlug, channelId: item.channelId, itemType: item.type })}
+                            className={`inbox-feed-item-v2${isSelected ? ' selected' : ''}${msg.unread ? ' unread' : ''}`}
+                            onClick={() => setSelectedMessage(msg)}
                           >
                             <div className="inbox-feed-item-header">
-                              <span className="inbox-feed-item-source">{sourceLabel}</span>
-                              {item.lastMessageAt ? (
-                                <span className="inbox-feed-item-time">{formatRelativeTime(item.lastMessageAt)}</span>
-                              ) : null}
+                              <span className="inbox-feed-item-source">{msg.channelName}</span>
+                              <span className="inbox-feed-item-time">{formatRelativeTime(msg.createdAt)}</span>
                             </div>
-                            {item.lastPreview ? (
-                              <p className="inbox-feed-item-preview">
-                                {item.lastSenderName ? (
-                                  <><span className="inbox-feed-item-sender">{item.lastSenderName}:</span> {item.lastPreview}</>
-                                ) : item.lastPreview}
-                              </p>
-                            ) : null}
-                            {item.replyCount != null && item.replyCount > 0 ? (
-                              <span className="inbox-feed-item-replies">{item.replyCount} {copy.inboxReplies}</span>
-                            ) : null}
-                            {item.unreadCount > 0 ? (
-                              <span className="inbox-feed-item-unread">{item.unreadCount} {copy.inboxUnreadLabel}</span>
+                            <p className="inbox-feed-item-preview">
+                              <span className="inbox-feed-item-sender">{msg.senderName}:</span> {msg.content}
+                            </p>
+                            {msg.replyCount != null && msg.replyCount > 0 ? (
+                              <span className="inbox-feed-item-replies">{msg.replyCount} {copy.inboxReplies}</span>
                             ) : null}
                           </button>
                         )
@@ -2815,49 +2755,44 @@ function App() {
 
           {/* Right — Context Area */}
           <div className="inbox-content">
-            {selectedChannel ? (
+            {selectedMessage ? (
               <div className="inbox-message-view">
                 {/* Header with back button */}
                 <div className="inbox-message-header">
                   <button
                     type="button"
                     className="inbox-back-button"
-                    onClick={() => setSelectedChannel(null)}
+                    onClick={() => setSelectedMessage(null)}
                     aria-label={copy.inboxBack}
                     title={copy.inboxBack}
                   >
                     <ChevronIcon direction="left" />
                   </button>
                   <span className="inbox-message-title">
-                    {unifiedItems.find(
-                      (i) => i.serverSlug === selectedChannel.serverSlug && i.channelId === selectedChannel.channelId,
-                    )?.channelName ?? copy.inboxConversation}
+                    {selectedMessage.channelName}
                   </span>
                   <button
                     type="button"
                     className="inbox-message-close"
-                    onClick={() => setSelectedChannel(null)}
+                    onClick={() => setSelectedMessage(null)}
                     aria-label={copy.close}
                     title={copy.close}
                   >
                     <XIcon />
                   </button>
                 </div>
-                {/* Web page iframe */}
+                {/* Web page iframe with message-level URL */}
                 <iframe
                   className="inbox-web-frame"
                   src={(() => {
-                    const item = unifiedItems.find(
-                      (i) => i.serverSlug === selectedChannel.serverSlug && i.channelId === selectedChannel.channelId,
-                    )
                     const base = snapshot?.workspaceUrl?.replace(/\/s\/[^/]+\/?$/, '') ?? 'https://app.slock.ai'
-                    if (item?.type === 'dm') {
-                      return `${base}/s/${selectedChannel.serverSlug}/dm/${selectedChannel.channelId}`
+                    if (selectedMessage.type === 'dm') {
+                      return `${base}/s/${selectedMessage.serverSlug}/dm/${selectedMessage.channelId}?msg=${selectedMessage.messageId}`
                     }
-                    if (item?.type === 'thread' && item.parentChannelId) {
-                      return `${base}/s/${selectedChannel.serverSlug}/channel/${item.parentChannelId}?thread=${selectedChannel.channelId}`
+                    if (selectedMessage.type === 'thread' && selectedMessage.parentChannelId) {
+                      return `${base}/s/${selectedMessage.serverSlug}/channel/${selectedMessage.parentChannelId}?msg=${selectedMessage.messageId}&thread=${selectedMessage.channelId}`
                     }
-                    return `${base}/s/${selectedChannel.serverSlug}/channel/${selectedChannel.channelId}`
+                    return `${base}/s/${selectedMessage.serverSlug}/channel/${selectedMessage.channelId}?msg=${selectedMessage.messageId}`
                   })()}
                   title={copy.inboxConversation}
                 />
