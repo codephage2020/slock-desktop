@@ -516,6 +516,8 @@ struct InboxThread {
     parent_channel_id: Option<String>,
     #[serde(alias = "parent_channel_name")]
     parent_channel_name: Option<String>,
+    #[serde(default, alias = "parent_message_id")]
+    parent_message_id: Option<String>,
     #[serde(default, alias = "is_done")]
     is_done: bool,
     #[serde(alias = "last_message_at")]

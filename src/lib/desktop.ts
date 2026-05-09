@@ -335,6 +335,7 @@ export interface InboxThread {
   name: string | null
   parentChannelId: string | null
   parentChannelName: string | null
+  parentMessageId: string | null
   isDone: boolean
   lastMessageAt: string | null
   unreadCount: number

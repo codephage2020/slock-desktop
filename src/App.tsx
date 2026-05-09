@@ -569,6 +569,7 @@ function App() {
     displayName: string | null
     parentChannelName: string | null
     parentChannelId: string | null
+    parentMessageId: string | null
     avatarUrl: string | null
     // Preview from latest message
     lastSenderName: string | null
@@ -1171,6 +1172,7 @@ function App() {
                   displayName: null,
                   parentChannelName: null,
                   parentChannelId: null,
+                  parentMessageId: null,
                   avatarUrl: null,
                   lastSenderName: null,
                   lastPreview: null,
@@ -1203,6 +1205,7 @@ function App() {
                   displayName: null,
                   parentChannelName: t.parentChannelName,
                   parentChannelId: t.parentChannelId,
+                  parentMessageId: t.parentMessageId ?? null,
                   avatarUrl: null,
                   lastSenderName: null,
                   lastPreview: null,
@@ -1229,6 +1232,7 @@ function App() {
                   displayName: d.displayName,
                   parentChannelName: null,
                   parentChannelId: null,
+                  parentMessageId: null,
                   avatarUrl: d.members[0]?.avatarUrl ?? null,
                   lastSenderName: null,
                   lastPreview: null,
@@ -1256,10 +1260,12 @@ function App() {
                     : await fetchThreadMessages(server.slug, item.channelId, { limit })
                   const msg = resp.messages[resp.messages.length - 1]
                   const replyCount = isThread ? resp.messages.length + (resp.hasMore ? 1 : 0) : null
-                  return { channelId: item.channelId, msg, replyCount }
+                  // For threads, first message (oldest) is the parent message — use its ID as fallback parentMessageId
+                  const firstMessageId = isThread && resp.messages.length > 0 && !resp.hasMore ? resp.messages[0].id : null
+                  return { channelId: item.channelId, msg, replyCount, firstMessageId }
                 })
               )
-              const previewMap = new Map<string, { senderName: string; content: string; replyCount: number | null; messageId: string }>()
+              const previewMap = new Map<string, { senderName: string; content: string; replyCount: number | null; messageId: string; firstMessageId: string | null }>()
               for (const r of previewResults) {
                 if (r.status === 'fulfilled' && r.value.msg) {
                   previewMap.set(r.value.channelId, {
@@ -1267,6 +1273,7 @@ function App() {
                     content: r.value.msg.content,
                     replyCount: r.value.replyCount,
                     messageId: r.value.msg.id,
+                    firstMessageId: r.value.firstMessageId,
                   })
                 }
               }
@@ -1277,6 +1284,10 @@ function App() {
                   item.lastPreview = preview.content
                   item.replyCount = preview.replyCount
                   item.latestMessageId = preview.messageId
+                  // Use API parentMessageId if available, fallback to first thread message
+                  if (item.type === 'thread' && !item.parentMessageId && preview.firstMessageId) {
+                    item.parentMessageId = preview.firstMessageId
+                  }
                 }
               }
             }
@@ -2844,8 +2855,8 @@ function App() {
                     if (item?.type === 'dm') {
                       return `${base}/s/${selectedChannel.serverSlug}/dm/${selectedChannel.channelId}${msgParam ? `?${msgParam}` : ''}`
                     }
-                    if (item?.type === 'thread' && item.parentChannelId) {
-                      return `${base}/s/${selectedChannel.serverSlug}/channel/${item.parentChannelId}?${msgParam ? `${msgParam}&` : ''}thread=${selectedChannel.channelId}`
+                    if (item?.type === 'thread' && item.parentChannelId && item.parentMessageId) {
+                      return `${base}/s/${selectedChannel.serverSlug}/channel/${item.parentChannelId}?${msgParam ? `${msgParam}&` : ''}thread=${selectedChannel.channelId}:${item.parentMessageId}`
                     }
                     return `${base}/s/${selectedChannel.serverSlug}/channel/${selectedChannel.channelId}${msgParam ? `?${msgParam}` : ''}`
                   })()}
