@@ -18,6 +18,9 @@ pub struct ServiceMachineBinding {
     pub machine_name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub api_key: String,
+    /// How this binding was established: "desktop_created", "pid_scan", or "user_bound"
+    #[serde(default)]
+    pub source: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

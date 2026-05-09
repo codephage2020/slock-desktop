@@ -104,15 +104,21 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       var toolInput = entry.toolInput || "";
 
       // status entries: activity = connection state (online/disconnected),
-      // detail = work state (Idle/Working/Thinking). Check detail first.
+      // detail = work state (Idle/Working/Thinking). Check detail first, then activity.
       if (kind === "status" || !kind) {
         var detailLower = detail.toLowerCase();
         var activityLower = activity.toLowerCase();
+        // Check detail first (primary work state)
         if (detailLower === "idle") return { label: t("actIdle"), detail: "", dotColor: "#22c55e" };
         if (detailLower === "working") return { label: t("actWorking"), detail: "", dotColor: "#eab308" };
         if (detailLower === "thinking") return { label: t("actThinking"), detail: "", dotColor: "#eab308" };
-        if (activityLower === "disconnected" || detailLower === "disconnected") return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
-        // Fallback for unknown status
+        if (detailLower === "disconnected") return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
+        // Fallback: detail empty, check activity field
+        if (activityLower === "idle" || activityLower === "online") return { label: t("actIdle"), detail: "", dotColor: "#22c55e" };
+        if (activityLower === "working") return { label: t("actWorking"), detail: "", dotColor: "#eab308" };
+        if (activityLower === "thinking") return { label: t("actThinking"), detail: "", dotColor: "#eab308" };
+        if (activityLower === "disconnected" || activityLower === "stopped") return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
+        // Unknown status: show as-is
         if (detail || activity) return { label: detail || activity, detail: "", dotColor: "#9ca3af" };
       }
 
@@ -129,9 +135,9 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         return { label: t("actOutput"), detail: detail || "", dotColor: "#3b82f6" };
       }
 
-      // Fallback: use activity/kind as label
-      var fallbackLabel = activity || kind || detail || "Activity";
-      return { label: fallbackLabel, detail: detail && detail !== fallbackLabel ? detail : "", dotColor: "#9ca3af" };
+      // Fallback for any unknown kind: treat as Output to avoid raw labels
+      var fallbackDetail = activity || detail || kind || "";
+      return { label: t("actOutput"), detail: fallbackDetail, dotColor: "#3b82f6" };
     }
 
     // --- Tauri invoke ---

@@ -262,6 +262,8 @@ struct ServiceServerSnapshot {
     machine_name: Option<String>,
     machine_status: String,
     api_key_ready: bool,
+    /// How the local binding was established: "desktop_created", "pid_scan", "user_bound", or empty
+    binding_source: String,
     #[serde(skip_serializing)]
     api_key_prefix: Option<String>,
 }
@@ -3354,6 +3356,72 @@ fn mark_channel_read(
     }
 
     Ok(())
+}
+
+/// Manually bind a server's machine to this local desktop.
+/// Persists the binding to settings.json with source="user_bound".
+#[tauri::command]
+fn bind_local_machine(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    machine_id: String,
+) -> Result<BootstrapPayload, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+    let machine_id_trimmed = machine_id.trim();
+    if machine_id_trimmed.is_empty() {
+        return Err("Machine ID is required".to_string());
+    }
+
+    // Find the server and machine from cached data
+    let (server_id, machine_name) = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+
+        let server = runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .ok_or_else(|| format!("Server '{slug}' not found in cache"))?;
+        let server_id = server.id.clone();
+
+        // Try to find the machine name from the API
+        let machines = fetch_server_machines(
+            &app,
+            &state,
+            &settings.service.server_url,
+            &server_id,
+        )
+        .unwrap_or_default();
+        let machine_name = machines
+            .iter()
+            .find(|m| m.id == machine_id_trimmed)
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        (server_id, machine_name)
+    };
+
+    let binding = ServiceMachineBinding {
+        server_id,
+        server_slug: slug.to_string(),
+        machine_id: machine_id_trimmed.to_string(),
+        machine_name,
+        api_key: String::new(),
+        source: "user_bound".to_string(),
+    };
+    upsert_service_binding(&app, &state, binding)?;
+
+    build_bootstrap(&app, &state, true)
 }
 
 #[tauri::command]
@@ -6545,6 +6613,64 @@ fn command_arg_value_matches(command: &str, arg: &str, expected: &str) -> bool {
     false
 }
 
+/// Extract the value of a CLI argument from a command string.
+/// Supports both `--arg value` and `--arg=value` forms.
+fn extract_arg_value_from_command<'a>(command: &'a str, arg: &str) -> Option<&'a str> {
+    let equals_prefix = format!("{arg}=");
+    let mut parts = command.split_whitespace();
+    while let Some(part) = parts.next() {
+        if part == arg {
+            return parts.next();
+        }
+        if let Some(value) = part.strip_prefix(equals_prefix.as_str()) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+/// Scan local daemon processes for a machine_id matching the given server URL.
+/// Returns (machine_id, machine_name_from_process) if found.
+fn detect_local_machine_by_pid(
+    target_server_url: &str,
+) -> Option<String> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let output = Command::new("ps")
+            .args(["-axo", "pid=,ppid=,command="])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let listing = String::from_utf8_lossy(&output.stdout);
+        for entry in process_entries_from_ps_output(&listing) {
+            if !daemon_command_has_marker(&entry.command) {
+                continue;
+            }
+            if !entry.command.contains("--server-url") || !entry.command.contains(target_server_url) {
+                continue;
+            }
+            // Try to extract machine_id from command line
+            if let Some(machine_id) = extract_arg_value_from_command(&entry.command, "--machine-id")
+                .or_else(|| extract_arg_value_from_command(&entry.command, DAEMON_MACHINE_ID_ARG))
+            {
+                let machine_id = machine_id.trim().to_string();
+                if !machine_id.is_empty() && machine_id != "***" {
+                    return Some(machine_id);
+                }
+            }
+        }
+        None
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = target_server_url;
+        None
+    }
+}
+
 fn selected_service_daemon_process_from_servers(
     settings: &ServiceSettings,
     servers: &[ServiceServerSnapshot],
@@ -7637,8 +7763,29 @@ fn fetch_service_servers(
 
     let mut snapshots = Vec::with_capacity(servers.len());
     for (server, machines) in servers.into_iter().zip(machines_by_server) {
-        let binding = find_service_binding(settings, &server.id, &server.slug);
-        let (machine_id, machine_name, machine_status, api_key_ready, api_key_prefix) =
+        let mut binding = find_service_binding(settings, &server.id, &server.slug);
+
+        // PID scan: if no binding exists, try to detect a local daemon for this server
+        if binding.is_none() {
+            if let Some(detected_machine_id) = detect_local_machine_by_pid(&server_url) {
+                // Verify this machine_id exists in the server's machine list
+                if let Some(matched_machine) = machines.iter().find(|m| m.id == detected_machine_id) {
+                    let new_binding = ServiceMachineBinding {
+                        server_id: server.id.clone(),
+                        server_slug: server.slug.clone(),
+                        machine_id: detected_machine_id,
+                        machine_name: matched_machine.name.clone(),
+                        api_key: String::new(),
+                        source: "pid_scan".to_string(),
+                    };
+                    if let Ok(persisted) = upsert_service_binding(app, state, new_binding) {
+                        binding = Some(persisted);
+                    }
+                }
+            }
+        }
+
+        let (machine_id, machine_name, machine_status, api_key_ready, api_key_prefix, binding_source) =
             service_server_machine_fields(binding.as_ref(), &machines);
 
         snapshots.push(ServiceServerSnapshot {
@@ -7651,6 +7798,7 @@ fn fetch_service_servers(
             machine_status,
             api_key_ready,
             api_key_prefix,
+            binding_source,
         });
     }
 
@@ -7683,7 +7831,7 @@ fn fetch_cached_service_server_status(
     let mut snapshots = Vec::with_capacity(cached_servers.len());
     for (server, machines) in cached_servers.into_iter().zip(machines_by_server) {
         let binding = find_service_binding(settings, &server.id, &server.slug);
-        let (machine_id, machine_name, machine_status, api_key_ready, api_key_prefix) =
+        let (machine_id, machine_name, machine_status, api_key_ready, api_key_prefix, binding_source) =
             service_server_machine_fields(binding.as_ref(), &machines);
 
         snapshots.push(ServiceServerSnapshot {
@@ -7696,6 +7844,7 @@ fn fetch_cached_service_server_status(
             machine_status,
             api_key_ready,
             api_key_prefix,
+            binding_source,
         });
     }
 
@@ -7791,6 +7940,14 @@ fn fetch_service_server_catalog(
             });
         let api_key_prefix = cached.and_then(|item| item.api_key_prefix.clone());
         let api_key_ready = api_key_prefix.is_some() || machine_id.is_some();
+        let binding_source = binding
+            .as_ref()
+            .map(|b| b.source.clone())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                cached.map(|item| item.binding_source.clone()).filter(|s| !s.is_empty())
+            })
+            .unwrap_or_default();
 
         snapshots.push(ServiceServerSnapshot {
             id: server.id.clone(),
@@ -7802,6 +7959,7 @@ fn fetch_service_server_catalog(
             machine_status,
             api_key_ready,
             api_key_prefix,
+            binding_source,
         });
     }
 
@@ -7811,7 +7969,7 @@ fn fetch_service_server_catalog(
 fn service_server_machine_fields(
     binding: Option<&ServiceMachineBinding>,
     machines: &[ApiMachine],
-) -> (Option<String>, Option<String>, String, bool, Option<String>) {
+) -> (Option<String>, Option<String>, String, bool, Option<String>, String) {
     let bound_machine = binding.and_then(|binding| {
         machines
             .iter()
@@ -7847,6 +8005,10 @@ fn service_server_machine_fields(
                 .as_ref()
                 .map(|machine_id| !machine_id.trim().is_empty())
                 .unwrap_or(false));
+    let binding_source = binding
+        .map(|b| b.source.clone())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_default();
 
     (
         machine_id,
@@ -7854,6 +8016,7 @@ fn service_server_machine_fields(
         machine_status,
         api_key_ready,
         api_key_prefix,
+        binding_source,
     )
 }
 
@@ -8030,6 +8193,7 @@ fn ensure_machine_binding(
         machine_id: payload.machine.id,
         machine_name: payload.machine.name,
         api_key: String::new(),
+        source: "desktop_created".to_string(),
     };
     let binding = upsert_service_binding(app, state, binding)?;
     Ok(ServiceStartTarget {
@@ -8639,7 +8803,8 @@ pub fn run() {
             fetch_server_members,
             fetch_server_unread_summary,
             send_message,
-            mark_channel_read
+            mark_channel_read,
+            bind_local_machine
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -9742,7 +9907,7 @@ mod tests {
             api_key_prefix: "sk_existing".to_string(),
         }];
 
-        let (machine_id, machine_name, machine_status, api_key_ready, api_key_prefix) =
+        let (machine_id, machine_name, machine_status, api_key_ready, api_key_prefix, binding_source) =
             service_server_machine_fields(None, &machines);
 
         assert_eq!(machine_id, None);
@@ -9750,6 +9915,7 @@ mod tests {
         assert_eq!(machine_status, "not linked");
         assert!(!api_key_ready);
         assert_eq!(api_key_prefix, None);
+        assert_eq!(binding_source, "");
     }
 
     #[test]

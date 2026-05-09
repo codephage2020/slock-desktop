@@ -87,6 +87,7 @@ export interface ServiceServerSnapshot {
   machineName: string | null
   machineStatus: string
   apiKeyReady: boolean
+  bindingSource: string
 }
 
 export interface UpdateSnapshot {
@@ -411,6 +412,10 @@ export async function sendMessage(serverSlug: string, channelId: string, content
 
 export async function markChannelRead(serverSlug: string, channelId: string) {
   return invoke<void>('mark_channel_read', { serverSlug, channelId })
+}
+
+export async function bindLocalMachine(serverSlug: string, machineId: string) {
+  return invoke<BootstrapPayload>('bind_local_machine', { serverSlug, machineId })
 }
 
 // Unified inbox types and commands
