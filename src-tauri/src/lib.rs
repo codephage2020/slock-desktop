@@ -1199,9 +1199,6 @@ fn open_workspace(
     let target_url = workspace_url_for_slug(&selected_server_slug);
     begin_workspace_launch_trace(&state, command_started, &target_url);
     let service_bound = selected_service_has_local_binding(&service_settings);
-    if service_bound {
-        maybe_start_service(&app, &state, &service_settings, true)?;
-    }
 
     enter_workspace_in_main_window(
         &app,
@@ -4954,37 +4951,6 @@ fn should_detect_selected_service_process(
     detect_service_process
         && !selected_server_slug.is_empty()
         && (!running || active_server_slug.trim() != selected_server_slug)
-}
-
-fn maybe_start_service(
-    app: &AppHandle,
-    state: &DesktopState,
-    settings: &ServiceSettings,
-    force_for_workspace: bool,
-) -> Result<(), String> {
-    let authenticated = current_session_tokens(state)?.is_some();
-    if should_attempt_workspace_service_start(settings, force_for_workspace, authenticated) {
-        force_start_service(app, state, settings)?;
-    }
-
-    Ok(())
-}
-
-fn should_attempt_workspace_service_start(
-    settings: &ServiceSettings,
-    force_for_workspace: bool,
-    authenticated: bool,
-) -> bool {
-    authenticated && should_start_service_for_workspace(settings, force_for_workspace)
-}
-
-fn should_start_service_for_workspace(
-    settings: &ServiceSettings,
-    force_for_workspace: bool,
-) -> bool {
-    !settings.selected_server_slug.trim().is_empty()
-        && selected_service_has_local_binding(settings)
-        && (force_for_workspace || settings.auto_start_with_workspace)
 }
 
 fn selected_service_has_local_binding(settings: &ServiceSettings) -> bool {
@@ -8885,9 +8851,9 @@ mod tests {
         selected_service_daemon_process_from_server_snapshots,
         service_daemon_process_from_resolved_target, service_machine_fetch_concurrency,
         service_server_machine_fields, session_account_snapshots,
-        should_attempt_workspace_service_start, should_detect_selected_service_process,
+        should_detect_selected_service_process,
         should_refresh_service_servers, should_resolve_remote_daemon_after_local_stop,
-        should_start_service_for_workspace, take_app_close_service_stop_completed,
+        take_app_close_service_stop_completed,
         terminate_daemon_process, untagged_daemon_pids_from_ps_output,
         upsert_saved_session_account, workspace_session_clear_script,
         workspace_session_seed_script, ApiMachine, AppCloseRuntime, AuthRuntime,
@@ -9553,42 +9519,6 @@ mod tests {
     }
 
     #[test]
-    fn workspace_launch_starts_selected_service_even_when_machine_appears_online() {
-        let settings = ServiceSettings {
-            selected_server_slug: "open-have".to_string(),
-            auto_start_with_workspace: false,
-            machines: vec![ServiceMachineBinding {
-                server_id: "server-open".to_string(),
-                server_slug: "open-have".to_string(),
-                machine_id: "machine-open".to_string(),
-                machine_name: "Open machine".to_string(),
-                api_key: String::new(),
-                source: String::new(),
-            }],
-            ..ServiceSettings::default()
-        };
-
-        assert!(should_start_service_for_workspace(&settings, true));
-        assert!(should_attempt_workspace_service_start(
-            &settings, true, true
-        ));
-    }
-
-    #[test]
-    fn workspace_launch_skips_service_start_for_unbound_selected_server() {
-        let settings = ServiceSettings {
-            selected_server_slug: "open-have".to_string(),
-            auto_start_with_workspace: true,
-            ..ServiceSettings::default()
-        };
-
-        assert!(!should_start_service_for_workspace(&settings, true));
-        assert!(!should_attempt_workspace_service_start(
-            &settings, true, true
-        ));
-    }
-
-    #[test]
     fn daemon_update_requires_selected_process_on_current_computer() {
         let settings = ServiceSettings {
             selected_server_slug: "open-have".to_string(),
@@ -9647,19 +9577,6 @@ mod tests {
             process.as_ref().map(|process| process.server_slug.as_str()),
             Some("open-have")
         );
-    }
-
-    #[test]
-    fn workspace_launch_without_session_skips_service_start() {
-        let settings = ServiceSettings {
-            selected_server_slug: "open-have".to_string(),
-            auto_start_with_workspace: true,
-            ..ServiceSettings::default()
-        };
-
-        assert!(!should_attempt_workspace_service_start(
-            &settings, true, false
-        ));
     }
 
     #[test]
