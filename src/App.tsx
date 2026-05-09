@@ -574,9 +574,11 @@ function App() {
     serverSlug: string
     createUrl: string
     checking: boolean
+    existingMachineIds: string[]
     machineId?: string
     machineName?: string
     daemonCommand?: string
+    displayCommand?: string
   } | null>(null)
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const serverPanelRef = useRef<HTMLDivElement | null>(null)
@@ -1947,6 +1949,7 @@ function App() {
             serverSlug: check.serverSlug,
             createUrl: check.createUrl,
             checking: false,
+            existingMachineIds: check.machines.map((m) => m.id),
           })
           return
         }
@@ -1991,12 +1994,17 @@ function App() {
     try {
       const check = await checkServerMachines(computerCreateFlow.serverSlug)
       if (check.hasMachines && check.machines.length > 0) {
-        // New machine detected — bind it and get daemon command
-        const newMachine = check.machines[check.machines.length - 1]
+        // Detect newly created machines by diffing against known IDs
+        const existingIds = new Set(computerCreateFlow.existingMachineIds)
+        const newMachines = check.machines.filter(
+          (m) => !existingIds.has(m.id),
+        )
+        const targetMachine =
+          newMachines.length > 0 ? newMachines[0] : check.machines[0]
         try {
           const info = await prepareDaemonCommand(
             computerCreateFlow.serverSlug,
-            newMachine.id,
+            targetMachine.id,
           )
           setComputerCreateFlow((prev) =>
             prev
@@ -2007,13 +2015,14 @@ function App() {
                   machineId: info.machineId,
                   machineName: info.machineName,
                   daemonCommand: info.command,
+                  displayCommand: info.displayCommand,
                 }
               : null,
           )
         } catch {
-          // Binding/key rotation failed — fall back to ready phase
+          // Binding/key rotation failed — stay in waiting, don't degrade
           setComputerCreateFlow((prev) =>
-            prev ? { ...prev, phase: 'ready', checking: false } : null,
+            prev ? { ...prev, checking: false } : null,
           )
         }
       } else {
@@ -3339,7 +3348,7 @@ function App() {
                     </p>
                   ) : null}
                   <code className="computer-create-command">
-                    {computerCreateFlow.daemonCommand}
+                    {computerCreateFlow.displayCommand}
                   </code>
                   <div className="computer-create-actions">
                     <button

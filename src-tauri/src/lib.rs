@@ -382,6 +382,7 @@ struct ServerMachinesCheck {
 #[serde(rename_all = "camelCase")]
 struct DaemonCommandInfo {
     command: String,
+    display_command: String,
     server_slug: String,
     machine_id: String,
     machine_name: String,
@@ -1771,22 +1772,32 @@ fn prepare_daemon_command(
         machine_id_trimmed,
     )?;
 
-    // Build display command (mask API key for security)
-    let masked_key = if api_key.len() > 8 {
-        format!("{}…{}", &api_key[..4], &api_key[api_key.len() - 4..])
-    } else {
-        "****".to_string()
-    };
-    let command = format!(
-        "npx --yes {} --server-url {} --api-key {} {} {} {} {} {}",
-        DAEMON_PACKAGE,
-        server_url,
-        masked_key,
+    // Build real command (for Copy) and masked display command (for UI)
+    let command_args = format!(
+        "{} {} {} {} {} {}",
         DAEMON_SERVER_SLUG_ARG,
         slug,
         DAEMON_MACHINE_ID_ARG,
         machine_id_trimmed,
         DAEMON_DESKTOP_MANAGED_ARG,
+        "",
+    )
+    .trim()
+    .to_string();
+
+    let command = format!(
+        "npx --yes {} --server-url {} --api-key {} {}",
+        DAEMON_PACKAGE, server_url, api_key, command_args,
+    );
+
+    let masked_key = if api_key.len() > 8 {
+        format!("{}…{}", &api_key[..4], &api_key[api_key.len() - 4..])
+    } else {
+        "****".to_string()
+    };
+    let display_command = format!(
+        "npx --yes {} --server-url {} --api-key {} {}",
+        DAEMON_PACKAGE, server_url, masked_key, command_args,
     );
 
     log::info!(
@@ -1797,6 +1808,7 @@ fn prepare_daemon_command(
 
     Ok(DaemonCommandInfo {
         command,
+        display_command,
         server_slug: slug.to_string(),
         machine_id: machine_id_trimmed.to_string(),
         machine_name,

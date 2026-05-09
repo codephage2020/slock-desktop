@@ -456,6 +456,7 @@ export interface ServerMachinesCheck {
 
 export interface DaemonCommandInfo {
   command: string
+  displayCommand: string
   serverSlug: string
   machineId: string
   machineName: string
