@@ -112,37 +112,37 @@ impl Default for ThemeStyleConfig {
 pub struct ThemeStylePalette {
     #[serde(default = "default_light_canvas")]
     pub canvas: String,
-    #[serde(default = "default_light_toolbar")]
+    #[serde(default)]
     pub toolbar: String,
-    #[serde(default = "default_light_sidebar")]
+    #[serde(default)]
     pub sidebar: String,
-    #[serde(default = "default_light_panel")]
+    #[serde(default)]
     pub panel: String,
     #[serde(default = "default_light_surface")]
     pub surface: String,
     #[serde(default = "default_light_surface_strong")]
     pub surface_strong: String,
-    #[serde(default = "default_light_surface_secondary")]
+    #[serde(default)]
     pub surface_secondary: String,
-    #[serde(default = "default_light_surface_tertiary")]
+    #[serde(default)]
     pub surface_tertiary: String,
     #[serde(default = "default_light_line")]
     pub line: String,
-    #[serde(default = "default_light_line_strong")]
+    #[serde(default)]
     pub line_strong: String,
     #[serde(default = "default_light_text")]
     pub text: String,
     #[serde(default = "default_light_muted")]
     pub muted: String,
-    #[serde(default = "default_light_tertiary")]
+    #[serde(default)]
     pub tertiary: String,
-    #[serde(default = "default_light_danger")]
+    #[serde(default)]
     pub danger: String,
-    #[serde(default = "default_light_selection")]
+    #[serde(default)]
     pub selection: String,
-    #[serde(default = "default_light_hover")]
+    #[serde(default)]
     pub hover: String,
-    #[serde(default = "default_light_focus_ring")]
+    #[serde(default)]
     pub focus_ring: String,
 }
 
