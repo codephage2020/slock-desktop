@@ -626,9 +626,11 @@ function App() {
   const [selectedChannel, setSelectedChannel] = useState<{ serverSlug: string; channelId: string; itemType?: 'channel' | 'thread' | 'dm' } | null>(null)
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
   // Quick send state
+  const [selectedQuickServer, setSelectedQuickServer] = useState<string | null>(null)
   const [quickSendTarget, setQuickSendTarget] = useState<{ serverSlug: string; channelId: string; label: string } | null>(null)
   const [quickSendText, setQuickSendText] = useState('')
   const [quickSendSending, setQuickSendSending] = useState(false)
+  const [quickSendServerOpen, setQuickSendServerOpen] = useState(false)
   const [quickSendTargetOpen, setQuickSendTargetOpen] = useState(false)
 
   // Message detail panel state (#67)
@@ -637,12 +639,12 @@ function App() {
   const [detailHasMore, setDetailHasMore] = useState(false)
   const [replyText, setReplyText] = useState('')
   const [replySending, setReplySending] = useState(false)
-  const [replyAttachments, setReplyAttachments] = useState<{ file: File; uploading: boolean; id?: string }[]>([])
+  const [replyAttachments, setReplyAttachments] = useState<{ file: File; uploading: boolean; error?: boolean; id?: string }[]>([])
   const detailScrollRef = useRef<HTMLDivElement>(null)
   const detailAutoScrollRef = useRef(true)
 
   // Quick Send attachment state (#68)
-  const [quickSendAttachments, setQuickSendAttachments] = useState<{ file: File; uploading: boolean; id?: string }[]>([])
+  const [quickSendAttachments, setQuickSendAttachments] = useState<{ file: File; uploading: boolean; error?: boolean; id?: string }[]>([])
 
   const [messageReminders, setMessageReminders] = useState<MessageReminderToast[]>([])
   const messageRemindersRef = useRef<MessageReminderToast[]>([])
@@ -1484,7 +1486,7 @@ function App() {
     fetcher(serverSlug, channelId, { limit: 50 })
       .then((resp) => {
         if (cancelled) return
-        setDetailMessages(resp.messages)
+        setDetailMessages(normalizeMessages(resp.messages))
         setDetailHasMore(resp.hasMore)
         // Scroll to bottom after initial load
         requestAnimationFrame(() => {
@@ -1534,6 +1536,24 @@ function App() {
     })
     return () => { cancelled = true }
   }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone])
+
+  // Auto-select server for Quick Send when only one server exists
+  useEffect(() => {
+    const allSlugs = new Set([
+      ...serverChannelGroups.map((g) => g.serverSlug),
+      ...serverDmGroups.map((g) => g.serverSlug),
+    ])
+    if (allSlugs.size === 1) {
+      const slug = [...allSlugs][0]
+      setSelectedQuickServer(slug)
+    } else if (selectedQuickServer && !allSlugs.has(selectedQuickServer)) {
+      // Current selected server no longer available
+      setSelectedQuickServer(null)
+      setQuickSendTarget(null)
+      setQuickSendText('')
+      setQuickSendAttachments([])
+    }
+  }, [serverChannelGroups, serverDmGroups, selectedQuickServer])
 
   useEffect(() => {
     if (
@@ -2238,7 +2258,7 @@ function App() {
     try {
       const fetcher = selectedChannel.itemType === 'thread' ? fetchThreadMessages : fetchChannelMessages
       const resp = await fetcher(selectedChannel.serverSlug, selectedChannel.channelId, { limit: 50, before: firstMsg.id })
-      setDetailMessages((prev) => [...resp.messages, ...prev])
+      setDetailMessages((prev) => normalizeMessages([...resp.messages, ...prev]))
       setDetailHasMore(resp.hasMore)
     } catch {
       /* ignore */
@@ -2252,7 +2272,7 @@ function App() {
     file: File,
     serverSlug: string,
     channelId: string | undefined,
-    setAttachments: React.Dispatch<React.SetStateAction<{ file: File; uploading: boolean; id?: string }[]>>,
+    setAttachments: React.Dispatch<React.SetStateAction<{ file: File; uploading: boolean; error?: boolean; id?: string }[]>>,
   ) {
     const entry = { file, uploading: true }
     setAttachments((prev) => [...prev, entry])
@@ -2265,7 +2285,10 @@ function App() {
       )
     } catch (err) {
       console.error('Upload failed', err)
-      setAttachments((prev) => prev.filter((a) => a.file !== file))
+      // Keep the attachment with error state so the user can see it failed and remove manually
+      setAttachments((prev) =>
+        prev.map((a) => (a.file === file ? { ...a, uploading: false, error: true } : a)),
+      )
     }
   }
 
@@ -3195,7 +3218,7 @@ function App() {
                       const prev = idx > 0 ? detailMessages[idx - 1] : null
                       const sameAuthor = prev?.senderId === msg.senderId && prev?.senderId != null
                       const withinWindow = prev
-                        ? new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime() < 300_000
+                        ? Math.abs(new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 300_000
                         : false
                       const compact = sameAuthor && withinWindow
                       const serverUrl = snapshot?.service.serverUrl
@@ -3276,58 +3299,122 @@ function App() {
                   />
                   {/* Server + Channel/DM selectors on same line */}
                   <div className="inbox-quick-send-selectors">
-                    {/* Channel / DM selector */}
-                    <div className="inbox-target-selector">
-                      <button
-                        type="button"
-                        className="inbox-target-button"
-                        onClick={() => setQuickSendTargetOpen((o) => !o)}
-                      >
-                        {quickSendTarget ? quickSendTarget.label : copy.inboxSelectTarget}
-                        <ChevronIcon direction={quickSendTargetOpen ? 'up' : 'down'} />
-                      </button>
-                      {quickSendTargetOpen ? (
-                        <div className="inbox-target-dropdown">
-                          {serverChannelGroups.map((group) => (
-                            <div key={group.serverSlug} className="inbox-target-group">
-                              <p className="inbox-target-group-name">{group.serverName} — Channels</p>
-                              {group.channels.map((ch) => (
-                                <button
-                                  key={ch.id}
-                                  type="button"
-                                  className="inbox-target-option"
-                                  onClick={() => {
-                                    setQuickSendTarget({ serverSlug: group.serverSlug, channelId: ch.id, label: `#${ch.name}` })
-                                    setQuickSendTargetOpen(false)
-                                  }}
-                                >
-                                  #{ch.name}
-                                </button>
-                              ))}
-                            </div>
-                          ))}
-                          {serverDmGroups.map((group) =>
-                            group.dms.length > 0 ? (
-                              <div key={`dm-${group.serverSlug}`} className="inbox-target-group">
-                                <p className="inbox-target-group-name">{group.serverName} — Direct Messages</p>
-                                {group.dms.map((dm) => (
-                                  <button
-                                    key={dm.id}
-                                    type="button"
-                                    className="inbox-target-option"
-                                    onClick={() => {
-                                      setQuickSendTarget({ serverSlug: group.serverSlug, channelId: dm.id, label: `@${dm.displayName ?? dm.name}` })
-                                      setQuickSendTargetOpen(false)
-                                    }}
-                                  >
-                                    @{dm.displayName ?? dm.name}
-                                  </button>
-                                ))}
+                    {/* Server selector — hidden when only one server */}
+                    {(() => {
+                      const allSlugs = new Set([
+                        ...serverChannelGroups.map((g) => g.serverSlug),
+                        ...serverDmGroups.map((g) => g.serverSlug),
+                      ])
+                      if (allSlugs.size <= 1) return null
+                      const selectedServerName = [...serverChannelGroups, ...serverDmGroups].find(
+                        (g) => g.serverSlug === selectedQuickServer,
+                      )?.serverName
+                      return (
+                        <div className="inbox-target-half">
+                          <div className="inbox-target-selector">
+                            <button
+                              type="button"
+                              className="inbox-target-button"
+                              onClick={() => {
+                                setQuickSendServerOpen((o) => !o)
+                                setQuickSendTargetOpen(false)
+                              }}
+                            >
+                              {selectedServerName ?? 'Server'}
+                              <ChevronIcon direction={quickSendServerOpen ? 'up' : 'down'} />
+                            </button>
+                            {quickSendServerOpen && (
+                              <div className="inbox-target-dropdown">
+                                {[...allSlugs].map((slug) => {
+                                  const name = [...serverChannelGroups, ...serverDmGroups].find(
+                                    (g) => g.serverSlug === slug,
+                                  )?.serverName ?? slug
+                                  return (
+                                    <button
+                                      key={slug}
+                                      type="button"
+                                      className={`inbox-target-option${selectedQuickServer === slug ? ' selected' : ''}`}
+                                      onClick={() => {
+                                        setSelectedQuickServer(slug)
+                                        // Reset target when server changes
+                                        setQuickSendTarget(null)
+                                        setQuickSendText('')
+                                        setQuickSendAttachments([])
+                                        setQuickSendServerOpen(false)
+                                      }}
+                                    >
+                                      {name}
+                                    </button>
+                                  )
+                                })}
                               </div>
-                            ) : null,
-                          )}
+                            )}
+                          </div>
                         </div>
-                      ) : null}
+                      )
+                    })()}
+                    {/* Channel / DM selector — filtered by selected server */}
+                    <div className="inbox-target-half">
+                      <div className="inbox-target-selector">
+                        <button
+                          type="button"
+                          className="inbox-target-button"
+                          onClick={() => {
+                            setQuickSendTargetOpen((o) => !o)
+                            setQuickSendServerOpen(false)
+                          }}
+                          disabled={!selectedQuickServer}
+                        >
+                          {quickSendTarget ? quickSendTarget.label : copy.inboxSelectTarget}
+                          <ChevronIcon direction={quickSendTargetOpen ? 'up' : 'down'} />
+                        </button>
+                        {quickSendTargetOpen && selectedQuickServer ? (
+                          <div className="inbox-target-dropdown">
+                            {serverChannelGroups
+                              .filter((g) => g.serverSlug === selectedQuickServer)
+                              .map((group) => (
+                                <div key={group.serverSlug} className="inbox-target-group">
+                                  <p className="inbox-target-group-name">Channels</p>
+                                  {group.channels.map((ch) => (
+                                    <button
+                                      key={ch.id}
+                                      type="button"
+                                      className="inbox-target-option"
+                                      onClick={() => {
+                                        setQuickSendTarget({ serverSlug: group.serverSlug, channelId: ch.id, label: `#${ch.name}` })
+                                        setQuickSendTargetOpen(false)
+                                      }}
+                                    >
+                                      #{ch.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              ))}
+                            {serverDmGroups
+                              .filter((g) => g.serverSlug === selectedQuickServer)
+                              .map((group) =>
+                                group.dms.length > 0 ? (
+                                  <div key={`dm-${group.serverSlug}`} className="inbox-target-group">
+                                    <p className="inbox-target-group-name">Direct Messages</p>
+                                    {group.dms.map((dm) => (
+                                      <button
+                                        key={dm.id}
+                                        type="button"
+                                        className="inbox-target-option"
+                                        onClick={() => {
+                                          setQuickSendTarget({ serverSlug: group.serverSlug, channelId: dm.id, label: `@${dm.displayName ?? dm.name}` })
+                                          setQuickSendTargetOpen(false)
+                                        }}
+                                      >
+                                        @{dm.displayName ?? dm.name}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null,
+                              )}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -4407,13 +4494,15 @@ function ComposeBox({
   placeholder: string
   sending: boolean
   onSend: () => void
-  attachments: { file: File; uploading: boolean; id?: string }[]
+  attachments: { file: File; uploading: boolean; error?: boolean; id?: string }[]
   onFileSelect: (files: FileList) => void
   onRemoveAttachment: (file: File) => void
   disabled?: boolean
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const hasUploading = attachments.some((a) => a.uploading)
   const hasContent = text.trim().length > 0 || attachments.some((a) => a.id)
+  const canSend = hasContent && !hasUploading
 
   return (
     <div className="compose-box">
@@ -4425,7 +4514,7 @@ function ComposeBox({
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
-            onSend()
+            if (canSend && !sending && !disabled) onSend()
           }
         }}
         disabled={sending || disabled}
@@ -4434,9 +4523,10 @@ function ComposeBox({
       {attachments.length > 0 && (
         <div className="compose-attachments">
           {attachments.map((a, i) => (
-            <div key={i} className="compose-attachment-chip">
+            <div key={i} className={`compose-attachment-chip${a.error ? ' error' : ''}`}>
               <span className="compose-attachment-name">{a.file.name}</span>
-              {a.uploading && <span className="compose-attachment-uploading">…</span>}
+              {a.uploading && <span className="compose-attachment-uploading">...</span>}
+              {a.error && <span className="compose-attachment-error">failed</span>}
               <button
                 type="button"
                 className="compose-attachment-remove"
@@ -4480,16 +4570,41 @@ function ComposeBox({
           type="button"
           className="compose-send-button"
           onClick={onSend}
-          disabled={!hasContent || sending || disabled}
+          disabled={!canSend || sending || disabled}
         >
-          {sending ? '…' : 'Send ➤'}
+          {sending ? '...' : hasUploading ? 'Uploading...' : 'Send \u27A4'}
         </button>
       </div>
     </div>
   )
 }
 
+// --- Message list normalization (sort oldest→newest, dedupe) ---
+
+function normalizeMessages(messages: InboxMessage[]): InboxMessage[] {
+  const seen = new Set<string>()
+  const unique: InboxMessage[] = []
+  for (const msg of messages) {
+    if (!seen.has(msg.id)) {
+      seen.add(msg.id)
+      unique.push(msg)
+    }
+  }
+  unique.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  return unique
+}
+
 // --- Simple Markdown renderer ---
+
+function sanitizeHref(raw: string): string | null {
+  const trimmed = raw.trim()
+  // Only allow safe protocols — block javascript:, data:, vbscript: etc.
+  if (/^(?:https?|mailto):/i.test(trimmed)) {
+    // Escape double-quotes to prevent attribute breakout
+    return trimmed.replace(/"/g, '&quot;')
+  }
+  return null
+}
 
 function renderMarkdown(text: string): string {
   return text
@@ -4499,7 +4614,13 @@ function renderMarkdown(text: string): string {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
+      const safe = sanitizeHref(href)
+      if (safe) {
+        return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>`
+      }
+      return label // strip link, keep label text
+    })
     .replace(/\n/g, '<br/>')
 }
 

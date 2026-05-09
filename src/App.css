@@ -678,6 +678,11 @@ body:has(.loading-shell),
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
+.inbox-target-option.selected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-weight: 600;
+}
+
 .inbox-quick-send-input {
   width: 100%;
   appearance: none;
@@ -3534,6 +3539,16 @@ body:has(.loading-shell),
 
 .compose-attachment-uploading {
   color: var(--muted);
+}
+
+.compose-attachment-chip.error {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+.compose-attachment-error {
+  color: var(--danger);
+  font-size: 0.68rem;
 }
 
 .compose-attachment-remove {
