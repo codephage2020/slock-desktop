@@ -398,7 +398,30 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         parent = parent.parentElement;
         depth++;
       }
-      console.log("[Slock Desktop] agent card: accepted card-brutal overflow-hidden, ancestors:", ancestors.slice(0, 10).join(" > "));
+      // Diagnostic: log element attributes, parent, and children to distinguish card types
+      var elAttrs = [];
+      if (el.attributes) {
+        for (var i = 0; i < el.attributes.length; i++) {
+          elAttrs.push(el.attributes[i].name + "=" + el.attributes[i].value.substring(0, 30));
+        }
+      }
+      var parentInfo = "none";
+      if (el.parentElement) {
+        var pe = el.parentElement;
+        var peAttrs = [];
+        if (pe.attributes) {
+          for (var pi = 0; pi < pe.attributes.length; pi++) {
+            peAttrs.push(pe.attributes[pi].name + "=" + pe.attributes[pi].value.substring(0, 30));
+          }
+        }
+        parentInfo = pe.tagName + "." + (pe.className || "").substring(0, 40) + " [" + peAttrs.join(", ") + "]";
+      }
+      var childTags = [];
+      for (var ci = 0; ci < Math.min(el.children.length, 8); ci++) {
+        var ch = el.children[ci];
+        childTags.push(ch.tagName + "." + (ch.className || "").substring(0, 40));
+      }
+      console.log("[Slock Desktop] agent card: accepted card-brutal overflow-hidden, ancestors:", ancestors.slice(0, 10).join(" > "), "parent:", parentInfo, "attrs:", elAttrs.join(", "), "children(" + el.children.length + "):", childTags.join(" | "), "text:", (el.textContent || "").substring(0, 120));
       return true;
     }
 
