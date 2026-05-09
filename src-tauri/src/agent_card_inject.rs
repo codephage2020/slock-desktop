@@ -105,7 +105,10 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
 
       // status entries: activity = connection state (online/disconnected),
       // detail = work state (Idle/Working/Thinking). Check detail first, then activity.
-      if (kind === "status") {
+      // When kind is empty, only enter status branch if detail/activity matches a known status value.
+      var knownStatuses = ["idle","online","working","thinking","disconnected","stopped"];
+      var statusKey = (detail || activity || "").toLowerCase();
+      if (kind === "status" || (!kind && knownStatuses.indexOf(statusKey) !== -1)) {
         var detailLower = detail.toLowerCase();
         var activityLower = activity.toLowerCase();
         // Check detail first (primary work state)
