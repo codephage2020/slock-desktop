@@ -3377,7 +3377,8 @@ fn bind_local_machine(
     }
 
     // Find the server and machine from cached data
-    let (server_id, machine_name) = {
+    // Extract server info from cache, then release locks before network call
+    let (server_id, server_url) = {
         let settings = state
             .settings
             .lock()
@@ -3392,24 +3393,24 @@ fn bind_local_machine(
             .iter()
             .find(|s| s.slug == slug)
             .ok_or_else(|| format!("Server '{slug}' not found in cache"))?;
-        let server_id = server.id.clone();
 
-        // Try to find the machine name from the API
-        let machines = fetch_server_machines(
-            &app,
-            &state,
-            &settings.service.server_url,
-            &server_id,
-        )
-        .unwrap_or_default();
-        let machine_name = machines
-            .iter()
-            .find(|m| m.id == machine_id_trimmed)
-            .map(|m| m.name.clone())
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        (server_id, machine_name)
+        (server.id.clone(), settings.service.server_url.clone())
     };
+    // Locks released — safe to make network calls
+
+    // Try to find the machine name from the API
+    let machines = fetch_server_machines(
+        &app,
+        &state,
+        &server_url,
+        &server_id,
+    )
+    .unwrap_or_default();
+    let machine_name = machines
+        .iter()
+        .find(|m| m.id == machine_id_trimmed)
+        .map(|m| m.name.clone())
+        .unwrap_or_else(|| "Unknown".to_string());
 
     let binding = ServiceMachineBinding {
         server_id,
@@ -6633,6 +6634,7 @@ fn extract_arg_value_from_command<'a>(command: &'a str, arg: &str) -> Option<&'a
 /// Returns (machine_id, machine_name_from_process) if found.
 fn detect_local_machine_by_pid(
     target_server_url: &str,
+    target_server_slug: &str,
 ) -> Option<String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
@@ -6651,6 +6653,12 @@ fn detect_local_machine_by_pid(
             if !entry.command.contains("--server-url") || !entry.command.contains(target_server_url) {
                 continue;
             }
+            // Match server slug if the daemon has one tagged
+            if entry.command.contains(DAEMON_SERVER_SLUG_ARG) {
+                if !command_arg_value_matches(&entry.command, DAEMON_SERVER_SLUG_ARG, target_server_slug) {
+                    continue;
+                }
+            }
             // Try to extract machine_id from command line
             if let Some(machine_id) = extract_arg_value_from_command(&entry.command, "--machine-id")
                 .or_else(|| extract_arg_value_from_command(&entry.command, DAEMON_MACHINE_ID_ARG))
@@ -6667,6 +6675,7 @@ fn detect_local_machine_by_pid(
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = target_server_url;
+        let _ = target_server_slug;
         None
     }
 }
@@ -7768,7 +7777,7 @@ fn fetch_service_servers(
 
         // PID scan: if no binding exists, try to detect a local daemon for this server
         if binding.is_none() {
-            if let Some(detected_machine_id) = detect_local_machine_by_pid(&server_url) {
+            if let Some(detected_machine_id) = detect_local_machine_by_pid(&server_url, &server.slug) {
                 // Verify this machine_id exists in the server's machine list
                 if let Some(matched_machine) = machines.iter().find(|m| m.id == detected_machine_id) {
                     let new_binding = ServiceMachineBinding {
@@ -8142,7 +8151,11 @@ fn resolve_existing_service_machine(
             machine_id: machine.id,
             machine_name: machine.name,
             api_key: legacy_api_key,
-            source: String::new(),
+            source: existing_binding
+                .as_ref()
+                .map(|b| b.source.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_default(),
         },
         api_key_prefix,
         machine_status,

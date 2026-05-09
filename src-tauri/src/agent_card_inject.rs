@@ -105,7 +105,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
 
       // status entries: activity = connection state (online/disconnected),
       // detail = work state (Idle/Working/Thinking). Check detail first, then activity.
-      if (kind === "status" || !kind) {
+      if (kind === "status") {
         var detailLower = detail.toLowerCase();
         var activityLower = activity.toLowerCase();
         // Check detail first (primary work state)
@@ -118,8 +118,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         if (activityLower === "working") return { label: t("actWorking"), detail: "", dotColor: "#eab308" };
         if (activityLower === "thinking") return { label: t("actThinking"), detail: "", dotColor: "#eab308" };
         if (activityLower === "disconnected" || activityLower === "stopped") return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
-        // Unknown status: show as-is
-        if (detail || activity) return { label: detail || activity, detail: "", dotColor: "#9ca3af" };
+        // Unknown status value: fall through to Output fallback
       }
 
       if (kind === "tool_use" || kind === "tool_start") {
