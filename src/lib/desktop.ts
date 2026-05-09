@@ -445,6 +445,14 @@ export interface InboxDmChannel {
   members: InboxDmMember[]
 }
 
+export interface MessageAttachment {
+  id: string
+  filename: string
+  contentType: string | null
+  size: number | null
+  url: string | null
+}
+
 export interface InboxMessage {
   id: string
   seq: number | null
@@ -457,6 +465,7 @@ export interface InboxMessage {
   senderAvatarUrl: string | null
   createdAt: string
   updatedAt: string | null
+  attachments: MessageAttachment[]
 }
 
 export interface InboxMessagesResponse {
@@ -495,8 +504,37 @@ export async function fetchThreadMessages(
   })
 }
 
-export async function sendMessage(serverSlug: string, channelId: string, content: string) {
-  return invoke<InboxMessage>('send_message', { serverSlug, channelId, content })
+export async function sendMessage(
+  serverSlug: string,
+  channelId: string,
+  content: string,
+  attachmentIds?: string[]
+) {
+  return invoke<InboxMessage>('send_message', { serverSlug, channelId, content, attachmentIds })
+}
+
+export interface UploadedAttachment {
+  id: string
+  filename: string
+  contentType: string | null
+  size: number | null
+  url: string | null
+}
+
+export async function uploadAttachment(
+  serverSlug: string,
+  filename: string,
+  contentType: string,
+  data: number[],
+  channelId?: string
+) {
+  return invoke<UploadedAttachment>('upload_attachment', {
+    serverSlug,
+    channelId,
+    filename,
+    contentType,
+    data,
+  })
 }
 
 export async function markChannelRead(serverSlug: string, channelId: string) {
