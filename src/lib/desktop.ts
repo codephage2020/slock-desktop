@@ -438,6 +438,23 @@ export async function bindLocalMachine(serverSlug: string, machineId: string) {
   return invoke<BootstrapPayload>('bind_local_machine', { serverSlug, machineId })
 }
 
+// Computer creation flow types and commands
+
+export interface ServerMachinesCheck {
+  hasMachines: boolean
+  machineCount: number
+  serverSlug: string
+  createUrl: string
+}
+
+export async function checkServerMachines(serverSlug: string) {
+  return invoke<ServerMachinesCheck>('check_server_machines', { serverSlug })
+}
+
+export async function openComputerCreatePage(serverSlug: string) {
+  return invoke<void>('open_computer_create_page', { serverSlug })
+}
+
 // Unified inbox types and commands
 
 export interface ServerMember {

@@ -360,6 +360,15 @@ struct ApiRefreshSession {
     refresh_token: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ServerMachinesCheck {
+    has_machines: bool,
+    machine_count: usize,
+    server_slug: String,
+    create_url: String,
+}
+
 #[derive(Debug, Default, Clone)]
 struct SessionAccountProfile {
     display_name: Option<String>,
@@ -1628,6 +1637,47 @@ fn stop_service(
         selected_server_slug.as_deref(),
     )?;
     build_bootstrap(&app, &state, false)
+}
+
+#[tauri::command]
+fn check_server_machines(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<ServerMachinesCheck, String> {
+    let service_settings = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Unable to lock desktop settings".to_string())?;
+        settings.service.clone()
+    };
+
+    let server = resolve_service_server(&app, &state, &service_settings, &server_slug)?;
+    let machines = fetch_server_machines(&app, &state, &service_settings.server_url, &server.id)?;
+    let create_url = format!("{WORKSPACE_URL}/s/{}/computer/new", server.slug);
+
+    Ok(ServerMachinesCheck {
+        has_machines: !machines.is_empty(),
+        machine_count: machines.len(),
+        server_slug: server.slug,
+        create_url,
+    })
+}
+
+#[tauri::command]
+fn open_computer_create_page(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<(), String> {
+    let url = format!("{WORKSPACE_URL}/s/{server_slug}/computer/new");
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|err| format!("Failed to open browser: {err}"))?;
+    log::info!("[computer] opened computer create page: {url}");
+    let _ = &state; // suppress unused warning
+    Ok(())
 }
 
 #[tauri::command]
@@ -8787,7 +8837,9 @@ pub fn run() {
             fetch_server_unread_summary,
             send_message,
             mark_channel_read,
-            bind_local_machine
+            bind_local_machine,
+            check_server_machines,
+            open_computer_create_page
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

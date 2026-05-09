@@ -22,6 +22,7 @@ import {
   type ThemeStyleConfig,
   type ThemeStyleDefinition,
   checkDesktopUpdate,
+  checkServerMachines,
   createCustomTheme,
   deleteCustomTheme,
   fetchChannelMessages,
@@ -35,6 +36,7 @@ import {
   importThemeStyle,
   loadBootstrap,
   markChannelRead,
+  openComputerCreatePage,
   openLogin,
   openServiceLog,
   openWorkspace,
@@ -201,6 +203,14 @@ const COPY = {
     savingSelectedServer: 'Saving selected server…',
     serviceSignInHint: 'Open Slock once, sign in, and the launcher will sync your server list automatically.',
     machineStatus: 'Machine status',
+    noComputerTitle: 'No Computer',
+    noComputerMessage: 'This server does not have a computer yet. Create one to start the daemon.',
+    noComputerCreate: 'Create Computer',
+    noComputerWaiting: 'After creating the computer in your browser, click Refresh to continue.',
+    noComputerRefresh: 'Refresh',
+    noComputerChecking: 'Checking…',
+    noComputerReady: 'Computer detected! You can now start the daemon.',
+    noComputerStart: 'Start Daemon',
     startService: 'Start Service',
     startingService: 'Starting…',
     stopService: 'Stop Service',
@@ -380,6 +390,14 @@ const COPY = {
     savingSelectedServer: '正在保存所选 Server…',
     serviceSignInHint: '先打开一次 Slock 并完成登录，launcher 就会自动同步 server 列表。',
     machineStatus: '本地 machine 状态',
+    noComputerTitle: '无 Computer',
+    noComputerMessage: '此 server 还没有 computer，需要创建一个才能启动 daemon。',
+    noComputerCreate: '创建 Computer',
+    noComputerWaiting: '在浏览器中创建 computer 后，点击"刷新"继续。',
+    noComputerRefresh: '刷新',
+    noComputerChecking: '检查中…',
+    noComputerReady: '已检测到 computer，现在可以启动 daemon。',
+    noComputerStart: '启动 Daemon',
     startService: '启动服务',
     startingService: '启动中…',
     stopService: '停止服务',
@@ -546,6 +564,12 @@ function App() {
   const [themePanelOpen, setThemePanelOpen] = useState(false)
   const [stylePanelOpen, setStylePanelOpen] = useState(false)
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
+  const [computerCreateFlow, setComputerCreateFlow] = useState<{
+    phase: 'prompt' | 'waiting' | 'ready'
+    serverSlug: string
+    createUrl: string
+    checking: boolean
+  } | null>(null)
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const serverPanelRef = useRef<HTMLDivElement | null>(null)
   const themePanelRef = useRef<HTMLDivElement | null>(null)
@@ -1902,13 +1926,86 @@ function App() {
 
     const running = isSelectedServiceRunning(snapshot.service, selectedServerSlug)
 
+    if (!running) {
+      // Pre-check: does this server have any machines?
+      try {
+        setBusyAction('start-service')
+        setErrorMessage(null)
+        const check = await checkServerMachines(selectedServerSlug)
+        if (!check.hasMachines) {
+          setBusyAction(null)
+          setComputerCreateFlow({
+            phase: 'prompt',
+            serverSlug: check.serverSlug,
+            createUrl: check.createUrl,
+            checking: false,
+          })
+          return
+        }
+      } catch (error) {
+        // If check fails, fall through to normal start (let it handle errors)
+        console.warn('Machine check failed, attempting start:', error)
+      }
+    }
+
     try {
-      setBusyAction(running ? 'stop-service' : 'start-service')
+      if (!busyAction) setBusyAction(running ? 'stop-service' : 'start-service')
       setErrorMessage(null)
       await waitForNextPaint()
       const next = running
         ? await stopService(selectedServerSlug)
         : await startService(selectedServerSlug)
+      startTransition(() => setSnapshot(next))
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleComputerCreateOpen() {
+    if (!computerCreateFlow) return
+    try {
+      await openComputerCreatePage(computerCreateFlow.serverSlug)
+      setComputerCreateFlow((prev) =>
+        prev ? { ...prev, phase: 'waiting' } : null,
+      )
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    }
+  }
+
+  async function handleComputerCreateCheck() {
+    if (!computerCreateFlow) return
+    setComputerCreateFlow((prev) =>
+      prev ? { ...prev, checking: true } : null,
+    )
+    try {
+      const check = await checkServerMachines(computerCreateFlow.serverSlug)
+      if (check.hasMachines) {
+        setComputerCreateFlow((prev) =>
+          prev ? { ...prev, phase: 'ready', checking: false } : null,
+        )
+      } else {
+        setComputerCreateFlow((prev) =>
+          prev ? { ...prev, checking: false } : null,
+        )
+      }
+    } catch (error) {
+      setComputerCreateFlow((prev) =>
+        prev ? { ...prev, checking: false } : null,
+      )
+    }
+  }
+
+  async function handleComputerCreateStart() {
+    if (!computerCreateFlow) return
+    setComputerCreateFlow(null)
+    try {
+      setBusyAction('start-service')
+      setErrorMessage(null)
+      await waitForNextPaint()
+      const next = await startService(computerCreateFlow.serverSlug)
       startTransition(() => setSnapshot(next))
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
@@ -3133,6 +3230,79 @@ function App() {
                 {copy.serverLogTruncated}
               </p>
             ) : null}
+          </section>
+        </section>
+      ) : null}
+
+      {computerCreateFlow ? (
+        <section
+          className="computer-create-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setComputerCreateFlow(null)
+            }
+          }}
+        >
+          <section
+            className="computer-create-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="computer-create-title"
+          >
+            <header className="computer-create-head">
+              <h2 id="computer-create-title">{copy.noComputerTitle}</h2>
+              <button
+                className="icon-action-button compact"
+                type="button"
+                onClick={() => setComputerCreateFlow(null)}
+                aria-label={copy.close}
+                title={copy.close}
+              >
+                <XIcon />
+              </button>
+            </header>
+
+            <div className="computer-create-body">
+              {computerCreateFlow.phase === 'prompt' ? (
+                <>
+                  <p className="computer-create-message">{copy.noComputerMessage}</p>
+                  <button
+                    type="button"
+                    className="computer-create-action"
+                    onClick={handleComputerCreateOpen}
+                  >
+                    {copy.noComputerCreate}
+                  </button>
+                </>
+              ) : computerCreateFlow.phase === 'waiting' ? (
+                <>
+                  <p className="computer-create-message">{copy.noComputerWaiting}</p>
+                  <button
+                    type="button"
+                    className="computer-create-action"
+                    onClick={handleComputerCreateCheck}
+                    disabled={computerCreateFlow.checking}
+                  >
+                    {computerCreateFlow.checking
+                      ? copy.noComputerChecking
+                      : copy.noComputerRefresh}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="computer-create-message computer-create-ready">
+                    {copy.noComputerReady}
+                  </p>
+                  <button
+                    type="button"
+                    className="computer-create-action primary"
+                    onClick={handleComputerCreateStart}
+                  >
+                    {copy.noComputerStart}
+                  </button>
+                </>
+              )}
+            </div>
           </section>
         </section>
       ) : null}

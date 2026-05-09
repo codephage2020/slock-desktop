@@ -3276,3 +3276,96 @@ body:has(.loading-shell),
     justify-content: flex-end;
   }
 }
+
+/* ── Computer Create Dialog ── */
+
+.computer-create-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 44px 24px 24px;
+  background: color-mix(in srgb, var(--canvas) 72%, transparent);
+  backdrop-filter: blur(14px);
+  animation: panel-appear 150ms ease;
+}
+
+.computer-create-dialog {
+  width: min(420px, 100%);
+  padding: 16px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 98%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--text) 12%, transparent),
+    0 24px 48px -24px color-mix(in srgb, var(--text) 24%, transparent);
+}
+
+.computer-create-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 12px;
+}
+
+.computer-create-head h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+
+.computer-create-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.computer-create-message {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0;
+}
+
+.computer-create-message.computer-create-ready {
+  color: var(--accent, var(--text));
+  font-weight: 500;
+}
+
+.computer-create-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 80%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.computer-create-action:hover {
+  background: var(--surface-strong);
+}
+
+.computer-create-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.computer-create-action.primary {
+  background: var(--accent, var(--surface-strong));
+  color: #fff;
+  border-color: transparent;
+}
+
+.computer-create-action.primary:hover {
+  opacity: 0.9;
+}
