@@ -579,3 +579,14 @@ export async function fetchServerMembers(serverSlug: string) {
 export async function fetchServerUnreadSummary() {
   return invoke<ServerUnreadEntry[]>('fetch_server_unread_summary')
 }
+
+// Socket auth for real-time feed updates
+
+export interface SocketAuthInfo {
+  serverUrl: string
+  accessToken: string
+}
+
+export async function getSocketAuth() {
+  return invoke<SocketAuthInfo>('get_socket_auth')
+}
