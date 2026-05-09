@@ -3369,3 +3369,31 @@ body:has(.loading-shell),
 .computer-create-action.primary:hover {
   opacity: 0.9;
 }
+
+.computer-create-machine-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin: 0 0 8px;
+}
+
+.computer-create-command {
+  display: block;
+  background: var(--surface-sunken, rgba(0, 0, 0, 0.3));
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  word-break: break-all;
+  white-space: pre-wrap;
+  margin: 0 0 12px;
+  user-select: all;
+}
+
+.computer-create-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

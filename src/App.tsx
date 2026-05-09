@@ -40,6 +40,7 @@ import {
   openLogin,
   openServiceLog,
   openWorkspace,
+  prepareDaemonCommand,
   refreshServiceServerCatalog,
   refreshServiceServerStatus,
   selectServiceServer,
@@ -211,6 +212,8 @@ const COPY = {
     noComputerChecking: 'Checking…',
     noComputerReady: 'Computer detected! You can now start the daemon.',
     noComputerStart: 'Start Daemon',
+    noComputerCopy: 'Copy',
+    noComputerExecute: 'Execute',
     startService: 'Start Service',
     startingService: 'Starting…',
     stopService: 'Stop Service',
@@ -398,6 +401,8 @@ const COPY = {
     noComputerChecking: '检查中…',
     noComputerReady: '已检测到 computer，现在可以启动 daemon。',
     noComputerStart: '启动 Daemon',
+    noComputerCopy: '复制',
+    noComputerExecute: '执行',
     startService: '启动服务',
     startingService: '启动中…',
     stopService: '停止服务',
@@ -565,10 +570,13 @@ function App() {
   const [stylePanelOpen, setStylePanelOpen] = useState(false)
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
   const [computerCreateFlow, setComputerCreateFlow] = useState<{
-    phase: 'prompt' | 'waiting' | 'ready'
+    phase: 'prompt' | 'waiting' | 'ready' | 'command'
     serverSlug: string
     createUrl: string
     checking: boolean
+    machineId?: string
+    machineName?: string
+    daemonCommand?: string
   } | null>(null)
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const serverPanelRef = useRef<HTMLDivElement | null>(null)
@@ -1982,16 +1990,38 @@ function App() {
     )
     try {
       const check = await checkServerMachines(computerCreateFlow.serverSlug)
-      if (check.hasMachines) {
-        setComputerCreateFlow((prev) =>
-          prev ? { ...prev, phase: 'ready', checking: false } : null,
-        )
+      if (check.hasMachines && check.machines.length > 0) {
+        // New machine detected — bind it and get daemon command
+        const newMachine = check.machines[check.machines.length - 1]
+        try {
+          const info = await prepareDaemonCommand(
+            computerCreateFlow.serverSlug,
+            newMachine.id,
+          )
+          setComputerCreateFlow((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  phase: 'command',
+                  checking: false,
+                  machineId: info.machineId,
+                  machineName: info.machineName,
+                  daemonCommand: info.command,
+                }
+              : null,
+          )
+        } catch {
+          // Binding/key rotation failed — fall back to ready phase
+          setComputerCreateFlow((prev) =>
+            prev ? { ...prev, phase: 'ready', checking: false } : null,
+          )
+        }
       } else {
         setComputerCreateFlow((prev) =>
           prev ? { ...prev, checking: false } : null,
         )
       }
-    } catch (error) {
+    } catch {
       setComputerCreateFlow((prev) =>
         prev ? { ...prev, checking: false } : null,
       )
@@ -3288,7 +3318,7 @@ function App() {
                       : copy.noComputerRefresh}
                   </button>
                 </>
-              ) : (
+              ) : computerCreateFlow.phase === 'ready' ? (
                 <>
                   <p className="computer-create-message computer-create-ready">
                     {copy.noComputerReady}
@@ -3301,7 +3331,40 @@ function App() {
                     {copy.noComputerStart}
                   </button>
                 </>
-              )}
+              ) : computerCreateFlow.phase === 'command' ? (
+                <>
+                  {computerCreateFlow.machineName ? (
+                    <p className="computer-create-machine-name">
+                      {computerCreateFlow.machineName}
+                    </p>
+                  ) : null}
+                  <code className="computer-create-command">
+                    {computerCreateFlow.daemonCommand}
+                  </code>
+                  <div className="computer-create-actions">
+                    <button
+                      type="button"
+                      className="computer-create-action"
+                      onClick={() => {
+                        if (computerCreateFlow.daemonCommand) {
+                          navigator.clipboard.writeText(
+                            computerCreateFlow.daemonCommand,
+                          )
+                        }
+                      }}
+                    >
+                      {copy.noComputerCopy}
+                    </button>
+                    <button
+                      type="button"
+                      className="computer-create-action primary"
+                      onClick={handleComputerCreateStart}
+                    >
+                      {copy.noComputerExecute}
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </div>
           </section>
         </section>
