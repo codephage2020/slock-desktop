@@ -154,243 +154,186 @@
 
     <nav class="side-directory" aria-label="Page sections" data-i18n-aria-label="toc.label">
       <a href="#top" data-i18n="toc.overview" aria-current="true">Overview</a>
-      <a href="#workflow" data-i18n="toc.client">Client</a>
-      <a href="#control" data-i18n="toc.settings">Settings</a>
+      <a href="#features" data-i18n="toc.client">Client</a>
+      <a href="#steps" data-i18n="toc.gettingStarted">Getting Started</a>
       <a href="#releases" data-i18n="toc.releases">Releases</a>
     </nav>
 
     <main id="top">
       <section class="hero-section" aria-labelledby="hero-title">
-        <div class="hero-product-stage" aria-hidden="true">
-          <div class="stage-badge service-badge">
-            <strong>
-              <span class="badge-dot"></span>
-              <span data-i18n="preview.serverReady">Server ready</span>
-            </strong>
-            <small data-i18n="preview.serverName">Selected daemon</small>
-          </div>
-          <div class="desktop-window">
-            <div class="window-bar">
-              <div class="traffic-lights" aria-hidden="true">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-              <div class="window-titlebar-brand">
-                <img src="./assets/favicon.svg" alt="" width="18" height="18" />
-                <strong data-i18n="preview.console">slock-desktop</strong>
-              </div>
-              <div class="preview-titlebar-controls">
-                <div class="preview-icon-segment">
-                  <span class="selected"></span>
-                  <span></span>
-                  <span></span>
-                </div>
-                <div class="preview-icon-segment">
-                  <span class="selected"></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              </div>
-            </div>
-            <div class="launcher-preview">
-              <div class="preview-meta-row">
-                <div class="preview-status-group">
-                  <span class="preview-status-pill live" data-i18n="preview.workspaceReady">Workspace ready</span>
-                  <span class="preview-status-pill live" data-i18n="preview.daemonRunning">daemon running</span>
-                </div>
-                <div class="preview-release-group">
-                  <span data-i18n="preview.versionReady">v0.2.2 / up to date</span>
-                  <span class="preview-release-action" data-i18n="preview.checkUpdates">Check</span>
-                </div>
-              </div>
-
-              <div class="preview-launch-layout">
-                <section class="preview-card preview-service-card">
-                  <div class="preview-card-head">
-                    <p data-i18n="preview.service">Server</p>
-                    <div class="preview-card-actions">
-                      <span data-i18n="preview.serverCount">3</span>
-                      <i></i>
-                    </div>
-                  </div>
-                  <div class="preview-inline-note" data-i18n="preview.noTerminal">No terminal window required.</div>
-                  <div class="preview-search" data-i18n="preview.serverSearch">Find server</div>
-                  <div class="preview-server-list">
-                    <div class="preview-server-row selected">
-                      <div>
-                        <strong data-i18n="preview.serverPrimary">Slock local</strong>
-                        <span>local-daemon</span>
-                      </div>
-                      <em data-i18n="preview.running">running</em>
-                    </div>
-                    <div class="preview-server-row">
-                      <div>
-                        <strong data-i18n="preview.serverDesign">Design workspace</strong>
-                        <span>design-machine</span>
-                      </div>
-                      <em data-i18n="preview.configured">configured</em>
-                    </div>
-                    <div class="preview-server-row">
-                      <div>
-                        <strong data-i18n="preview.serverLab">Lab</strong>
-                        <span>lab-server</span>
-                      </div>
-                      <em data-i18n="preview.idle">idle</em>
-                    </div>
-                  </div>
-                </section>
-
-                <div class="preview-side">
-                  <section class="preview-card preview-theme-card">
-                    <div class="preview-card-head">
-                      <p data-i18n="preview.appearance">Theme</p>
-                      <i></i>
-                    </div>
-                    <div class="preview-theme-row selected">
-                      <span class="theme-swatch original"></span>
-                      <div>
-                        <strong data-i18n="preview.themeOriginal">Original</strong>
-                        <small data-i18n="preview.themeBuiltIn">Built-in</small>
-                      </div>
-                    </div>
-                    <div class="preview-theme-row">
-                      <span class="theme-swatch accent"></span>
-                      <div>
-                        <strong data-i18n="preview.themeAccent">My accent</strong>
-                        <small>#10A37F</small>
-                      </div>
-                    </div>
-                    <div class="preview-theme-row">
-                      <span class="theme-swatch graphite"></span>
-                      <div>
-                        <strong data-i18n="preview.themeGraphite">Graphite</strong>
-                        <small>#717771</small>
-                      </div>
-                    </div>
-                  </section>
-                  <span class="preview-launch-button" data-i18n="preview.openWorkspace">Enter Slock</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="stage-badge release-badge">
-            <strong data-i18n="preview.releaseCheck">Release check</strong>
-            <small data-i18n="preview.releaseReady">GitHub latest synced</small>
-          </div>
-        </div>
-
         <div class="hero-copy">
           <p class="eyebrow" data-i18n="hero.kicker">Slock for macOS</p>
-          <h1 id="hero-title" data-i18n="hero.title">Slock Desktop</h1>
+          <h1 id="hero-title" data-i18n="hero.title">Your own Slock macOS client</h1>
           <p class="hero-lede" data-i18n="hero.lede">
-            A desktop shell for Slock Web and the local daemon. It brings the browser workspace and terminal daemon work into one macOS app, then handles launch, status, settings, and GitHub Releases.
+            One app for Slock Web, daemon management, themes, and updates — no terminal needed.
           </p>
           <div class="hero-actions">
             <a class="primary-action" href="https://github.com/codephage2020/slock-desktop/releases/latest" data-i18n="hero.download">
               Download latest release
             </a>
-            <a class="text-action" href="https://app.slock.ai" data-i18n="hero.openApp">Open web app</a>
+            <a class="text-action" href="https://github.com/codephage2020/slock-desktop" data-i18n="hero.viewSource">View source</a>
           </div>
-          <div class="hero-points" aria-label="Product highlights" data-i18n-aria-label="hero.highlights">
-            <span data-i18n="hero.point1">Web workspace</span>
-            <span data-i18n="hero.point2">Daemon lifecycle</span>
-            <span data-i18n="hero.point3">Release updates</span>
+        </div>
+
+        <div class="desktop-window" aria-hidden="true">
+          <div class="window-bar">
+            <div class="traffic-lights" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div class="window-titlebar-brand">
+              <img src="./assets/favicon.svg" alt="" width="18" height="18" />
+              <strong data-i18n="preview.console">slock-desktop</strong>
+            </div>
+            <div class="preview-titlebar-controls">
+              <div class="preview-icon-segment">
+                <span class="selected"></span>
+                <span></span>
+                <span></span>
+              </div>
+              <div class="preview-icon-segment">
+                <span class="selected"></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+          <div class="launcher-preview">
+            <div class="preview-meta-row">
+              <div class="preview-status-group">
+                <span class="preview-status-pill live" data-i18n="preview.workspaceReady">Workspace ready</span>
+                <span class="preview-status-pill live" data-i18n="preview.daemonRunning">daemon running</span>
+              </div>
+              <div class="preview-release-group">
+                <span data-i18n="preview.versionReady">v0.2.2 / up to date</span>
+                <span class="preview-release-action" data-i18n="preview.checkUpdates">Check</span>
+              </div>
+            </div>
+
+            <div class="preview-launch-layout">
+              <section class="preview-card preview-service-card">
+                <div class="preview-card-head">
+                  <p data-i18n="preview.service">Server</p>
+                  <div class="preview-card-actions">
+                    <span data-i18n="preview.serverCount">3</span>
+                    <i></i>
+                  </div>
+                </div>
+                <div class="preview-inline-note" data-i18n="preview.noTerminal">No terminal window required.</div>
+                <div class="preview-search" data-i18n="preview.serverSearch">Find server</div>
+                <div class="preview-server-list">
+                  <div class="preview-server-row selected">
+                    <div>
+                      <strong data-i18n="preview.serverPrimary">Slock local</strong>
+                      <span>local-daemon</span>
+                    </div>
+                    <em data-i18n="preview.running">running</em>
+                  </div>
+                  <div class="preview-server-row">
+                    <div>
+                      <strong data-i18n="preview.serverDesign">Design workspace</strong>
+                      <span>design-machine</span>
+                    </div>
+                    <em data-i18n="preview.configured">configured</em>
+                  </div>
+                  <div class="preview-server-row">
+                    <div>
+                      <strong data-i18n="preview.serverLab">Lab</strong>
+                      <span>lab-server</span>
+                    </div>
+                    <em data-i18n="preview.idle">idle</em>
+                  </div>
+                </div>
+              </section>
+
+              <div class="preview-side">
+                <section class="preview-card preview-theme-card">
+                  <div class="preview-card-head">
+                    <p data-i18n="preview.appearance">Theme</p>
+                    <i></i>
+                  </div>
+                  <div class="preview-theme-row selected">
+                    <span class="theme-swatch original"></span>
+                    <div>
+                      <strong data-i18n="preview.themeOriginal">Original</strong>
+                      <small data-i18n="preview.themeBuiltIn">Built-in</small>
+                    </div>
+                  </div>
+                  <div class="preview-theme-row">
+                    <span class="theme-swatch accent"></span>
+                    <div>
+                      <strong data-i18n="preview.themeAccent">My accent</strong>
+                      <small>#10A37F</small>
+                    </div>
+                  </div>
+                  <div class="preview-theme-row">
+                    <span class="theme-swatch graphite"></span>
+                    <div>
+                      <strong data-i18n="preview.themeGraphite">Graphite</strong>
+                      <small>#717771</small>
+                    </div>
+                  </div>
+                </section>
+                <span class="preview-launch-button" data-i18n="preview.openWorkspace">Enter Slock</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="signal-strip" aria-label="Client signals" data-i18n-aria-label="signals.label">
-        <div>
-          <span data-i18n="signals.workspaceLabel">One app</span>
-          <strong data-i18n="signals.workspaceText">Browser workspace and daemon control live in the same macOS client</strong>
-        </div>
-        <div>
-          <span data-i18n="signals.daemonLabel">Daemon lifecycle</span>
-          <strong data-i18n="signals.daemonText">Starts, monitors, and restarts the selected local service</strong>
-        </div>
-        <div>
-          <span data-i18n="signals.themesLabel">Local settings</span>
-          <strong data-i18n="signals.themesText">Theme, language, server, and config controls stay in the shell</strong>
-        </div>
-        <div>
-          <span data-i18n="signals.updatesLabel">Update flow</span>
-          <strong data-i18n="signals.updatesText">Checks GitHub Releases from the desktop client</strong>
-        </div>
-      </section>
-
-      <section class="section-band" id="workflow" aria-labelledby="workflow-title">
+      <section class="section-band reveal" id="features" aria-labelledby="workflow-title">
         <div class="section-heading">
-          <p class="eyebrow" data-i18n="workflow.eyebrow">Client</p>
-          <h2 id="workflow-title" data-i18n="workflow.title">One desktop shell for the Slock Web workspace and local daemon.</h2>
+          <p class="eyebrow" data-i18n="workflow.eyebrow">Why Slock Desktop</p>
+          <h2 id="workflow-title" data-i18n="workflow.title">Everything you need, in one native app.</h2>
         </div>
         <div class="feature-grid">
           <article>
-            <span class="feature-index">01</span>
-            <h3 data-i18n="workflow.feature1Title">Slock Web in a native window</h3>
-            <p data-i18n="workflow.feature1Text">The client loads app.slock.ai as the working surface and keeps navigation, window state, and shell controls close to the session.</p>
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><circle cx="6.5" cy="6.5" r="0.8"/><circle cx="9" cy="6.5" r="0.8"/></svg>
+            </div>
+            <h3 data-i18n="workflow.feature1Title">No browser needed</h3>
+            <p data-i18n="workflow.feature1Text">Slock Web loads directly in a native macOS window. No tabs, no URL bar — just your workspace.</p>
           </article>
           <article>
-            <span class="feature-index">02</span>
-            <h3 data-i18n="workflow.feature2Title">Daemon lifecycle management</h3>
-            <p data-i18n="workflow.feature2Text">Choose a server once. The app starts, monitors, and restarts the local daemon for the workspace session.</p>
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M21 3v6h-6"/></svg>
+            </div>
+            <h3 data-i18n="workflow.feature2Title">One-click daemon control</h3>
+            <p data-i18n="workflow.feature2Text">Start, stop, and monitor your local daemon without touching the terminal. The app handles the lifecycle for you.</p>
           </article>
           <article>
-            <span class="feature-index">03</span>
-            <h3 data-i18n="workflow.feature3Title">Settings and update surface</h3>
-            <p data-i18n="workflow.feature3Text">Themes, language, config, server selection, and GitHub Release checks live in the desktop layer.</p>
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+            <h3 data-i18n="workflow.feature3Title">Themes, language, and auto-updates</h3>
+            <p data-i18n="workflow.feature3Text">Customize appearance, switch language, manage servers, and get the latest release — all from the app.</p>
           </article>
         </div>
       </section>
 
-      <section class="control-section" id="control" aria-labelledby="control-title">
-        <div class="control-copy">
-          <p class="eyebrow" data-i18n="control.eyebrow">Desktop Settings</p>
-          <h2 id="control-title" data-i18n="control.title">The App owns local service state.</h2>
-          <p data-i18n="control.text">
-            Slock Desktop gives non-technical users a stable path: open the App, sign in, enter the Web workspace, and let the shell manage daemon status, settings, and updates.
-          </p>
+      <section class="steps-section reveal" id="steps" aria-labelledby="steps-title">
+        <div class="section-heading">
+          <p class="eyebrow" data-i18n="steps.eyebrow">Getting Started</p>
+          <h2 id="steps-title" data-i18n="steps.title">Three steps to your workspace.</h2>
         </div>
-        <div class="settings-preview" aria-label="Desktop Settings preview" data-i18n-aria-label="settings.previewLabel">
-          <div class="preview-sidebar">
-            <span class="active" data-i18n="settings.appearance">Appearance</span>
-            <span data-i18n="settings.service">Service</span>
-            <span data-i18n="settings.updates">Updates</span>
+        <div class="steps-row">
+          <div class="step">
+            <div class="step-number">1</div>
+            <h3 data-i18n="steps.step1Title">Open the app</h3>
+            <p data-i18n="steps.step1Text">Choose your Slock server from the launcher.</p>
           </div>
-          <div class="preview-content">
-            <div class="preview-title-row">
-              <h3 data-i18n="settings.title">Desktop Settings</h3>
-              <span data-i18n="settings.saved">Saved locally</span>
-            </div>
-            <div class="setting-row">
-              <div>
-                <strong data-i18n="settings.modeTitle">Mode</strong>
-                <span data-i18n="settings.modeText">Light, dark, or system</span>
-              </div>
-              <div class="segmented">
-                <span></span>
-                <span></span>
-                <span class="selected"></span>
-              </div>
-            </div>
-            <div class="setting-row">
-              <div>
-                <strong data-i18n="settings.accentTitle">Accent</strong>
-                <span data-i18n="settings.accentText">Selected states and focus rings</span>
-              </div>
-              <div class="swatches">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-            <div class="setting-row">
-              <div>
-                <strong data-i18n="settings.releaseTitle">Release channel</strong>
-                <span data-i18n="settings.releaseText">GitHub latest release</span>
-              </div>
-              <a href="https://github.com/codephage2020/slock-desktop/releases/latest" data-i18n="settings.viewRelease">View release</a>
-            </div>
+          <div class="step-connector" aria-hidden="true"></div>
+          <div class="step">
+            <div class="step-number">2</div>
+            <h3 data-i18n="steps.step2Title">Start the daemon</h3>
+            <p data-i18n="steps.step2Text">One click to start the local service.</p>
+          </div>
+          <div class="step-connector" aria-hidden="true"></div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <h3 data-i18n="steps.step3Title">Enter workspace</h3>
+            <p data-i18n="steps.step3Text">Full Slock Web in a native window.</p>
           </div>
         </div>
       </section>
@@ -412,10 +355,15 @@
     </main>
 
     <footer class="site-footer">
-      <span>Slock Desktop</span>
-      <span data-i18n="footer.text">Desktop client for app.slock.ai.</span>
-      <div class="footer-links" aria-label="Project links" data-i18n-aria-label="footer.links">
-        <a href="https://github.com/codephage2020/slock-desktop" data-i18n="footer.github">GitHub</a>
+      <div class="footer-top">
+        <strong>Slock Desktop</strong>
+        <span data-i18n="footer.text">Desktop client for app.slock.ai.</span>
+      </div>
+      <div class="footer-bottom">
+        <span class="footer-disclaimer" data-i18n="footer.disclaimer">Community-built project — not an official Slock product.</span>
+        <div class="footer-links" aria-label="Project links" data-i18n-aria-label="footer.links">
+          <a href="https://github.com/codephage2020/slock-desktop" data-i18n="footer.github">GitHub</a>
+        </div>
       </div>
     </footer>
     <script>
@@ -429,13 +377,12 @@
           'disclaimer.label': 'Project disclaimer',
           'disclaimer.text': 'Community-built project — not an official Slock product.',
           'nav.workflow': 'Client',
-          'nav.control': 'Settings',
           'nav.community': 'Community',
           'nav.download': 'Download',
           'toc.label': 'Page sections',
           'toc.overview': 'Overview',
           'toc.client': 'Client',
-          'toc.settings': 'Settings',
+          'toc.gettingStarted': 'Getting Started',
           'toc.releases': 'Releases',
           'brand.home': 'Slock Desktop home',
           'controls.preferences': 'Page preferences',
@@ -448,14 +395,6 @@
           'theme.light': 'Light',
           'theme.dark': 'Dark',
           'preview.console': 'slock-desktop',
-          'preview.workspaceActive': 'app.slock.ai loaded',
-          'preview.appearance': 'Appearance',
-          'preview.localService': 'Local Service',
-          'preview.updateCenter': 'Update Center',
-          'preview.serverReady': 'Server ready',
-          'preview.serverName': 'Selected daemon',
-          'preview.releaseCheck': 'Release check',
-          'preview.releaseReady': 'GitHub latest synced',
           'preview.workspaceReady': 'Workspace ready',
           'preview.daemonRunning': 'daemon running',
           'preview.versionReady': 'v0.2.2 / up to date',
@@ -470,62 +409,41 @@
           'preview.configured': 'configured',
           'preview.serverLab': 'Lab',
           'preview.idle': 'idle',
+          'preview.appearance': 'Theme',
           'preview.themeOriginal': 'Original',
           'preview.themeBuiltIn': 'Built-in',
           'preview.themeAccent': 'My accent',
           'preview.themeGraphite': 'Graphite',
           'preview.openWorkspace': 'Enter Slock',
           'hero.kicker': 'Slock for macOS',
-          'hero.title': 'Slock Desktop',
+          'hero.title': 'Your own Slock macOS client',
           'hero.lede':
-            'A desktop shell for Slock Web and the local daemon. It brings the browser workspace and terminal daemon work into one macOS app, then handles launch, status, settings, and GitHub Releases.',
+            'One app for Slock Web, daemon management, themes, and updates — no terminal needed.',
           'hero.links': 'Quick links',
           'hero.download': 'Download latest release',
-          'hero.openApp': 'Open web app',
-          'hero.highlights': 'Product highlights',
-          'hero.point1': 'Web workspace',
-          'hero.point2': 'Daemon lifecycle',
-          'hero.point3': 'Release updates',
+          'hero.viewSource': 'View source',
           'hero.openWeb': 'Open app.slock.ai',
           'hero.github': 'GitHub',
           'hero.apiDocs': 'API Documentation',
-          'signals.label': 'Client signals',
-          'signals.workspaceLabel': 'One app',
-          'signals.workspaceText': 'Browser workspace and daemon control live in the same macOS client',
-          'signals.themesLabel': 'Local settings',
-          'signals.themesText': 'Theme, language, server, and config controls stay in the shell',
-          'signals.daemonLabel': 'Daemon lifecycle',
-          'signals.daemonText': 'Starts, monitors, and restarts the selected local service',
-          'signals.updatesLabel': 'Update flow',
-          'signals.updatesText': 'Checks GitHub Releases from the desktop client',
-          'workflow.eyebrow': 'Client',
-          'workflow.title': 'One desktop shell for the Slock Web workspace and local daemon.',
-          'workflow.feature1Title': 'Slock Web in a native window',
+          'workflow.eyebrow': 'Why Slock Desktop',
+          'workflow.title': 'Everything you need, in one native app.',
+          'workflow.feature1Title': 'No browser needed',
           'workflow.feature1Text':
-            'The client loads app.slock.ai as the working surface and keeps navigation, window state, and shell controls close to the session.',
-          'workflow.feature2Title': 'Daemon lifecycle management',
+            'Slock Web loads directly in a native macOS window. No tabs, no URL bar — just your workspace.',
+          'workflow.feature2Title': 'One-click daemon control',
           'workflow.feature2Text':
-            'Choose a server once. The app starts, monitors, and restarts the local daemon for the workspace session.',
-          'workflow.feature3Title': 'Settings and update surface',
+            'Start, stop, and monitor your local daemon without touching the terminal. The app handles the lifecycle for you.',
+          'workflow.feature3Title': 'Themes, language, and auto-updates',
           'workflow.feature3Text':
-            'Themes, language, config, server selection, and GitHub Release checks live in the desktop layer.',
-          'control.eyebrow': 'Desktop Settings',
-          'control.title': 'The App owns local service state.',
-          'control.text':
-            'Slock Desktop gives non-technical users a stable path: open the App, sign in, enter the Web workspace, and let the shell manage daemon status, settings, and updates.',
-          'settings.previewLabel': 'Desktop Settings preview',
-          'settings.appearance': 'Appearance',
-          'settings.service': 'Service',
-          'settings.updates': 'Updates',
-          'settings.title': 'Desktop Settings',
-          'settings.saved': 'Saved locally',
-          'settings.modeTitle': 'Mode',
-          'settings.modeText': 'Light, dark, or system',
-          'settings.accentTitle': 'Accent',
-          'settings.accentText': 'Selected states and focus rings',
-          'settings.releaseTitle': 'Release channel',
-          'settings.releaseText': 'GitHub latest release',
-          'settings.viewRelease': 'View release',
+            'Customize appearance, switch language, manage servers, and get the latest release — all from the app.',
+          'steps.eyebrow': 'Getting Started',
+          'steps.title': 'Three steps to your workspace.',
+          'steps.step1Title': 'Open the app',
+          'steps.step1Text': 'Choose your Slock server from the launcher.',
+          'steps.step2Title': 'Start the daemon',
+          'steps.step2Text': 'One click to start the local service.',
+          'steps.step3Title': 'Enter workspace',
+          'steps.step3Text': 'Full Slock Web in a native window.',
           'release.eyebrow': 'GitHub Releases',
           'release.title': 'Install the macOS app from the latest release.',
           'release.text':
@@ -535,6 +453,7 @@
           'footer.text': 'Desktop client for app.slock.ai.',
           'footer.links': 'Project links',
           'footer.github': 'GitHub',
+          'footer.disclaimer': 'Community-built project — not an official Slock product.',
         },
         zh: {
           metaTitle: 'Slock Desktop',
@@ -544,13 +463,12 @@
           'disclaimer.label': '项目声明',
           'disclaimer.text': '本项目为社区独立开发，非 Slock 官方出品。',
           'nav.workflow': '客户端',
-          'nav.control': '设置',
           'nav.community': '社区',
           'nav.download': '下载',
           'toc.label': '页面目录',
           'toc.overview': '概览',
           'toc.client': '客户端',
-          'toc.settings': '设置',
+          'toc.gettingStarted': '开始使用',
           'toc.releases': '发布',
           'brand.home': 'Slock Desktop 首页',
           'controls.preferences': '页面偏好',
@@ -563,14 +481,6 @@
           'theme.light': '亮色',
           'theme.dark': '暗色',
           'preview.console': 'slock-desktop',
-          'preview.workspaceActive': 'app.slock.ai 已加载',
-          'preview.appearance': '外观',
-          'preview.localService': '本地服务',
-          'preview.updateCenter': '更新中心',
-          'preview.serverReady': 'Server 已就绪',
-          'preview.serverName': '所选 daemon',
-          'preview.releaseCheck': '版本检查',
-          'preview.releaseReady': 'GitHub 最新版已同步',
           'preview.workspaceReady': '工作区已就绪',
           'preview.daemonRunning': 'daemon 运行中',
           'preview.versionReady': 'v0.2.2 / 已是最新',
@@ -585,58 +495,38 @@
           'preview.configured': '已配置',
           'preview.serverLab': 'Lab',
           'preview.idle': '空闲',
+          'preview.appearance': '外观',
           'preview.themeOriginal': '原主题',
           'preview.themeBuiltIn': '内置',
           'preview.themeAccent': '我的强调色',
           'preview.themeGraphite': '石墨',
           'preview.openWorkspace': '进入 Slock',
           'hero.kicker': 'Slock for macOS',
-          'hero.title': 'Slock Desktop',
+          'hero.title': '你自己的 Slock macOS 客户端',
           'hero.lede':
-            '面向 Slock Web 和本地 daemon 的桌面壳。它把浏览器中的工作区和终端里的 daemon 操作收进一个 macOS App，并负责启动、状态、设置和 GitHub Releases。',
+            '一个 App 搞定 Slock Web、daemon 管理、主题和更新——无需终端。',
           'hero.links': '快捷链接',
           'hero.download': '下载最新版',
-          'hero.openApp': '打开网页版',
-          'hero.highlights': '产品亮点',
-          'hero.point1': 'Web 工作区',
-          'hero.point2': 'Daemon 生命周期',
-          'hero.point3': 'Release 更新',
+          'hero.viewSource': '查看源码',
           'hero.openWeb': '打开 app.slock.ai',
           'hero.github': 'GitHub',
           'hero.apiDocs': 'API 文档',
-          'signals.label': '客户端信号',
-          'signals.workspaceLabel': '一个 App',
-          'signals.workspaceText': '浏览器工作区和 daemon 控制放在同一个 macOS 客户端',
-          'signals.themesLabel': '本地设置',
-          'signals.themesText': '主题、语言、server 和配置控制保留在桌面壳',
-          'signals.daemonLabel': 'Daemon 生命周期',
-          'signals.daemonText': '启动、监控并重启所选本地服务',
-          'signals.updatesLabel': '更新流程',
-          'signals.updatesText': '从桌面客户端检查 GitHub Releases',
-          'workflow.eyebrow': '客户端',
-          'workflow.title': '一个桌面壳承接 Slock Web 工作区和本地 daemon。',
-          'workflow.feature1Title': 'Slock Web 进入原生窗口',
-          'workflow.feature1Text': '客户端把 app.slock.ai 作为主要工作界面，并把导航、窗口状态和外壳控制放在会话旁边。',
-          'workflow.feature2Title': 'Daemon 生命周期管理',
-          'workflow.feature2Text': '用户选择一次 server。App 为工作区会话启动、监控并重启本地 daemon。',
-          'workflow.feature3Title': '设置和更新界面',
-          'workflow.feature3Text': '主题、语言、配置、server 选择和 GitHub Release 检查都放在桌面层。',
-          'control.eyebrow': '桌面设置',
-          'control.title': 'App 接管本地服务状态。',
-          'control.text': 'Slock Desktop 给非技术用户一条稳定路径：打开 App、登录、进入 Web 工作区，让桌面壳管理 daemon 状态、设置和更新。',
-          'settings.previewLabel': '桌面设置预览',
-          'settings.appearance': '外观',
-          'settings.service': '服务',
-          'settings.updates': '更新',
-          'settings.title': '桌面设置',
-          'settings.saved': '已保存本地',
-          'settings.modeTitle': '模式',
-          'settings.modeText': '亮色、暗色或跟随系统',
-          'settings.accentTitle': '强调色',
-          'settings.accentText': '用于选中态和焦点环',
-          'settings.releaseTitle': '发布通道',
-          'settings.releaseText': 'GitHub 最新 release',
-          'settings.viewRelease': '查看 release',
+          'workflow.eyebrow': '为什么选择 Slock Desktop',
+          'workflow.title': '所需一切，尽在一个原生 App。',
+          'workflow.feature1Title': '无需浏览器',
+          'workflow.feature1Text': 'Slock Web 直接在原生 macOS 窗口中加载。没有标签页，没有地址栏——只有你的工作区。',
+          'workflow.feature2Title': '一键 Daemon 控制',
+          'workflow.feature2Text': '无需打开终端即可启停和监控本地 daemon。App 为你管理完整生命周期。',
+          'workflow.feature3Title': '主题、语言和自动更新',
+          'workflow.feature3Text': '自定义外观、切换语言、管理 server、获取最新版——一切在 App 内完成。',
+          'steps.eyebrow': '开始使用',
+          'steps.title': '三步进入工作区。',
+          'steps.step1Title': '打开应用',
+          'steps.step1Text': '从启动器选择你的 Slock server。',
+          'steps.step2Title': '启动 Daemon',
+          'steps.step2Text': '一键启动本地服务。',
+          'steps.step3Title': '进入工作区',
+          'steps.step3Text': '完整的 Slock Web 原生窗口体验。',
           'release.eyebrow': 'GitHub Releases',
           'release.title': '从最新 release 安装 macOS 应用。',
           'release.text': '从 GitHub Releases 下载应用包。遇到 macOS 未签名确认时，可以在终端解除隔离。',
@@ -645,6 +535,7 @@
           'footer.text': 'app.slock.ai 的桌面客户端。',
           'footer.links': '项目链接',
           'footer.github': 'GitHub',
+          'footer.disclaimer': '本项目为社区独立开发，非 Slock 官方出品。',
         },
       }
 
@@ -806,6 +697,16 @@
         )
         map.forEach((_link, el) => observer.observe(el))
       })()
+    </script>
+    <script>
+      (() => {
+        const reveals = document.querySelectorAll('.reveal');
+        if (!reveals.length || typeof IntersectionObserver === 'undefined') return;
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('revealed'); observer.unobserve(e.target); } });
+        }, { threshold: 0.15 });
+        reveals.forEach((el) => observer.observe(el));
+      })();
     </script>
   </body>
 </html>
