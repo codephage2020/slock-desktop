@@ -3035,8 +3035,11 @@ fn fetch_inbox(
 
     let server_url = settings.server_url.clone();
     let api_root = api_base_url(&server_url);
-    let filter_val = filter.unwrap_or_else(|| "all".to_string());
-    let limit_val = limit.unwrap_or(30);
+    let filter_val = match filter.as_deref() {
+        Some("unread") => "unread",
+        _ => "all",
+    };
+    let limit_val = limit.unwrap_or(30).min(100);
     let offset_val = offset.unwrap_or(0);
 
     load_authenticated_json::<InboxFeedResponse>(
