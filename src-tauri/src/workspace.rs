@@ -1594,12 +1594,31 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     themeCatalog[0];
   const themeVarNames = [
     "--desktop-canvas",
+    "--desktop-toolbar",
+    "--desktop-sidebar",
+    "--desktop-panel",
     "--desktop-surface",
     "--desktop-surface-secondary",
+    "--desktop-surface-tertiary",
     "--desktop-line",
+    "--desktop-line-strong",
     "--desktop-text",
     "--desktop-muted",
+    "--desktop-tertiary",
+    "--desktop-danger",
     "--desktop-selection",
+    "--desktop-hover",
+    "--desktop-focus-ring",
+    "--desktop-accent-hover",
+    "--desktop-accent-active",
+    "--desktop-radius-xs",
+    "--desktop-radius-sm",
+    "--desktop-radius-md",
+    "--desktop-radius-lg",
+    "--desktop-radius-xl",
+    "--desktop-radius-pill",
+    "--desktop-font-family",
+    "--desktop-font-family-mono",
   ];
   const translateSlockMenus = () => {
     const language = resolveLanguage();
@@ -2082,15 +2101,34 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       themeVarNames.forEach((name) => host.style.removeProperty(name));
     } else {
       host.style.setProperty("--desktop-canvas", theme.canvas);
+      host.style.setProperty("--desktop-toolbar", theme.toolbar);
+      host.style.setProperty("--desktop-sidebar", theme.sidebar);
+      host.style.setProperty("--desktop-panel", theme.panel);
       host.style.setProperty("--desktop-surface", theme.surface);
-      host.style.setProperty("--desktop-surface-secondary", theme.surfaceStrong);
+      host.style.setProperty("--desktop-surface-secondary", theme.surfaceSecondary || theme.surfaceStrong);
+      host.style.setProperty("--desktop-surface-tertiary", theme.surfaceTertiary);
       host.style.setProperty("--desktop-line", theme.line);
+      host.style.setProperty("--desktop-line-strong", theme.lineStrong);
       host.style.setProperty("--desktop-text", theme.text);
       host.style.setProperty("--desktop-muted", theme.muted);
-      host.style.setProperty("--desktop-selection", theme.accentSoft);
+      host.style.setProperty("--desktop-tertiary", theme.tertiary);
+      host.style.setProperty("--desktop-danger", theme.danger);
+      host.style.setProperty("--desktop-selection", theme.selection || theme.accentSoft);
+      host.style.setProperty("--desktop-hover", theme.hover);
+      host.style.setProperty("--desktop-focus-ring", theme.focusRing);
+      host.style.setProperty("--desktop-accent-hover", `color-mix(in srgb, ${theme.accent} 88%, black)`);
+      host.style.setProperty("--desktop-accent-active", `color-mix(in srgb, ${theme.accent} 76%, black)`);
+      host.style.setProperty("--desktop-radius-xs", theme.radiusXs + "px");
+      host.style.setProperty("--desktop-radius-sm", theme.radiusSm + "px");
+      host.style.setProperty("--desktop-radius-md", theme.radiusMd + "px");
+      host.style.setProperty("--desktop-radius-lg", theme.radiusLg + "px");
+      host.style.setProperty("--desktop-radius-xl", theme.radiusXl + "px");
+      host.style.setProperty("--desktop-radius-pill", theme.radiusPill + "px");
     }
 
     host.style.setProperty("--desktop-accent", theme.accent);
+    if (theme.fontFamily) host.style.setProperty("--desktop-font-family", theme.fontFamily);
+    if (theme.fontFamilyMono) host.style.setProperty("--desktop-font-family-mono", theme.fontFamilyMono);
   };
 
   const css = `

@@ -3353,16 +3353,42 @@ function buildShellStyle(theme: ThemeDefinition) {
     } as CSSProperties
   }
 
-  return {
+  const style: Record<string, string> = {
     '--canvas': theme.canvas,
+    '--toolbar': theme.toolbar,
+    '--sidebar': theme.sidebar,
+    '--panel': theme.panel,
     '--surface': theme.surface,
     '--surface-strong': theme.surfaceStrong,
+    '--surface-secondary': theme.surfaceSecondary,
+    '--surface-tertiary': theme.surfaceTertiary,
     '--line': theme.line,
+    '--line-strong': theme.lineStrong,
     '--text': theme.text,
     '--muted': theme.muted,
+    '--tertiary': theme.tertiary,
+    '--danger': theme.danger,
+    '--selection': theme.selection,
+    '--hover': theme.hover,
+    '--focus-ring': theme.focusRing,
     '--accent': theme.accent,
     '--accent-soft': theme.accentSoft,
-  } as CSSProperties
+    '--radius-xs': theme.radiusXs + 'px',
+    '--radius-sm': theme.radiusSm + 'px',
+    '--radius-md': theme.radiusMd + 'px',
+    '--radius-lg': theme.radiusLg + 'px',
+    '--radius-xl': theme.radiusXl + 'px',
+    '--radius-pill': theme.radiusPill + 'px',
+  }
+
+  if (theme.fontFamily) {
+    style['--font-family'] = theme.fontFamily
+  }
+  if (theme.fontFamilyMono) {
+    style['--font-family-mono'] = theme.fontFamilyMono
+  }
+
+  return style as CSSProperties
 }
 
 const LOG_SEARCH_CHUNK_SIZE = 64 * 1024

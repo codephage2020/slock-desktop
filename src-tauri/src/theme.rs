@@ -13,14 +13,36 @@ pub struct ThemeDefinition {
     pub style_native: bool,
     pub mode: String,
     pub canvas: String,
+    pub toolbar: String,
+    pub sidebar: String,
+    pub panel: String,
     pub surface: String,
     pub surface_strong: String,
+    pub surface_secondary: String,
+    pub surface_tertiary: String,
     pub line: String,
+    pub line_strong: String,
     pub text: String,
     pub muted: String,
+    pub tertiary: String,
+    pub danger: String,
+    pub selection: String,
+    pub hover: String,
+    pub focus_ring: String,
     pub accent: String,
     pub accent_soft: String,
     pub preview: [String; 3],
+    // Radius tokens
+    pub radius_xs: f64,
+    pub radius_sm: f64,
+    pub radius_md: f64,
+    pub radius_lg: f64,
+    pub radius_xl: f64,
+    pub radius_pill: f64,
+    // Typography tokens
+    pub font_family: String,
+    pub font_family_mono: String,
+    // Dark-mode raw values (for system-mode fallback in workspace)
     dark_canvas: String,
     dark_surface: String,
     dark_surface_strong: String,
@@ -41,14 +63,33 @@ pub struct ThemeMeta {
     pub style_name: String,
     pub mode: String,
     pub canvas: String,
+    pub toolbar: String,
+    pub sidebar: String,
+    pub panel: String,
     pub surface: String,
     pub surface_strong: String,
+    pub surface_secondary: String,
+    pub surface_tertiary: String,
     pub line: String,
+    pub line_strong: String,
     pub text: String,
     pub muted: String,
+    pub tertiary: String,
+    pub danger: String,
+    pub selection: String,
+    pub hover: String,
+    pub focus_ring: String,
     pub accent: String,
     pub accent_soft: String,
     pub preview: [String; 3],
+    pub radius_xs: f64,
+    pub radius_sm: f64,
+    pub radius_md: f64,
+    pub radius_lg: f64,
+    pub radius_xl: f64,
+    pub radius_pill: f64,
+    pub font_family: String,
+    pub font_family_mono: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -273,15 +314,15 @@ fn default_light_canvas() -> String {
 }
 
 fn default_light_toolbar() -> String {
-    "#ffffff".to_string()
+    "#ecede8".to_string()
 }
 
 fn default_light_sidebar() -> String {
-    "#f3f4f1".to_string()
+    "#ecede8".to_string()
 }
 
 fn default_light_panel() -> String {
-    "#ffffff".to_string()
+    "#f1f2ee".to_string()
 }
 
 fn default_light_surface() -> String {
@@ -297,7 +338,7 @@ fn default_light_surface_secondary() -> String {
 }
 
 fn default_light_surface_tertiary() -> String {
-    "#ebebea".to_string()
+    "#ecefea".to_string()
 }
 
 fn default_light_line() -> String {
@@ -305,7 +346,7 @@ fn default_light_line() -> String {
 }
 
 fn default_light_line_strong() -> String {
-    "#cfd1cb".to_string()
+    "#d4d8d0".to_string()
 }
 
 fn default_light_text() -> String {
@@ -317,15 +358,15 @@ fn default_light_muted() -> String {
 }
 
 fn default_light_tertiary() -> String {
-    "#9a9e95".to_string()
+    "#8a8f86".to_string()
 }
 
 fn default_light_danger() -> String {
-    "#dc3545".to_string()
+    "#c24141".to_string()
 }
 
 fn default_light_selection() -> String {
-    "#e8f5e9".to_string()
+    "#e7f5f1".to_string()
 }
 
 fn default_light_hover() -> String {
@@ -341,7 +382,7 @@ fn default_dark_canvas() -> String {
 }
 
 fn default_dark_toolbar() -> String {
-    "#252623".to_string()
+    "#2f302c".to_string()
 }
 
 fn default_dark_sidebar() -> String {
@@ -349,7 +390,7 @@ fn default_dark_sidebar() -> String {
 }
 
 fn default_dark_panel() -> String {
-    "#252623".to_string()
+    "#282925".to_string()
 }
 
 fn default_dark_surface() -> String {
@@ -365,7 +406,7 @@ fn default_dark_surface_secondary() -> String {
 }
 
 fn default_dark_surface_tertiary() -> String {
-    "#383930".to_string()
+    "#383a34".to_string()
 }
 
 fn default_dark_line() -> String {
@@ -373,7 +414,7 @@ fn default_dark_line() -> String {
 }
 
 fn default_dark_line_strong() -> String {
-    "#51544c".to_string()
+    "#51554b".to_string()
 }
 
 fn default_dark_text() -> String {
@@ -385,7 +426,7 @@ fn default_dark_muted() -> String {
 }
 
 fn default_dark_tertiary() -> String {
-    "#8a8e82".to_string()
+    "#8f9488".to_string()
 }
 
 fn default_dark_danger() -> String {
@@ -670,6 +711,9 @@ fn materialize_theme(
         style_native: style.native,
         mode: normalized_mode.to_string(),
         canvas: mode_color(system, dark, &style.light.canvas, &style.dark.canvas),
+        toolbar: mode_color_or_default(system, dark, &style.light.toolbar, &style.dark.toolbar, &default_light_toolbar(), &default_dark_toolbar()),
+        sidebar: mode_color_or_default(system, dark, &style.light.sidebar, &style.dark.sidebar, &default_light_sidebar(), &default_dark_sidebar()),
+        panel: mode_color_or_default(system, dark, &style.light.panel, &style.dark.panel, &default_light_panel(), &default_dark_panel()),
         surface: mode_color(system, dark, &style.light.surface, &style.dark.surface),
         surface_strong: mode_color(
             system,
@@ -677,9 +721,17 @@ fn materialize_theme(
             &style.light.surface_strong,
             &style.dark.surface_strong,
         ),
+        surface_secondary: mode_color_or_default(system, dark, &style.light.surface_secondary, &style.dark.surface_secondary, &default_light_surface_secondary(), &default_dark_surface_secondary()),
+        surface_tertiary: mode_color_or_default(system, dark, &style.light.surface_tertiary, &style.dark.surface_tertiary, &default_light_surface_tertiary(), &default_dark_surface_tertiary()),
         line: mode_color(system, dark, &style.light.line, &style.dark.line),
+        line_strong: mode_color_or_default(system, dark, &style.light.line_strong, &style.dark.line_strong, &default_light_line_strong(), &default_dark_line_strong()),
         text: mode_color(system, dark, &style.light.text, &style.dark.text),
         muted: mode_color(system, dark, &style.light.muted, &style.dark.muted),
+        tertiary: mode_color_or_default(system, dark, &style.light.tertiary, &style.dark.tertiary, &default_light_tertiary(), &default_dark_tertiary()),
+        danger: mode_color_or_default(system, dark, &style.light.danger, &style.dark.danger, &default_light_danger(), &default_dark_danger()),
+        selection: mode_color_or_default(system, dark, &style.light.selection, &style.dark.selection, &default_light_selection(), &default_dark_selection()),
+        hover: mode_color_or_default(system, dark, &style.light.hover, &style.dark.hover, &default_light_hover(), &default_dark_hover()),
+        focus_ring: mode_color_or_default(system, dark, &style.light.focus_ring, &style.dark.focus_ring, &default_light_focus_ring(), &default_dark_focus_ring()),
         accent: accent.clone(),
         accent_soft,
         preview: [
@@ -692,6 +744,14 @@ fn materialize_theme(
             ),
             accent,
         ],
+        radius_xs: clamp_radius(style.radius_xs),
+        radius_sm: clamp_radius(style.radius_sm),
+        radius_md: clamp_radius(style.radius_md),
+        radius_lg: clamp_radius(style.radius_lg),
+        radius_xl: clamp_radius(style.radius_xl),
+        radius_pill: clamp_radius(style.radius_pill),
+        font_family: sanitize_font(&style.font_family, &default_font_family()),
+        font_family_mono: sanitize_font(&style.font_family_mono, &default_font_family_mono()),
         dark_canvas: style.dark.canvas.clone(),
         dark_surface: style.dark.surface.clone(),
         dark_surface_strong: style.dark.surface_strong.clone(),
@@ -710,6 +770,38 @@ fn mode_color(system: bool, dark: bool, light_value: &str, dark_value: &str) -> 
         dark_value.to_string()
     } else {
         light_value.to_string()
+    }
+}
+
+/// Like mode_color but falls back to defaults when the value is empty
+/// (new palette fields that weren't in old configs).
+fn mode_color_or_default(
+    system: bool,
+    dark: bool,
+    light_value: &str,
+    dark_value: &str,
+    light_default: &str,
+    dark_default: &str,
+) -> String {
+    let lv = if light_value.is_empty() { light_default } else { light_value };
+    let dv = if dark_value.is_empty() { dark_default } else { dark_value };
+    mode_color(system, dark, lv, dv)
+}
+
+fn clamp_radius(value: f64) -> f64 {
+    if value.is_finite() && value >= 0.0 {
+        value.min(9999.0)
+    } else {
+        0.0
+    }
+}
+
+fn sanitize_font(value: &str, fallback: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > 500 {
+        fallback.to_string()
+    } else {
+        trimmed.to_string()
     }
 }
 
@@ -2791,14 +2883,33 @@ impl From<ThemeDefinition> for ThemeMeta {
             style_name: value.style_name,
             mode: value.mode,
             canvas: value.canvas,
+            toolbar: value.toolbar,
+            sidebar: value.sidebar,
+            panel: value.panel,
             surface: value.surface,
             surface_strong: value.surface_strong,
+            surface_secondary: value.surface_secondary,
+            surface_tertiary: value.surface_tertiary,
             line: value.line,
+            line_strong: value.line_strong,
             text: value.text,
             muted: value.muted,
+            tertiary: value.tertiary,
+            danger: value.danger,
+            selection: value.selection,
+            hover: value.hover,
+            focus_ring: value.focus_ring,
             accent: value.accent,
             accent_soft: value.accent_soft,
             preview: value.preview,
+            radius_xs: value.radius_xs,
+            radius_sm: value.radius_sm,
+            radius_md: value.radius_md,
+            radius_lg: value.radius_lg,
+            radius_xl: value.radius_xl,
+            radius_pill: value.radius_pill,
+            font_family: value.font_family,
+            font_family_mono: value.font_family_mono,
         }
     }
 }
