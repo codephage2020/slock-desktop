@@ -364,9 +364,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       themeStyleOriginalSummary: "Current web UI without desktop overrides.",
       themeStyleDefaultName: "Default style",
       themeStyleDefaultSummary: "Desktop refined style.",
-      themeImportStyle: "Import style",
-      themeExportStyle: "Export style",
-      themeImportInvalid: "Invalid style file.",
       agents: "Agents",
       themeNames: {
         default: "Default accent",
@@ -476,9 +473,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       themeStyleOriginalSummary: "保留当前 Web UI 原始样式。",
       themeStyleDefaultName: "默认样式",
       themeStyleDefaultSummary: "Desktop 整理后的样式。",
-      themeImportStyle: "导入样式",
-      themeExportStyle: "导出样式",
-      themeImportInvalid: "样式文件无效。",
       agents: "Agent",
       themeNames: {
         original: "原主题",
@@ -961,41 +955,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       render();
     }
   };
-  const importThemeStyle = async (config) => {
-    appearanceBusyAction = "import-style";
-    render();
-    try {
-      const payload = await invokeDesktop("import_theme_style", { config });
-      syncAppearancePayload(payload);
-    } catch (error) {
-      console.warn("[Slock Desktop] import theme style failed", error);
-    } finally {
-      appearanceBusyAction = null;
-      render();
-    }
-  };
-  const readThemeStyleConfig = (parsed) => {
-    if (parsed && typeof parsed === "object") {
-      if (parsed.style && typeof parsed.style === "object") return parsed.style;
-      if (parsed.config && typeof parsed.config === "object") return parsed.config;
-      if (parsed.id || parsed.name) return parsed;
-    }
-    throw new Error("Invalid style file");
-  };
-  const exportThemeStyleFile = (style) => {
-    if (!style) return;
-    const payload = { schema: "slock-desktop.theme-style.v1", style: style.config };
-    const blob = new Blob([JSON.stringify(payload, null, 2) + "\n"], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const slug = (style.name || style.id || "style").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-    link.href = url;
-    link.download = `${slug}.slock-style.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
   const getThemeStyleName = (style) => {
     if (style.id === "original") return t("themeStyleOriginalName");
     if (style.id === "default") return t("themeStyleDefaultName");
@@ -1005,9 +964,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     if (style.id === "original") return t("themeStyleOriginalSummary");
     if (style.id === "default") return t("themeStyleDefaultSummary");
     return style.summary || "";
-  };
-  const selectedStyle = () => {
-    return styleCatalog.find((s) => s.id === activeStyleId) || styleCatalog[0] || null;
   };
   const slockMenuCopy = {
     "en-US": {
@@ -4372,7 +4328,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const releaseNote = escapeHtml(releaseNotesText());
     const releaseVersion = latestReleaseVersion();
 
-    const activeStyle = selectedStyle();
     const activeIsOriginal = activeStyleId === "original" || !activeStyleId;
     const styleOptions = styleCatalog
       .map((style) => {
@@ -4433,12 +4388,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           ${titlebarStyleMenuOpen ? `<div class="titlebar-style-panel" aria-label="${t("themeStyle")}" data-titlebar-style-panel>
             <div class="titlebar-style-head">
               <span class="titlebar-style-eyebrow">${t("themeStyle")}</span>
-              <span class="titlebar-style-head-actions">
-                <button class="text-action-button" type="button" data-titlebar-style-import ${appearanceBusyAction === "import-style" ? "disabled" : ""}>${t("themeImportStyle")}</button>
-                <button class="text-action-button" type="button" data-titlebar-style-export ${!activeStyle ? "disabled" : ""}>${t("themeExportStyle")}</button>
-              </span>
             </div>
-            <input class="sr-only" type="file" accept="application/json,.json" data-titlebar-style-file-input>
             <div class="titlebar-style-list" role="radiogroup" aria-label="${t("themeStyle")}">
               ${styleOptions}
             </div>
@@ -4771,27 +4721,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       row.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handler(); }
       });
-    });
-    toolbar.querySelector("[data-titlebar-style-import]")?.addEventListener("click", () => {
-      const fileInput = shadow.querySelector("[data-titlebar-style-file-input]");
-      if (fileInput) fileInput.click();
-    });
-    shadow.querySelector("[data-titlebar-style-file-input]")?.addEventListener("change", async (event) => {
-      const file = event.target.files?.[0];
-      event.target.value = "";
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-        const config = readThemeStyleConfig(parsed);
-        await importThemeStyle(config);
-      } catch {
-        console.warn("[Slock Desktop] invalid style file");
-      }
-    });
-    toolbar.querySelector("[data-titlebar-style-export]")?.addEventListener("click", () => {
-      const style = selectedStyle();
-      exportThemeStyleFile(style);
     });
     toolbar.querySelector("[data-titlebar-theme-toggle]")?.addEventListener("click", () => {
       const nextOpen = !titlebarThemeMenuOpen;

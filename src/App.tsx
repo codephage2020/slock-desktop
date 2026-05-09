@@ -1,5 +1,4 @@
 import {
-  type ChangeEvent as ReactChangeEvent,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   startTransition,
@@ -21,7 +20,6 @@ import {
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
   type ThemeDefinition,
-  type ThemeStyleConfig,
   type ThemeStyleDefinition,
   checkDesktopUpdate,
   checkServerMachines,
@@ -31,7 +29,6 @@ import {
   fetchInbox,
   installDesktopUpdate,
   forgetAccount,
-  importThemeStyle,
   loadBootstrap,
   markChannelRead,
   openComputerCreatePage,
@@ -241,8 +238,6 @@ const COPY = {
     themeStyleOriginalSummary: 'Current web UI without desktop overrides.',
     themeStyleDefaultName: 'Default style',
     themeStyleDefaultSummary: 'Desktop refined style.',
-    themeImportStyle: 'Import style',
-    themeExportStyle: 'Export style',
     themeImportInvalid: 'Invalid style file.',
     themeNewLabel: 'New theme',
     themeDelete: 'Delete',
@@ -430,8 +425,6 @@ const COPY = {
     themeStyleOriginalSummary: '保留当前 Web UI 原始样式。',
     themeStyleDefaultName: '默认样式',
     themeStyleDefaultSummary: 'Desktop 整理后的样式。',
-    themeImportStyle: '导入样式',
-    themeExportStyle: '导出样式',
     themeImportInvalid: '样式文件无效。',
     themeNewLabel: '新建主题',
     themeDelete: '删除',
@@ -585,7 +578,6 @@ function App() {
   const releaseNotesRef = useRef<HTMLDivElement | null>(null)
   const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
-  const styleImportInputRef = useRef<HTMLInputElement | null>(null)
   const serviceLogSearchRef = useRef<HTMLInputElement | null>(null)
   const serviceLogContentRef = useRef<HTMLPreElement | null>(null)
   // Unified inbox state (multi-server)
@@ -1422,34 +1414,6 @@ function App() {
     }
   }
 
-  function handleExportThemeStyle(style: ThemeStyleDefinition | null | undefined) {
-    if (!style) {
-      return
-    }
-    exportThemeStyleFile(style)
-  }
-
-  async function handleImportThemeStyleFile(event: ReactChangeEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0]
-    event.currentTarget.value = ''
-    if (!file) {
-      return
-    }
-
-    try {
-      setBusyAction('import-style')
-      setErrorMessage(null)
-      const parsed = JSON.parse(await file.text()) as unknown
-      const config = readThemeStyleConfig(parsed)
-      const next = await importThemeStyle(config)
-      startTransition(() => setSnapshot(next))
-    } catch {
-      setErrorMessage(copy.themeImportInvalid)
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
   async function handleThemeModeChange(
     themeMode: BootstrapPayload['appearanceMode'],
   ) {
@@ -2074,9 +2038,6 @@ function App() {
   const activeTheme =
     snapshot.themes.find((theme) => theme.id === snapshot.colorScheme) ??
     snapshot.themes[0]
-  const activeStyle =
-    snapshot.themeStyles.find((style) => style.id === snapshot.styleScheme) ??
-    snapshot.themeStyles[0]
   const selectedThemeAccent = activeTheme.accent
   const stackButtonLabel = snapshot.workspaceOpen ? copy.focusSlock : copy.openSlock
   const selectedServiceServer =
@@ -2432,32 +2393,7 @@ function App() {
             <div className="titlebar-style-panel" aria-label={copy.themeStyle}>
               <div className="control-card-head">
                 <p className="eyebrow">{copy.themeStyle}</p>
-                <span className="theme-style-actions">
-                  <button
-                    className="text-action-button"
-                    type="button"
-                    onClick={() => styleImportInputRef.current?.click()}
-                    disabled={busyAction === 'import-style'}
-                  >
-                    {copy.themeImportStyle}
-                  </button>
-                  <button
-                    className="text-action-button"
-                    type="button"
-                    onClick={() => handleExportThemeStyle(activeStyle)}
-                    disabled={!activeStyle}
-                  >
-                    {copy.themeExportStyle}
-                  </button>
-                </span>
               </div>
-              <input
-                ref={styleImportInputRef}
-                className="sr-only"
-                type="file"
-                accept="application/json,.json"
-                onChange={(event) => void handleImportThemeStyleFile(event)}
-              />
               <ul className="theme-rail theme-style-rail" role="radiogroup" aria-label={copy.themeStyle}>
                 {snapshot.themeStyles.map((style) => (
                   <li key={style.id}>
@@ -4263,51 +4199,6 @@ function getThemeStyleSummary(style: ThemeStyleDefinition, copy: UiCopy) {
     return copy.themeStyleDefaultSummary
   }
   return style.summary
-}
-
-function exportThemeStyleFile(style: ThemeStyleDefinition) {
-  const payload = {
-    schema: 'slock-desktop.theme-style.v1',
-    style: style.config,
-  }
-  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], {
-    type: 'application/json',
-  })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `${toFileSlug(style.name || style.id)}.slock-style.json`
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  URL.revokeObjectURL(url)
-}
-
-function readThemeStyleConfig(value: unknown): ThemeStyleConfig {
-  if (!isObjectRecord(value)) {
-    throw new Error('Invalid style file')
-  }
-  const candidate = isObjectRecord(value.style)
-    ? value.style
-    : isObjectRecord(value.config)
-      ? value.config
-      : value
-  if (!isObjectRecord(candidate)) {
-    throw new Error('Invalid style file')
-  }
-  return candidate as unknown as ThemeStyleConfig
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function toFileSlug(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'theme-style'
 }
 
 function createNewThemeDraft(accent = DEFAULT_NEW_THEME_ACCENT): NewThemeDraft {
