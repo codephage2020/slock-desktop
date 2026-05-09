@@ -362,13 +362,45 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       if (!agents || !agents.length) return null;
       const cardText = (cardEl.textContent || "").trim();
       if (!cardText) return null;
-      // Try matching against agent names (prefer exact match on displayName or name)
-      for (const agent of agents) {
-        const dn = agent.displayName || "";
-        const n = agent.name || "";
-        if (dn && cardText.indexOf(dn) !== -1) return agent.id;
-        if (n && cardText.indexOf(n) !== -1) return agent.id;
+
+      // Sort agents by name/displayName length descending — longer names match first
+      // This prevents short names like "A" from stealing matches
+      var sorted = agents.slice().sort(function (a, b) {
+        var la = Math.max((a.displayName || "").length, (a.name || "").length);
+        var lb = Math.max((b.displayName || "").length, (b.name || "").length);
+        return lb - la;
+      });
+
+      // Pass 1: match @handle (most precise)
+      for (var i = 0; i < sorted.length; i++) {
+        var agent = sorted[i];
+        var n = agent.name || "";
+        if (n && cardText.indexOf("@" + n) !== -1) return agent.id;
       }
+
+      // Pass 2: match displayName (require word boundary or start of text)
+      for (var i = 0; i < sorted.length; i++) {
+        var agent = sorted[i];
+        var dn = agent.displayName || "";
+        if (!dn) continue;
+        // Short names (<=2 chars): only match at card text start
+        if (dn.length <= 2) {
+          if (cardText.substring(0, dn.length + 1) === dn + " " ||
+              cardText.substring(0, dn.length + 1) === dn + "\n" ||
+              cardText === dn) return agent.id;
+        } else {
+          if (cardText.indexOf(dn) !== -1) return agent.id;
+        }
+      }
+
+      // Pass 3: match name (skip very short names to avoid false positives)
+      for (var i = 0; i < sorted.length; i++) {
+        var agent = sorted[i];
+        var n = agent.name || "";
+        if (!n || n.length <= 2) continue; // Skip short names without @prefix
+        if (cardText.indexOf(n) !== -1) return agent.id;
+      }
+
       return null;
     }
 
