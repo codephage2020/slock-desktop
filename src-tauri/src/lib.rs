@@ -602,6 +602,18 @@ struct InboxDmMember {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct MessageAttachment {
+    id: String,
+    filename: String,
+    #[serde(alias = "content_type")]
+    content_type: Option<String>,
+    #[serde(default)]
+    size: Option<u64>,
+    url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct InboxMessage {
     id: String,
     #[serde(default)]
@@ -623,6 +635,8 @@ struct InboxMessage {
     created_at: String,
     #[serde(default, alias = "updated_at")]
     updated_at: Option<String>,
+    #[serde(default)]
+    attachments: Vec<MessageAttachment>,
 }
 
 /// Response returned to the frontend from fetch_thread_messages
@@ -3614,6 +3628,7 @@ fn send_message(
     server_slug: String,
     channel_id: String,
     content: String,
+    attachment_ids: Option<Vec<String>>,
 ) -> Result<InboxMessage, String> {
     let slug = server_slug.trim();
     if slug.is_empty() {
@@ -3622,8 +3637,9 @@ fn send_message(
     if channel_id.trim().is_empty() {
         return Err("Channel ID is required".to_string());
     }
-    if content.trim().is_empty() {
-        return Err("Message content cannot be empty".to_string());
+    let ids = attachment_ids.unwrap_or_default();
+    if content.trim().is_empty() && ids.is_empty() {
+        return Err("Message content or attachments required".to_string());
     }
 
     let settings = state
@@ -3660,12 +3676,105 @@ fn send_message(
                 .bearer_auth(access_token)
                 .json(&serde_json::json!({
                     "channelId": channel_id,
-                    "content": content
+                    "content": content,
+                    "attachmentIds": ids
                 }))
         },
     )?;
 
     Ok(envelope.message)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UploadedAttachment {
+    id: String,
+    filename: String,
+    #[serde(alias = "content_type")]
+    content_type: Option<String>,
+    #[serde(default)]
+    size: Option<u64>,
+    url: Option<String>,
+}
+
+#[tauri::command]
+fn upload_attachment(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    channel_id: Option<String>,
+    filename: String,
+    content_type: String,
+    data: Vec<u8>,
+) -> Result<UploadedAttachment, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+    if filename.trim().is_empty() {
+        return Err("Filename is required".to_string());
+    }
+    if data.is_empty() {
+        return Err("File data is empty".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+    let upload_url = format!("{api_root}/attachments");
+    let fname = filename.clone();
+    let ctype = content_type.clone();
+    let ch_id = channel_id.clone();
+    let sid = server_id.clone();
+
+    let response = send_authenticated(&app, &state, &server_url, |client, access_token| {
+        let file_part = reqwest::blocking::multipart::Part::bytes(data.clone())
+            .file_name(fname.clone())
+            .mime_str(&ctype)
+            .unwrap_or_else(|_| {
+                reqwest::blocking::multipart::Part::bytes(data.clone())
+                    .file_name(fname.clone())
+            });
+        let mut form = reqwest::blocking::multipart::Form::new()
+            .part("file", file_part);
+        if let Some(ref cid) = ch_id {
+            form = form.text("channelId", cid.clone());
+        }
+        client
+            .post(&upload_url)
+            .header("X-Server-Id", &sid)
+            .bearer_auth(access_token)
+            .multipart(form)
+    })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("Upload failed ({status}): {body}"));
+    }
+
+    response
+        .json::<UploadedAttachment>()
+        .map_err(|err| format!("Failed to parse upload response: {err}"))
 }
 
 #[tauri::command]
@@ -9297,6 +9406,7 @@ pub fn run() {
             fetch_server_members,
             fetch_server_unread_summary,
             send_message,
+            upload_attachment,
             mark_channel_read,
             bind_local_machine,
             check_server_machines,

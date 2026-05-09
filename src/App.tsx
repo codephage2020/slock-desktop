@@ -18,6 +18,8 @@ import {
   type BootstrapPayload,
   type DesktopUpdateCheck,
   type InboxFeedItem,
+  type InboxMessage,
+  type MessageAttachment,
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
   type ThemeDefinition,
@@ -26,8 +28,11 @@ import {
   checkServerMachines,
   createCustomTheme,
   deleteCustomTheme,
+  fetchChannelMessages,
   fetchDashboard,
+  fetchDmChannels,
   fetchInbox,
+  fetchThreadMessages,
   getSocketAuth,
   installDesktopUpdate,
   forgetAccount,
@@ -50,6 +55,7 @@ import {
   updateTheme,
   updateThemeMode,
   updateThemeStyle,
+  uploadAttachment,
 } from './lib/desktop'
 
 interface ReleaseState {
@@ -620,13 +626,31 @@ function App() {
   const [selectedChannel, setSelectedChannel] = useState<{ serverSlug: string; channelId: string; itemType?: 'channel' | 'thread' | 'dm' } | null>(null)
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
   // Quick send state
+  const [selectedQuickServer, setSelectedQuickServer] = useState<string | null>(null)
   const [quickSendTarget, setQuickSendTarget] = useState<{ serverSlug: string; channelId: string; label: string } | null>(null)
   const [quickSendText, setQuickSendText] = useState('')
   const [quickSendSending, setQuickSendSending] = useState(false)
+  const [quickSendServerOpen, setQuickSendServerOpen] = useState(false)
   const [quickSendTargetOpen, setQuickSendTargetOpen] = useState(false)
+
+  // Message detail panel state (#67)
+  const [detailMessages, setDetailMessages] = useState<InboxMessage[]>([])
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailHasMore, setDetailHasMore] = useState(false)
+  const [replyText, setReplyText] = useState('')
+  const [replySending, setReplySending] = useState(false)
+  const [replyAttachments, setReplyAttachments] = useState<{ file: File; uploading: boolean; error?: boolean; id?: string }[]>([])
+  const detailScrollRef = useRef<HTMLDivElement>(null)
+  const detailAutoScrollRef = useRef(true)
+
+  // Quick Send attachment state (#68)
+  const [quickSendAttachments, setQuickSendAttachments] = useState<{ file: File; uploading: boolean; error?: boolean; id?: string }[]>([])
 
   const [messageReminders, setMessageReminders] = useState<MessageReminderToast[]>([])
   const messageRemindersRef = useRef<MessageReminderToast[]>([])
+
+  // DM channels for Quick Send target list
+  const [serverDmGroups, setServerDmGroups] = useState<{ serverSlug: string; serverName: string; dms: { id: string; name: string; displayName: string | null }[] }[]>([])
   const messageReminderTimersRef = useRef<Map<string, number>>(new Map())
   const initialServiceRefreshRef = useRef(false)
   const authResolvedRef = useRef(false)
@@ -1444,6 +1468,93 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: use primitive fields
   }, [selectedChannel?.serverSlug, selectedChannel?.channelId])
 
+  // Fetch messages when a conversation is selected (#67)
+  useEffect(() => {
+    if (!selectedChannel) {
+      setDetailMessages([])
+      setDetailHasMore(false)
+      setReplyText('')
+      setReplyAttachments([])
+      return
+    }
+    const { serverSlug, channelId, itemType } = selectedChannel
+    let cancelled = false
+    setDetailLoading(true)
+    detailAutoScrollRef.current = true
+
+    const fetcher = itemType === 'thread' ? fetchThreadMessages : fetchChannelMessages
+    fetcher(serverSlug, channelId, { limit: 50 })
+      .then((resp) => {
+        if (cancelled) return
+        setDetailMessages(normalizeMessages(resp.messages))
+        setDetailHasMore(resp.hasMore)
+        // Scroll to bottom after initial load
+        requestAnimationFrame(() => {
+          if (detailScrollRef.current) {
+            detailScrollRef.current.scrollTop = detailScrollRef.current.scrollHeight
+          }
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setDetailMessages([])
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false)
+      })
+
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [selectedChannel?.serverSlug, selectedChannel?.channelId, selectedChannel?.itemType])
+
+  // Fetch DM channels for Quick Send target list (#68)
+  useEffect(() => {
+    if (!snapshot?.service.authenticated || !initialServiceRefreshDone) {
+      setServerDmGroups([])
+      return
+    }
+    const servers = snapshot.service.servers.filter((s) => s.apiKeyReady)
+    if (servers.length === 0) {
+      setServerDmGroups([])
+      return
+    }
+    let cancelled = false
+    Promise.allSettled(
+      servers.map(async (server) => {
+        const dms = await fetchDmChannels(server.slug)
+        return {
+          serverSlug: server.slug,
+          serverName: server.name,
+          dms: dms.map((dm) => ({ id: dm.id, name: dm.name, displayName: dm.displayName })),
+        }
+      })
+    ).then((results) => {
+      if (cancelled) return
+      const groups = results
+        .filter((r): r is PromiseFulfilledResult<{ serverSlug: string; serverName: string; dms: { id: string; name: string; displayName: string | null }[] }> => r.status === 'fulfilled')
+        .map((r) => r.value)
+      setServerDmGroups(groups)
+    })
+    return () => { cancelled = true }
+  }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone])
+
+  // Auto-select server for Quick Send when only one server exists
+  useEffect(() => {
+    const allSlugs = new Set([
+      ...serverChannelGroups.map((g) => g.serverSlug),
+      ...serverDmGroups.map((g) => g.serverSlug),
+    ])
+    if (allSlugs.size === 1) {
+      const slug = [...allSlugs][0]
+      setSelectedQuickServer(slug)
+    } else if (selectedQuickServer && !allSlugs.has(selectedQuickServer)) {
+      // Current selected server no longer available
+      setSelectedQuickServer(null)
+      setQuickSendTarget(null)
+      setQuickSendText('')
+      setQuickSendAttachments([])
+    }
+  }, [serverChannelGroups, serverDmGroups, selectedQuickServer])
+
   useEffect(() => {
     if (
       !snapshotReady ||
@@ -2097,15 +2208,87 @@ function App() {
   }
 
   async function handleQuickSend() {
-    if (!quickSendTarget || !quickSendText.trim() || quickSendSending) return
+    if (!quickSendTarget || quickSendSending) return
+    const hasText = quickSendText.trim().length > 0
+    const attachIds = quickSendAttachments.filter((a) => a.id).map((a) => a.id!)
+    if (!hasText && attachIds.length === 0) return
     setQuickSendSending(true)
     try {
-      await sendMessage(quickSendTarget.serverSlug, quickSendTarget.channelId, quickSendText.trim())
+      await sendMessage(quickSendTarget.serverSlug, quickSendTarget.channelId, quickSendText.trim(), attachIds.length > 0 ? attachIds : undefined)
       setQuickSendText('')
+      setQuickSendAttachments([])
     } catch (err) {
       console.error('Failed to send quick message', err)
     } finally {
       setQuickSendSending(false)
+    }
+  }
+
+  // Reply to message in detail panel (#67)
+  async function handleDetailReply() {
+    if (!selectedChannel || replySending) return
+    const hasText = replyText.trim().length > 0
+    const attachIds = replyAttachments.filter((a) => a.id).map((a) => a.id!)
+    if (!hasText && attachIds.length === 0) return
+    setReplySending(true)
+    try {
+      const msg = await sendMessage(selectedChannel.serverSlug, selectedChannel.channelId, replyText.trim(), attachIds.length > 0 ? attachIds : undefined)
+      setReplyText('')
+      setReplyAttachments([])
+      setDetailMessages((prev) => [...prev, msg])
+      // Auto-scroll to bottom
+      requestAnimationFrame(() => {
+        if (detailScrollRef.current) {
+          detailScrollRef.current.scrollTop = detailScrollRef.current.scrollHeight
+        }
+      })
+    } catch (err) {
+      console.error('Failed to send reply', err)
+    } finally {
+      setReplySending(false)
+    }
+  }
+
+  // Load older messages in detail panel
+  async function handleDetailLoadMore() {
+    if (!selectedChannel || detailLoading || !detailHasMore) return
+    const firstMsg = detailMessages[0]
+    if (!firstMsg) return
+    setDetailLoading(true)
+    try {
+      const fetcher = selectedChannel.itemType === 'thread' ? fetchThreadMessages : fetchChannelMessages
+      const resp = await fetcher(selectedChannel.serverSlug, selectedChannel.channelId, { limit: 50, before: firstMsg.id })
+      setDetailMessages((prev) => normalizeMessages([...resp.messages, ...prev]))
+      setDetailHasMore(resp.hasMore)
+    } catch {
+      /* ignore */
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  // Upload a file attachment for ComposeBox
+  async function handleFileUpload(
+    file: File,
+    serverSlug: string,
+    channelId: string | undefined,
+    setAttachments: React.Dispatch<React.SetStateAction<{ file: File; uploading: boolean; error?: boolean; id?: string }[]>>,
+  ) {
+    const entry = { file, uploading: true }
+    setAttachments((prev) => [...prev, entry])
+    try {
+      const buf = await file.arrayBuffer()
+      const data = Array.from(new Uint8Array(buf))
+      const result = await uploadAttachment(serverSlug, file.name, file.type || 'application/octet-stream', data, channelId)
+      setAttachments((prev) =>
+        prev.map((a) => (a.file === file ? { ...a, uploading: false, id: result.id } : a)),
+      )
+    } catch (err) {
+      console.error('Upload failed', err)
+      // Keep the attachment with error state so the user can see it failed and remove manually
+      setAttachments((prev) =>
+        prev.map((a) => (a.file === file ? { ...a, uploading: false, error: true } : a)),
+      )
     }
   }
 
@@ -2974,7 +3157,7 @@ function App() {
           <div className="inbox-content">
             {selectedChannel ? (
               <div className="inbox-message-view">
-                {/* Header with back button */}
+                {/* Header */}
                 <div className="inbox-message-header">
                   <button
                     type="button"
@@ -2986,9 +3169,16 @@ function App() {
                     <ChevronIcon direction="left" />
                   </button>
                   <span className="inbox-message-title">
-                    {unifiedItems.find(
-                      (i) => i.serverSlug === selectedChannel.serverSlug && i.channelId === selectedChannel.channelId,
-                    )?.channelName ?? copy.inboxConversation}
+                    {(() => {
+                      const item = unifiedItems.find(
+                        (i) => i.serverSlug === selectedChannel.serverSlug && i.channelId === selectedChannel.channelId,
+                      )
+                      if (!item) return copy.inboxConversation
+                      const serverLabel = snapshot?.service.servers.find((s) => s.slug === selectedChannel.serverSlug)?.name ?? ''
+                      if (item.type === 'thread') return `Thread in ${item.channelName} (${serverLabel})`
+                      if (item.type === 'dm') return `@ ${item.displayName ?? item.channelName} (${serverLabel})`
+                      return `${item.channelName} (${serverLabel})`
+                    })()}
                   </span>
                   <button
                     type="button"
@@ -3000,85 +3190,233 @@ function App() {
                     <XIcon />
                   </button>
                 </div>
-                {/* Web page iframe */}
-                <iframe
-                  className="inbox-web-frame"
-                  src={(() => {
-                    const item = unifiedItems.find(
+                {/* Message list */}
+                <div
+                  className="inbox-detail-messages"
+                  ref={detailScrollRef}
+                  onScroll={(e) => {
+                    const el = e.currentTarget
+                    detailAutoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+                  }}
+                >
+                  {detailHasMore && (
+                    <button
+                      type="button"
+                      className="inbox-detail-load-more"
+                      onClick={() => void handleDetailLoadMore()}
+                      disabled={detailLoading}
+                    >
+                      {detailLoading ? <SpinnerIcon /> : copy.inboxExpandMore}
+                    </button>
+                  )}
+                  {detailLoading && detailMessages.length === 0 ? (
+                    <div className="inbox-detail-loading"><SpinnerIcon /></div>
+                  ) : detailMessages.length === 0 ? (
+                    <div className="inbox-detail-empty">No messages yet</div>
+                  ) : (
+                    detailMessages.map((msg, idx) => {
+                      const prev = idx > 0 ? detailMessages[idx - 1] : null
+                      const sameAuthor = prev?.senderId === msg.senderId && prev?.senderId != null
+                      const withinWindow = prev
+                        ? Math.abs(new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 300_000
+                        : false
+                      const compact = sameAuthor && withinWindow
+                      const serverUrl = snapshot?.service.serverUrl
+                        ? snapshot.service.serverUrl.replace(/\/+$/, '')
+                        : 'https://api.slock.ai'
+
+                      return (
+                        <div
+                          key={msg.id}
+                          className={`inbox-detail-msg${compact ? ' compact' : ''}`}
+                        >
+                          {!compact && (
+                            <div className="inbox-detail-msg-header">
+                              <span className="inbox-detail-msg-sender">
+                                @{msg.senderDisplayName ?? msg.senderName ?? 'Unknown'}
+                              </span>
+                              <span className="inbox-detail-msg-time">
+                                {relativeTime(msg.createdAt)}
+                              </span>
+                            </div>
+                          )}
+                          <div
+                            className="inbox-detail-msg-content"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                          />
+                          {msg.attachments.length > 0 && (
+                            <div className="inbox-detail-msg-attachments">
+                              {msg.attachments.map((att) => (
+                                <MessageAttachmentView key={att.id} att={att} serverUrl={serverUrl} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+                {/* Reply compose box */}
+                <div className="inbox-detail-reply">
+                  <ComposeBox
+                    text={replyText}
+                    setText={setReplyText}
+                    placeholder={`Reply to ${unifiedItems.find(
                       (i) => i.serverSlug === selectedChannel.serverSlug && i.channelId === selectedChannel.channelId,
-                    )
-                    const base = snapshot?.workspaceUrl?.replace(/\/s\/[^/]+\/?$/, '') ?? 'https://app.slock.ai'
-                    const msgParam = item?.latestMessageId ? `msg=${item.latestMessageId}` : ''
-                    if (item?.type === 'dm') {
-                      return `${base}/s/${selectedChannel.serverSlug}/dm/${selectedChannel.channelId}${msgParam ? `?${msgParam}` : ''}`
-                    }
-                    if (item?.type === 'thread' && item.parentChannelId && item.parentMessageId) {
-                      return `${base}/s/${selectedChannel.serverSlug}/channel/${item.parentChannelId}?${msgParam ? `${msgParam}&` : ''}thread=${selectedChannel.channelId}:${item.parentMessageId}`
-                    }
-                    return `${base}/s/${selectedChannel.serverSlug}/channel/${selectedChannel.channelId}${msgParam ? `?${msgParam}` : ''}`
-                  })()}
-                  title={copy.inboxConversation}
-                />
+                    )?.channelName ?? 'conversation'}…`}
+                    sending={replySending}
+                    onSend={() => void handleDetailReply()}
+                    attachments={replyAttachments}
+                    onFileSelect={(files) => {
+                      for (const file of Array.from(files)) {
+                        void handleFileUpload(file, selectedChannel.serverSlug, selectedChannel.channelId, setReplyAttachments)
+                      }
+                    }}
+                    onRemoveAttachment={(file) => setReplyAttachments((prev) => prev.filter((a) => a.file !== file))}
+                  />
+                </div>
               </div>
             ) : (
-              /* Quick Send — Spotlight-style compose */
+              /* Quick Send — redesigned (#68) */
               <div className="inbox-quick-send">
                 <div className="inbox-quick-send-inner">
                   <p className="eyebrow">{copy.inboxQuickSend}</p>
-                  <div className="inbox-target-selector">
-                    <button
-                      type="button"
-                      className="inbox-target-button"
-                      onClick={() => setQuickSendTargetOpen((o) => !o)}
-                    >
-                      {quickSendTarget ? quickSendTarget.label : copy.inboxSelectTarget}
-                      <ChevronIcon direction={quickSendTargetOpen ? 'up' : 'down'} />
-                    </button>
-                    {quickSendTargetOpen ? (
-                      <div className="inbox-target-dropdown">
-                        {serverChannelGroups.map((group) => (
-                          <div key={group.serverSlug} className="inbox-target-group">
-                            <p className="inbox-target-group-name">{group.serverName}</p>
-                            {group.channels.map((ch) => (
-                              <button
-                                key={ch.id}
-                                type="button"
-                                className="inbox-target-option"
-                                onClick={() => {
-                                  setQuickSendTarget({ serverSlug: group.serverSlug, channelId: ch.id, label: `${group.serverName} · #${ch.name}` })
-                                  setQuickSendTargetOpen(false)
-                                }}
-                              >
-                                #{ch.name}
-                              </button>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  <textarea
-                    className="inbox-quick-send-input"
+                  <ComposeBox
+                    text={quickSendText}
+                    setText={setQuickSendText}
                     placeholder={copy.inboxComposePlaceholder}
-                    value={quickSendText}
-                    onChange={(e) => setQuickSendText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        void handleQuickSend()
+                    sending={quickSendSending}
+                    onSend={() => void handleQuickSend()}
+                    attachments={quickSendAttachments}
+                    onFileSelect={(files) => {
+                      if (!quickSendTarget) return
+                      for (const file of Array.from(files)) {
+                        void handleFileUpload(file, quickSendTarget.serverSlug, quickSendTarget.channelId, setQuickSendAttachments)
                       }
                     }}
-                    disabled={quickSendSending}
-                    rows={3}
+                    onRemoveAttachment={(file) => setQuickSendAttachments((prev) => prev.filter((a) => a.file !== file))}
+                    disabled={!quickSendTarget}
                   />
-                  <button
-                    type="button"
-                    className="inbox-send-button"
-                    onClick={() => void handleQuickSend()}
-                    disabled={quickSendSending || !quickSendTarget || !quickSendText.trim()}
-                  >
-                    {quickSendSending ? copy.inboxSending : copy.inboxSend}
-                  </button>
+                  {/* Server + Channel/DM selectors on same line */}
+                  <div className="inbox-quick-send-selectors">
+                    {/* Server selector — hidden when only one server */}
+                    {(() => {
+                      const allSlugs = new Set([
+                        ...serverChannelGroups.map((g) => g.serverSlug),
+                        ...serverDmGroups.map((g) => g.serverSlug),
+                      ])
+                      if (allSlugs.size <= 1) return null
+                      const selectedServerName = [...serverChannelGroups, ...serverDmGroups].find(
+                        (g) => g.serverSlug === selectedQuickServer,
+                      )?.serverName
+                      return (
+                        <div className="inbox-target-half">
+                          <div className="inbox-target-selector">
+                            <button
+                              type="button"
+                              className="inbox-target-button"
+                              onClick={() => {
+                                setQuickSendServerOpen((o) => !o)
+                                setQuickSendTargetOpen(false)
+                              }}
+                            >
+                              {selectedServerName ?? 'Server'}
+                              <ChevronIcon direction={quickSendServerOpen ? 'up' : 'down'} />
+                            </button>
+                            {quickSendServerOpen && (
+                              <div className="inbox-target-dropdown">
+                                {[...allSlugs].map((slug) => {
+                                  const name = [...serverChannelGroups, ...serverDmGroups].find(
+                                    (g) => g.serverSlug === slug,
+                                  )?.serverName ?? slug
+                                  return (
+                                    <button
+                                      key={slug}
+                                      type="button"
+                                      className={`inbox-target-option${selectedQuickServer === slug ? ' selected' : ''}`}
+                                      onClick={() => {
+                                        setSelectedQuickServer(slug)
+                                        // Reset target when server changes
+                                        setQuickSendTarget(null)
+                                        setQuickSendText('')
+                                        setQuickSendAttachments([])
+                                        setQuickSendServerOpen(false)
+                                      }}
+                                    >
+                                      {name}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                    {/* Channel / DM selector — filtered by selected server */}
+                    <div className="inbox-target-half">
+                      <div className="inbox-target-selector">
+                        <button
+                          type="button"
+                          className="inbox-target-button"
+                          onClick={() => {
+                            setQuickSendTargetOpen((o) => !o)
+                            setQuickSendServerOpen(false)
+                          }}
+                          disabled={!selectedQuickServer}
+                        >
+                          {quickSendTarget ? quickSendTarget.label : copy.inboxSelectTarget}
+                          <ChevronIcon direction={quickSendTargetOpen ? 'up' : 'down'} />
+                        </button>
+                        {quickSendTargetOpen && selectedQuickServer ? (
+                          <div className="inbox-target-dropdown">
+                            {serverChannelGroups
+                              .filter((g) => g.serverSlug === selectedQuickServer)
+                              .map((group) => (
+                                <div key={group.serverSlug} className="inbox-target-group">
+                                  <p className="inbox-target-group-name">Channels</p>
+                                  {group.channels.map((ch) => (
+                                    <button
+                                      key={ch.id}
+                                      type="button"
+                                      className="inbox-target-option"
+                                      onClick={() => {
+                                        setQuickSendTarget({ serverSlug: group.serverSlug, channelId: ch.id, label: `#${ch.name}` })
+                                        setQuickSendTargetOpen(false)
+                                      }}
+                                    >
+                                      #{ch.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              ))}
+                            {serverDmGroups
+                              .filter((g) => g.serverSlug === selectedQuickServer)
+                              .map((group) =>
+                                group.dms.length > 0 ? (
+                                  <div key={`dm-${group.serverSlug}`} className="inbox-target-group">
+                                    <p className="inbox-target-group-name">Direct Messages</p>
+                                    {group.dms.map((dm) => (
+                                      <button
+                                        key={dm.id}
+                                        type="button"
+                                        className="inbox-target-option"
+                                        onClick={() => {
+                                          setQuickSendTarget({ serverSlug: group.serverSlug, channelId: dm.id, label: `@${dm.displayName ?? dm.name}` })
+                                          setQuickSendTargetOpen(false)
+                                        }}
+                                      >
+                                        @{dm.displayName ?? dm.name}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null,
+                              )}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -4136,6 +4474,198 @@ function SpinnerIcon() {
       <path d="M3 12a9 9 0 0 1 9-9" />
     </svg>
   )
+}
+
+// --- Shared ComposeBox component (#67 + #68) ---
+
+function ComposeBox({
+  text,
+  setText,
+  placeholder,
+  sending,
+  onSend,
+  attachments,
+  onFileSelect,
+  onRemoveAttachment,
+  disabled,
+}: {
+  text: string
+  setText: (v: string) => void
+  placeholder: string
+  sending: boolean
+  onSend: () => void
+  attachments: { file: File; uploading: boolean; error?: boolean; id?: string }[]
+  onFileSelect: (files: FileList) => void
+  onRemoveAttachment: (file: File) => void
+  disabled?: boolean
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const hasUploading = attachments.some((a) => a.uploading)
+  const hasContent = text.trim().length > 0 || attachments.some((a) => a.id)
+  const canSend = hasContent && !hasUploading
+
+  return (
+    <div className="compose-box">
+      <textarea
+        className="compose-textarea"
+        placeholder={placeholder}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            if (canSend && !sending && !disabled) onSend()
+          }
+        }}
+        disabled={sending || disabled}
+        rows={3}
+      />
+      {attachments.length > 0 && (
+        <div className="compose-attachments">
+          {attachments.map((a, i) => (
+            <div key={i} className={`compose-attachment-chip${a.error ? ' error' : ''}`}>
+              <span className="compose-attachment-name">{a.file.name}</span>
+              {a.uploading && <span className="compose-attachment-uploading">...</span>}
+              {a.error && <span className="compose-attachment-error">failed</span>}
+              <button
+                type="button"
+                className="compose-attachment-remove"
+                onClick={() => onRemoveAttachment(a.file)}
+                aria-label="Remove"
+              >×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="compose-toolbar">
+        <div className="compose-toolbar-left">
+          <button
+            type="button"
+            className="compose-tool-button"
+            title="Attach file"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending || disabled}
+          >📎</button>
+          <button
+            type="button"
+            className="compose-tool-button"
+            title="Insert image"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending || disabled}
+          >🖼</button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                onFileSelect(e.target.files)
+              }
+              e.target.value = ''
+            }}
+          />
+        </div>
+        <button
+          type="button"
+          className="compose-send-button"
+          onClick={onSend}
+          disabled={!canSend || sending || disabled}
+        >
+          {sending ? '...' : hasUploading ? 'Uploading...' : 'Send \u27A4'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// --- Message list normalization (sort oldest→newest, dedupe) ---
+
+function normalizeMessages(messages: InboxMessage[]): InboxMessage[] {
+  const seen = new Set<string>()
+  const unique: InboxMessage[] = []
+  for (const msg of messages) {
+    if (!seen.has(msg.id)) {
+      seen.add(msg.id)
+      unique.push(msg)
+    }
+  }
+  unique.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  return unique
+}
+
+// --- Simple Markdown renderer ---
+
+function sanitizeHref(raw: string): string | null {
+  const trimmed = raw.trim()
+  // Only allow safe protocols — block javascript:, data:, vbscript: etc.
+  if (/^(?:https?|mailto):/i.test(trimmed)) {
+    // Escape double-quotes to prevent attribute breakout
+    return trimmed.replace(/"/g, '&quot;')
+  }
+  return null
+}
+
+function renderMarkdown(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
+      const safe = sanitizeHref(href)
+      if (safe) {
+        return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>`
+      }
+      return label // strip link, keep label text
+    })
+    .replace(/\n/g, '<br/>')
+}
+
+// --- Relative time helper ---
+
+function relativeTime(dateStr: string): string {
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const diff = now - then
+  if (diff < 60_000) return 'just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  return new Date(dateStr).toLocaleDateString()
+}
+
+// --- Attachment preview in messages ---
+
+function MessageAttachmentView({ att, serverUrl }: { att: MessageAttachment; serverUrl: string }) {
+  const isImage = att.contentType?.startsWith('image/') ?? false
+  const previewUrl = `${serverUrl}/api/attachments/${att.id}/preview`
+  const downloadUrl = `${serverUrl}/api/attachments/${att.id}/url`
+
+  if (isImage) {
+    return (
+      <div className="msg-attachment-image">
+        <img src={previewUrl} alt={att.filename} loading="lazy" />
+      </div>
+    )
+  }
+
+  return (
+    <a className="msg-attachment-file" href={downloadUrl} target="_blank" rel="noopener noreferrer">
+      <span className="msg-attachment-icon">📎</span>
+      <span className="msg-attachment-info">
+        <span className="msg-attachment-filename">{att.filename}</span>
+        {att.size != null && <span className="msg-attachment-size">{formatFileSize(att.size)}</span>}
+      </span>
+    </a>
+  )
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1048576).toFixed(1)} MB`
 }
 
 function InboxSkeleton() {

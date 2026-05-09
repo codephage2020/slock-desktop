@@ -678,6 +678,11 @@ body:has(.loading-shell),
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
+.inbox-target-option.selected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-weight: 600;
+}
+
 .inbox-quick-send-input {
   width: 100%;
   appearance: none;
@@ -3477,4 +3482,313 @@ body:has(.loading-shell),
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+/* ====== ComposeBox (#67 + #68) ====== */
+
+.compose-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 10px);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.compose-textarea {
+  display: block;
+  width: 100%;
+  border: none;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.82rem;
+  background: transparent;
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+  box-sizing: border-box;
+}
+
+.compose-textarea::placeholder {
+  color: var(--muted);
+}
+
+.compose-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+
+.compose-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--line) 30%, transparent);
+  border-radius: var(--radius-xs, 8px);
+  font-size: 0.72rem;
+  color: var(--text);
+}
+
+.compose-attachment-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compose-attachment-uploading {
+  color: var(--muted);
+}
+
+.compose-attachment-chip.error {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+.compose-attachment-error {
+  color: var(--danger);
+  font-size: 0.68rem;
+}
+
+.compose-attachment-remove {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.compose-attachment-remove:hover {
+  color: var(--danger);
+}
+
+.compose-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+  padding: 4px 8px;
+}
+
+.compose-toolbar-left {
+  display: flex;
+  gap: 2px;
+}
+
+.compose-tool-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px 6px;
+  border-radius: var(--radius-xs, 8px);
+  opacity: 0.7;
+  transition: opacity 0.12s, background 0.12s;
+}
+
+.compose-tool-button:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+.compose-tool-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.compose-send-button {
+  appearance: none;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: var(--radius-xs, 8px);
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.compose-send-button:hover {
+  opacity: 0.9;
+}
+
+.compose-send-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ====== Message Detail Panel (#67) ====== */
+
+.inbox-detail-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.inbox-detail-load-more {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  border-radius: var(--radius-xs, 8px);
+}
+
+.inbox-detail-load-more:hover {
+  background: color-mix(in srgb, var(--line) 20%, transparent);
+}
+
+.inbox-detail-loading,
+.inbox-detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.inbox-detail-msg {
+  padding: 8px 0;
+}
+
+.inbox-detail-msg.compact {
+  padding: 2px 0;
+}
+
+.inbox-detail-msg:hover {
+  background: color-mix(in srgb, var(--hover, transparent) 60%, transparent);
+  border-radius: var(--radius-xs, 8px);
+}
+
+.inbox-detail-msg-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.inbox-detail-msg-sender {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.inbox-detail-msg-time {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.inbox-detail-msg-content {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text);
+  word-wrap: break-word;
+}
+
+.inbox-detail-msg-content code {
+  background: color-mix(in srgb, var(--line) 40%, transparent);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.78rem;
+}
+
+.inbox-detail-msg-content a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.inbox-detail-msg-content a:hover {
+  text-decoration: underline;
+}
+
+.inbox-detail-msg-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.msg-attachment-image {
+  max-width: 320px;
+  border-radius: var(--radius-sm, 10px);
+  overflow: hidden;
+}
+
+.msg-attachment-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  cursor: pointer;
+}
+
+.msg-attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 10px);
+  text-decoration: none;
+  color: var(--text);
+  font-size: 0.78rem;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  transition: background 0.12s;
+}
+
+.msg-attachment-file:hover {
+  background: color-mix(in srgb, var(--line) 20%, transparent);
+}
+
+.msg-attachment-icon {
+  font-size: 1.2rem;
+}
+
+.msg-attachment-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.msg-attachment-filename {
+  font-weight: 500;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg-attachment-size {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.inbox-detail-reply {
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* ====== Quick Send selectors (#68) ====== */
+
+.inbox-quick-send-selectors {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.inbox-target-half {
+  flex: 1;
+  min-width: 0;
 }
