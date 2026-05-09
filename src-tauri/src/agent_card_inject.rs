@@ -106,7 +106,7 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
       // status entries: activity = connection state (online/disconnected),
       // detail = work state (Idle/Working/Thinking). Check detail first, then activity.
       // When kind is empty, only enter status branch if detail/activity matches a known status value.
-      var knownStatuses = ["idle","online","working","thinking","disconnected","stopped"];
+      var knownStatuses = ["idle","online","working","thinking","disconnected","stopped","offline"];
       var statusKey = (detail || activity || "").toLowerCase();
       if (kind === "status" || (!kind && knownStatuses.indexOf(statusKey) !== -1)) {
         var detailLower = detail.toLowerCase();
@@ -115,12 +115,12 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         if (detailLower === "idle") return { label: t("actIdle"), detail: "", dotColor: "#22c55e" };
         if (detailLower === "working") return { label: t("actWorking"), detail: "", dotColor: "#eab308" };
         if (detailLower === "thinking") return { label: t("actThinking"), detail: "", dotColor: "#eab308" };
-        if (detailLower === "disconnected") return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
+        if (detailLower === "disconnected" || detailLower === "offline") return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
         // Fallback: detail empty, check activity field
         if (activityLower === "idle" || activityLower === "online") return { label: t("actIdle"), detail: "", dotColor: "#22c55e" };
         if (activityLower === "working") return { label: t("actWorking"), detail: "", dotColor: "#eab308" };
         if (activityLower === "thinking") return { label: t("actThinking"), detail: "", dotColor: "#eab308" };
-        if (activityLower === "disconnected" || activityLower === "stopped") return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
+        if (activityLower === "disconnected" || activityLower === "stopped" || activityLower === "offline") return { label: t("actDisconnected"), detail: "", dotColor: "#ef4444" };
         // Unknown status value: fall through to Output fallback
       }
 

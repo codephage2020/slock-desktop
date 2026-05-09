@@ -2751,7 +2751,7 @@ fn fetch_agent_activity(
     let api_root = api_base_url(&server_url);
 
     // Try parsing response with fallback: direct array first, then envelope wrappers
-    let url = format!("{api_root}/agents/{agent_id}/activity-log?limit=5");
+    let url = format!("{api_root}/agents/{agent_id}/activity-log?limit=5&sort=desc");
     let response = send_authenticated(&app, &state, &server_url, |client, access_token| {
         client
             .get(&url)
