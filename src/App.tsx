@@ -2287,20 +2287,22 @@ function App() {
           />
         </button>
 
-        <button
-          type="button"
-          className="titlebar-icon-button"
-          onClick={() => {
-            if (selectedServiceSlug) {
-              void handleServiceLogOpen(selectedServiceSlug)
-            }
-          }}
-          disabled={!selectedServiceSlug}
-          title={copy.openServerLog}
-          aria-label={copy.openServerLog}
-        >
-          <LogsIcon />
-        </button>
+        {selectedServiceRunning ? (
+          <button
+            type="button"
+            className="titlebar-icon-button"
+            onClick={() => {
+              if (selectedServiceSlug) {
+                void handleServiceLogOpen(selectedServiceSlug)
+              }
+            }}
+            disabled={!selectedServiceSlug}
+            title={copy.openServerLog}
+            aria-label={copy.openServerLog}
+          >
+            <LogsIcon />
+          </button>
+        ) : null}
 
         <div className="titlebar-style" ref={stylePanelRef}>
           <button
