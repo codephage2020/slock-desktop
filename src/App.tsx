@@ -575,6 +575,7 @@ function App() {
     // Preview from latest message
     lastSenderName: string | null
     lastPreview: string | null
+    replyCount: number | null
   }
   type ServerChannelGroup = {
     serverSlug: string
@@ -1178,6 +1179,7 @@ function App() {
                   avatarUrl: null,
                   lastSenderName: null,
                   lastPreview: null,
+                  replyCount: null,
                 })
                 channelList.push({
                   id: ch.id,
@@ -1208,6 +1210,7 @@ function App() {
                   avatarUrl: null,
                   lastSenderName: null,
                   lastPreview: null,
+                  replyCount: null,
                 })
               }
             }
@@ -1232,6 +1235,7 @@ function App() {
                   avatarUrl: d.members[0]?.avatarUrl ?? null,
                   lastSenderName: null,
                   lastPreview: null,
+                  replyCount: null,
                 })
               }
             }
@@ -1242,23 +1246,28 @@ function App() {
               .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
             const topItems = sorted.slice(0, 10)
 
-            // Fetch latest message (limit=1) for top items to populate preview
+            // Fetch latest message for top items to populate preview
+            // For threads, use higher limit to count replies
             if (topItems.length > 0) {
               const previewResults = await Promise.allSettled(
                 topItems.map(async (item) => {
+                  const isThread = item.type === 'thread'
+                  const limit = isThread ? 100 : 1
                   const resp = item.type === 'channel'
-                    ? await fetchChannelMessages(server.slug, item.channelId, { limit: 1 })
-                    : await fetchThreadMessages(server.slug, item.channelId, { limit: 1 })
+                    ? await fetchChannelMessages(server.slug, item.channelId, { limit })
+                    : await fetchThreadMessages(server.slug, item.channelId, { limit })
                   const msg = resp.messages[resp.messages.length - 1]
-                  return { channelId: item.channelId, msg }
+                  const replyCount = isThread ? resp.messages.length + (resp.hasMore ? 1 : 0) : null
+                  return { channelId: item.channelId, msg, replyCount }
                 })
               )
-              const previewMap = new Map<string, { senderName: string; content: string }>()
+              const previewMap = new Map<string, { senderName: string; content: string; replyCount: number | null }>()
               for (const r of previewResults) {
                 if (r.status === 'fulfilled' && r.value.msg) {
                   previewMap.set(r.value.channelId, {
                     senderName: r.value.msg.senderDisplayName ?? r.value.msg.senderName ?? '',
                     content: r.value.msg.content,
+                    replyCount: r.value.replyCount,
                   })
                 }
               }
@@ -1267,6 +1276,7 @@ function App() {
                 if (preview) {
                   item.lastSenderName = preview.senderName
                   item.lastPreview = preview.content
+                  item.replyCount = preview.replyCount
                 }
               }
             }
@@ -2770,6 +2780,9 @@ function App() {
                                 ) : item.lastPreview}
                               </p>
                             ) : null}
+                            {item.replyCount != null && item.replyCount > 0 ? (
+                              <span className="inbox-feed-item-replies">{item.replyCount} {copy.inboxReplies}</span>
+                            ) : null}
                             {item.unreadCount > 0 ? (
                               <span className="inbox-feed-item-unread">{item.unreadCount} {copy.inboxUnreadLabel}</span>
                             ) : null}
@@ -2840,6 +2853,9 @@ function App() {
                     const base = snapshot?.workspaceUrl?.replace(/\/s\/[^/]+\/?$/, '') ?? 'https://app.slock.ai'
                     if (item?.type === 'dm') {
                       return `${base}/s/${selectedChannel.serverSlug}/dm/${selectedChannel.channelId}`
+                    }
+                    if (item?.type === 'thread' && item.parentChannelId) {
+                      return `${base}/s/${selectedChannel.serverSlug}/channel/${item.parentChannelId}?thread=${selectedChannel.channelId}`
                     }
                     return `${base}/s/${selectedChannel.serverSlug}/channel/${selectedChannel.channelId}`
                   })()}

@@ -269,6 +269,11 @@ body:has(.loading-shell),
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  border-top: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+}
+
+.inbox-server-group:first-child .inbox-feed-server-header {
+  border-top: none;
 }
 
 .inbox-feed-server-name {
@@ -362,6 +367,12 @@ body:has(.loading-shell),
   font-size: 0.62rem;
   font-weight: 600;
   color: var(--accent);
+}
+
+.inbox-feed-item-replies {
+  font-size: 0.62rem;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 /* Expand/collapse button */
