@@ -1352,6 +1352,8 @@ function App() {
 
         socket.on('connect', () => {
           console.log('[socket.io] connected')
+          // Refresh on connect/reconnect to catch messages missed while offline
+          scheduleRefresh()
         })
 
         socket.on('disconnect', (reason) => {
