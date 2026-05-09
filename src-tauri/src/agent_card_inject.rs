@@ -398,6 +398,13 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
         parent = parent.parentElement;
         depth++;
       }
+      // Gate: require active hover on an agent element
+      // Server switcher and other non-agent popovers won't have a recent agent hover
+      var hoverId = getHoveredAgentId();
+      if (!hoverId) {
+        console.log("[Slock Desktop] agent card: card-brutal skipped: no active agent hover within " + HOVER_TTL + "ms");
+        return false;
+      }
       // Diagnostic: log element attributes, parent, and children to distinguish card types
       var elAttrs = [];
       if (el.attributes) {
