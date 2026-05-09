@@ -1008,13 +1008,8 @@ fn materialize_theme(
         accent_soft,
         preview: [
             mode_color(system, dark, &style.light.canvas, &style.dark.canvas),
-            mode_color(
-                system,
-                dark,
-                &style.light.surface_strong,
-                &style.dark.surface_strong,
-            ),
-            accent,
+            mode_color(system, dark, &style.light.surface, &style.dark.surface),
+            mode_color(system, dark, &style.light.text, &style.dark.text),
         ],
         radius_xs: clamp_radius(style.radius_xs),
         radius_sm: clamp_radius(style.radius_sm),
