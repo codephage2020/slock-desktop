@@ -8,14 +8,33 @@ export interface ThemeDefinition {
   styleName: string
   mode: 'light' | 'dark' | 'system'
   canvas: string
+  toolbar: string
+  sidebar: string
+  panel: string
   surface: string
   surfaceStrong: string
+  surfaceSecondary: string
+  surfaceTertiary: string
   line: string
+  lineStrong: string
   text: string
   muted: string
+  tertiary: string
+  danger: string
+  selection: string
+  hover: string
+  focusRing: string
   accent: string
   accentSoft: string
   preview: [string, string, string]
+  radiusXs: number
+  radiusSm: number
+  radiusMd: number
+  radiusLg: number
+  radiusXl: number
+  radiusPill: number
+  fontFamily: string
+  fontFamilyMono: string
 }
 
 export interface CustomThemeSnapshot {

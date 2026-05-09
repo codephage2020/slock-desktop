@@ -3347,21 +3347,32 @@ function ServiceLogTimeField({
 }
 
 function buildShellStyle(theme: ThemeDefinition) {
-  if (theme.mode === 'system') {
-    return {
-      '--accent': theme.accent,
-    } as CSSProperties
-  }
-
   return {
     '--canvas': theme.canvas,
+    '--toolbar': theme.toolbar,
+    '--sidebar': theme.sidebar,
+    '--panel': theme.panel,
     '--surface': theme.surface,
     '--surface-strong': theme.surfaceStrong,
+    '--surface-secondary': theme.surfaceSecondary,
+    '--surface-tertiary': theme.surfaceTertiary,
     '--line': theme.line,
+    '--line-strong': theme.lineStrong,
     '--text': theme.text,
     '--muted': theme.muted,
+    '--tertiary': theme.tertiary,
+    '--danger': theme.danger,
+    '--selection': theme.selection,
+    '--hover': theme.hover,
+    '--focus-ring': theme.focusRing,
     '--accent': theme.accent,
     '--accent-soft': theme.accentSoft,
+    '--radius-xs': theme.radiusXs + 'px',
+    '--radius-sm': theme.radiusSm + 'px',
+    '--radius-md': theme.radiusMd + 'px',
+    '--radius-lg': theme.radiusLg + 'px',
+    '--radius-xl': theme.radiusXl + 'px',
+    '--radius-pill': theme.radiusPill + 'px',
   } as CSSProperties
 }
 
