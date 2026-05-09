@@ -605,6 +605,78 @@ struct MessagesEnvelope {
 
 // --- Unified inbox types ---
 
+/// Item returned by GET /channels/inbox
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxFeedItem {
+    #[serde(default)]
+    kind: String,
+    #[serde(default, alias = "channel_id")]
+    channel_id: Option<String>,
+    #[serde(default, alias = "thread_channel_id")]
+    thread_channel_id: Option<String>,
+    #[serde(default, alias = "parent_channel_id")]
+    parent_channel_id: Option<String>,
+    #[serde(default, alias = "channel_name")]
+    channel_name: Option<String>,
+    #[serde(default, alias = "parent_channel_name")]
+    parent_channel_name: Option<String>,
+    #[serde(default, alias = "parent_channel_type")]
+    parent_channel_type: Option<String>,
+    #[serde(default, alias = "unread_count")]
+    unread_count: u32,
+    #[serde(default, alias = "first_unread_message_id")]
+    first_unread_message_id: Option<String>,
+    #[serde(default, alias = "last_message_at")]
+    last_message_at: Option<String>,
+    #[serde(default, alias = "last_activity_at")]
+    last_activity_at: Option<String>,
+    #[serde(default, alias = "last_message_sender_id")]
+    last_message_sender_id: Option<String>,
+    #[serde(default, alias = "last_message_sender_name")]
+    last_message_sender_name: Option<String>,
+    #[serde(default, alias = "last_message_sender_type")]
+    last_message_sender_type: Option<String>,
+    #[serde(default, alias = "last_message_preview")]
+    last_message_preview: Option<String>,
+    #[serde(default, alias = "last_message_id")]
+    last_message_id: Option<String>,
+    #[serde(default, alias = "latest_activity_sender_id")]
+    latest_activity_sender_id: Option<String>,
+    #[serde(default, alias = "latest_activity_preview")]
+    latest_activity_preview: Option<String>,
+    #[serde(default, alias = "latest_activity_message_id")]
+    latest_activity_message_id: Option<String>,
+    #[serde(default, alias = "parent_message_id")]
+    parent_message_id: Option<String>,
+    #[serde(default, alias = "parent_message_preview")]
+    parent_message_preview: Option<String>,
+    #[serde(default, alias = "reply_count")]
+    reply_count: Option<u32>,
+    #[serde(default, alias = "task_number")]
+    task_number: Option<u32>,
+    #[serde(default, alias = "task_status")]
+    task_status: Option<String>,
+    #[serde(default, alias = "task_claimed_by_name")]
+    task_claimed_by_name: Option<String>,
+}
+
+/// Response from GET /channels/inbox
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxFeedResponse {
+    #[serde(default)]
+    items: Vec<InboxFeedItem>,
+    #[serde(default, alias = "has_more")]
+    has_more: bool,
+    #[serde(default, alias = "total_count")]
+    total_count: u32,
+    #[serde(default, alias = "total_unread_count")]
+    total_unread_count: u32,
+}
+
+// --- Unified inbox types ---
+
 /// Server member returned by GET /api/servers/{serverId}/members
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -2926,6 +2998,61 @@ fn start_agent(
 }
 
 // ── Inbox commands ───────────────────────────────────────────────────
+
+#[tauri::command]
+fn fetch_inbox(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    filter: Option<String>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<InboxFeedResponse, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+    let filter_val = filter.unwrap_or_else(|| "all".to_string());
+    let limit_val = limit.unwrap_or(30);
+    let offset_val = offset.unwrap_or(0);
+
+    load_authenticated_json::<InboxFeedResponse>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!(
+                    "{api_root}/channels/inbox?filter={filter_val}&limit={limit_val}&offset={offset_val}"
+                ))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+}
 
 #[tauri::command]
 fn fetch_followed_threads(
@@ -8778,6 +8905,7 @@ pub fn run() {
             fetch_agent_activity,
             stop_agent,
             start_agent,
+            fetch_inbox,
             fetch_followed_threads,
             fetch_dm_channels,
             fetch_unread_channels,

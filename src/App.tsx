@@ -24,12 +24,7 @@ import {
   checkDesktopUpdate,
   createCustomTheme,
   deleteCustomTheme,
-  fetchChannelMessages,
-  fetchDashboard,
-  fetchDmChannels,
-  fetchFollowedThreads,
-  fetchThreadMessages,
-  fetchUnreadChannels,
+  fetchInbox,
   installDesktopUpdate,
   forgetAccount,
   importThemeStyle,
@@ -1128,167 +1123,57 @@ function App() {
     async function loadUnifiedInbox() {
       setInboxLoading(true)
       try {
-        // Fetch data per server: dashboard, threads, DMs, unread
+        // Fetch inbox feed per server using the unified /channels/inbox API
         const serverResults = await Promise.allSettled(
           servers.map(async (server) => {
-            const calls = [
-              fetchDashboard(server.slug),
-              fetchFollowedThreads(server.slug),
-              fetchDmChannels(server.slug),
-              fetchUnreadChannels(server.slug),
-            ] as const
-
-            const [dashResult, threadsResult, dmsResult, unreadResult] =
-              await Promise.allSettled(calls)
+            const resp = await fetchInbox(server.slug, { filter: 'all', limit: 30 })
 
             const items: UnifiedItem[] = []
             const channelList: ServerChannelGroup['channels'] = []
 
-            // Build unread map for this server
-            const unreadMap = new Map<string, number>()
-            if (unreadResult.status === 'fulfilled') {
-              for (const entry of unreadResult.value) {
-                unreadMap.set(entry.channelId, entry.unreadCount)
-              }
-            }
+            for (const item of resp.items) {
+              const kind = item.kind as 'channel' | 'thread' | 'dm'
+              const channelId = kind === 'thread'
+                ? (item.threadChannelId ?? item.channelId ?? '')
+                : (item.channelId ?? '')
+              if (!channelId) continue
 
-            // Channels from dashboard
-            if (dashResult.status === 'fulfilled') {
-              const dashUnreadMap = new Map(
-                (dashResult.value.unread ?? []).map((u) => [u.channelId, u.unreadCount])
-              )
-              for (const ch of dashResult.value.channels) {
-                if (ch.isArchived) continue
-                const unread = dashUnreadMap.get(ch.id) ?? unreadMap.get(ch.id) ?? 0
-                items.push({
-                  id: `${server.slug}:${ch.id}`,
-                  serverSlug: server.slug,
-                  serverName: server.name,
-                  channelId: ch.id,
-                  channelName: `#${ch.name}`,
-                  type: 'channel',
-                  unreadCount: unread,
-                  lastMessageAt: ch.lastMessageAt,
-                  displayName: null,
-                  parentChannelName: null,
-                  parentChannelId: null,
-                  parentMessageId: null,
-                  avatarUrl: null,
-                  lastSenderName: null,
-                  lastPreview: null,
-                  replyCount: null,
-                  latestMessageId: null,
-                })
+              let channelName: string
+              if (kind === 'channel') {
+                channelName = item.channelName ? `#${item.channelName}` : ''
+              } else if (kind === 'thread') {
+                channelName = item.parentChannelName ? `#${item.parentChannelName}` : copy.inboxThread
+              } else {
+                channelName = item.channelName ?? ''
+              }
+
+              items.push({
+                id: `${server.slug}:${channelId}`,
+                serverSlug: server.slug,
+                serverName: server.name,
+                channelId,
+                channelName,
+                type: kind,
+                unreadCount: item.unreadCount,
+                lastMessageAt: item.lastActivityAt ?? item.lastMessageAt,
+                displayName: kind === 'dm' ? item.channelName : null,
+                parentChannelName: item.parentChannelName ?? null,
+                parentChannelId: item.parentChannelId ?? null,
+                parentMessageId: item.parentMessageId ?? null,
+                avatarUrl: null,
+                lastSenderName: item.lastMessageSenderName ?? null,
+                lastPreview: item.latestActivityPreview ?? item.lastMessagePreview ?? null,
+                replyCount: item.replyCount ?? null,
+                latestMessageId: item.latestActivityMessageId ?? item.lastMessageId ?? null,
+              })
+
+              if (kind === 'channel' && item.channelName) {
                 channelList.push({
-                  id: ch.id,
-                  name: ch.name,
-                  type: ch.type,
-                  unreadCount: unread,
+                  id: channelId,
+                  name: item.channelName,
+                  type: item.parentChannelType ?? 'channel',
+                  unreadCount: item.unreadCount,
                 })
-              }
-            }
-
-            // Threads
-            if (threadsResult.status === 'fulfilled') {
-              for (const t of threadsResult.value) {
-                const unread = t.unreadCount || unreadMap.get(t.id) || 0
-                const name = t.name ?? (t.parentChannelName ? `#${t.parentChannelName}` : copy.inboxThread)
-                items.push({
-                  id: `${server.slug}:${t.id}`,
-                  serverSlug: server.slug,
-                  serverName: server.name,
-                  channelId: t.id,
-                  channelName: name,
-                  type: 'thread',
-                  unreadCount: unread,
-                  lastMessageAt: t.lastMessageAt,
-                  displayName: null,
-                  parentChannelName: t.parentChannelName,
-                  parentChannelId: t.parentChannelId,
-                  parentMessageId: t.parentMessageId ?? null,
-                  avatarUrl: null,
-                  lastSenderName: null,
-                  lastPreview: null,
-                  replyCount: null,
-                  latestMessageId: null,
-                })
-              }
-            }
-
-            // DMs
-            if (dmsResult.status === 'fulfilled') {
-              for (const d of dmsResult.value) {
-                const unread = d.unreadCount || unreadMap.get(d.id) || 0
-                const name = d.displayName ?? d.name
-                items.push({
-                  id: `${server.slug}:${d.id}`,
-                  serverSlug: server.slug,
-                  serverName: server.name,
-                  channelId: d.id,
-                  channelName: name,
-                  type: 'dm',
-                  unreadCount: unread,
-                  lastMessageAt: d.lastMessageAt,
-                  displayName: d.displayName,
-                  parentChannelName: null,
-                  parentChannelId: null,
-                  parentMessageId: null,
-                  avatarUrl: d.members[0]?.avatarUrl ?? null,
-                  lastSenderName: null,
-                  lastPreview: null,
-                  replyCount: null,
-                  latestMessageId: null,
-                })
-              }
-            }
-
-            // Sort items by lastMessageAt desc, take top 10 for preview fetching
-            const sorted = items
-              .filter((i) => i.lastMessageAt)
-              .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
-            const topItems = sorted.slice(0, 10)
-
-            // Fetch latest message for top items to populate preview
-            // For threads, use higher limit to count replies
-            if (topItems.length > 0) {
-              const previewResults = await Promise.allSettled(
-                topItems.map(async (item) => {
-                  const isThread = item.type === 'thread'
-                  const limit = isThread ? 100 : 1
-                  const resp = item.type === 'channel'
-                    ? await fetchChannelMessages(server.slug, item.channelId, { limit })
-                    : await fetchThreadMessages(server.slug, item.channelId, { limit })
-                  const msg = resp.messages[resp.messages.length - 1]
-                  const replyCount = isThread ? resp.messages.length + (resp.hasMore ? 1 : 0) : null
-                  // For threads, first message (oldest) is the parent message — use its ID as fallback parentMessageId
-                  const firstMessageId = isThread && resp.messages.length > 0 && !resp.hasMore ? resp.messages[0].id : null
-                  return { channelId: item.channelId, msg, replyCount, firstMessageId }
-                })
-              )
-              const previewMap = new Map<string, { senderName: string; content: string; replyCount: number | null; messageId: string; firstMessageId: string | null }>()
-              for (const r of previewResults) {
-                if (r.status === 'fulfilled' && r.value.msg) {
-                  previewMap.set(r.value.channelId, {
-                    senderName: r.value.msg.senderDisplayName ?? r.value.msg.senderName ?? '',
-                    content: r.value.msg.content,
-                    replyCount: r.value.replyCount,
-                    messageId: r.value.msg.id,
-                    firstMessageId: r.value.firstMessageId,
-                  })
-                }
-              }
-              for (const item of items) {
-                const preview = previewMap.get(item.channelId)
-                if (preview) {
-                  item.lastSenderName = preview.senderName
-                  item.lastPreview = preview.content
-                  item.replyCount = preview.replyCount
-                  item.latestMessageId = preview.messageId
-                  // Use API parentMessageId if available, fallback to first thread message
-                  if (item.type === 'thread' && !item.parentMessageId && preview.firstMessageId) {
-                    item.parentMessageId = preview.firstMessageId
-                  }
-                }
               }
             }
 

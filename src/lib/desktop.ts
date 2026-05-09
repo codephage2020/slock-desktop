@@ -279,6 +279,55 @@ export async function installDesktopUpdate() {
   return invoke('install_desktop_update')
 }
 
+// Inbox feed types and commands
+
+export interface InboxFeedItem {
+  kind: string
+  channelId: string | null
+  threadChannelId: string | null
+  parentChannelId: string | null
+  channelName: string | null
+  parentChannelName: string | null
+  parentChannelType: string | null
+  unreadCount: number
+  firstUnreadMessageId: string | null
+  lastMessageAt: string | null
+  lastActivityAt: string | null
+  lastMessageSenderId: string | null
+  lastMessageSenderName: string | null
+  lastMessageSenderType: string | null
+  lastMessagePreview: string | null
+  lastMessageId: string | null
+  latestActivitySenderId: string | null
+  latestActivityPreview: string | null
+  latestActivityMessageId: string | null
+  parentMessageId: string | null
+  parentMessagePreview: string | null
+  replyCount: number | null
+  taskNumber: number | null
+  taskStatus: string | null
+  taskClaimedByName: string | null
+}
+
+export interface InboxFeedResponse {
+  items: InboxFeedItem[]
+  hasMore: boolean
+  totalCount: number
+  totalUnreadCount: number
+}
+
+export async function fetchInbox(
+  serverSlug: string,
+  options?: { filter?: string; limit?: number; offset?: number }
+) {
+  return invoke<InboxFeedResponse>('fetch_inbox', {
+    serverSlug,
+    filter: options?.filter,
+    limit: options?.limit,
+    offset: options?.offset,
+  })
+}
+
 // Dashboard types and commands
 
 export interface DashboardChannel {
