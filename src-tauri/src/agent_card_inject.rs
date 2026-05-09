@@ -320,10 +320,13 @@ const AGENT_CARD_INJECT_SCRIPT: &str = r##"
           }
           el = el.parentElement;
         }
-        // No agent ID found on this interaction — clear stale hover data
-        // to prevent injecting old agent info into a non-agent card
-        lastHoveredAgentId = null;
-        lastHoveredTimestamp = 0;
+        // No agent ID found on this interaction — only clear on click (not pointerover)
+        // pointerover fires on the hover card itself, which would clear the captured ID
+        // before MutationObserver fires. Click-only clear prevents server switcher injection.
+        if (event.type === "click") {
+          lastHoveredAgentId = null;
+          lastHoveredTimestamp = 0;
+        }
       } catch (_) {}
     }
 
