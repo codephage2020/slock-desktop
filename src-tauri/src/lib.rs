@@ -9288,6 +9288,7 @@ mod tests {
         AppSettings, SavedAccountSettings, ServiceMachineBinding, ServiceSettings, SessionSettings,
     };
     use crate::theme;
+    use crate::RunningDaemonEntry;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::{
