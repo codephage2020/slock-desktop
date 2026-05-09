@@ -3,6 +3,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   startTransition,
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -1109,7 +1110,7 @@ function App() {
   }, [])
 
   // Map a single InboxFeedItem to UnifiedItem
-  function mapInboxFeedItem(item: InboxFeedItem, serverSlug: string, serverName: string, threadLabel: string): UnifiedItem | null {
+  const mapInboxFeedItem = useCallback((item: InboxFeedItem, serverSlug: string, serverName: string, threadLabel: string): UnifiedItem | null => {
     const kind = item.kind as 'channel' | 'thread' | 'dm'
     const channelId = kind === 'thread'
       ? (item.threadChannelId ?? item.channelId ?? '')
@@ -1144,7 +1145,7 @@ function App() {
       replyCount: item.replyCount ?? null,
       latestMessageId: item.latestActivityMessageId ?? item.lastMessageId ?? null,
     }
-  }
+  }, [])
 
   // Load more items (next page) for the current filter
   async function handleLoadMore() {
@@ -1251,7 +1252,7 @@ function App() {
 
     void loadUnifiedInbox()
     return () => { cancelled = true }
-  }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone, inboxFilter, copy.inboxThread])
+  }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone, inboxFilter, copy.inboxThread, mapInboxFeedItem])
 
   // Fetch joined channels for Quick Send target list (separate from feed)
   useEffect(() => {
@@ -1273,7 +1274,7 @@ function App() {
         servers.map(async (server) => {
           const dash = await fetchDashboard(server.slug)
           const channels = dash.channels
-            .filter((ch) => !ch.isArchived)
+            .filter((ch) => ch.joined && !ch.isArchived)
             .map((ch) => ({
               id: ch.id,
               name: ch.name,

@@ -335,6 +335,7 @@ export interface DashboardChannel {
   name: string
   type: string
   isArchived: boolean
+  joined: boolean
   lastMessageAt: string | null
   memberCount: number
 }

@@ -389,6 +389,8 @@ struct DashboardChannel {
     channel_type: String,
     #[serde(default, alias = "is_archived")]
     is_archived: bool,
+    #[serde(default)]
+    joined: bool,
     #[serde(alias = "last_message_at")]
     last_message_at: Option<String>,
     #[serde(default, alias = "member_count")]
