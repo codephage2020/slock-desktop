@@ -26,11 +26,22 @@ export interface CustomThemeSnapshot {
 
 export interface ThemeStylePalette {
   canvas: string
+  toolbar: string
+  sidebar: string
+  panel: string
   surface: string
   surfaceStrong: string
+  surfaceSecondary: string
+  surfaceTertiary: string
   line: string
+  lineStrong: string
   text: string
   muted: string
+  tertiary: string
+  danger: string
+  selection: string
+  hover: string
+  focusRing: string
 }
 
 export interface ThemeStyleConfig {
@@ -42,6 +53,14 @@ export interface ThemeStyleConfig {
   dark: ThemeStylePalette
   accentSoftLightMix: number
   accentSoftDarkMix: number
+  radiusXs: number
+  radiusSm: number
+  radiusMd: number
+  radiusLg: number
+  radiusXl: number
+  radiusPill: number
+  fontFamily: string
+  fontFamilyMono: string
 }
 
 export interface ThemeStyleDefinition {
