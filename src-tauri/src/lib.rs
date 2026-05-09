@@ -6846,6 +6846,7 @@ fn sanitize_service_settings(service: ServiceSettings) -> ServiceSettings {
             machine_id: binding.machine_id.trim().to_string(),
             machine_name: binding.machine_name.trim().to_string(),
             api_key: String::new(),
+            source: binding.source.clone(),
         };
         if normalized.server_id.is_empty()
             || normalized.server_slug.is_empty()
@@ -8141,6 +8142,7 @@ fn resolve_existing_service_machine(
             machine_id: machine.id,
             machine_name: machine.name,
             api_key: legacy_api_key,
+            source: String::new(),
         },
         api_key_prefix,
         machine_status,
@@ -9415,6 +9417,7 @@ mod tests {
                 machine_id: "machine-open".to_string(),
                 machine_name: "Open machine".to_string(),
                 api_key: String::new(),
+                source: String::new(),
             },
             api_key_prefix: None,
             machine_status: "running".to_string(),
@@ -9547,6 +9550,7 @@ mod tests {
                 machine_id: "machine-open".to_string(),
                 machine_name: "Open machine".to_string(),
                 api_key: String::new(),
+                source: String::new(),
             }],
             ..ServiceSettings::default()
         };
@@ -9581,6 +9585,7 @@ mod tests {
                 machine_id: "machine-open".to_string(),
                 machine_name: "Open machine".to_string(),
                 api_key: String::new(),
+                source: String::new(),
             }],
             ..ServiceSettings::default()
         };
@@ -9613,6 +9618,7 @@ mod tests {
                 machine_id: "machine-open".to_string(),
                 machine_name: "Open machine".to_string(),
                 api_key: String::new(),
+                source: String::new(),
             }],
             ..ServiceSettings::default()
         };
@@ -9697,6 +9703,7 @@ mod tests {
                     machine_id: "machine-open".to_string(),
                     machine_name: "Open machine".to_string(),
                     api_key: "sk_machine_open".to_string(),
+                    source: String::new(),
                 },
                 ServiceMachineBinding {
                     server_id: "server-tyan".to_string(),
@@ -9704,6 +9711,7 @@ mod tests {
                     machine_id: "machine-tyan".to_string(),
                     machine_name: "Tyan machine".to_string(),
                     api_key: "sk_machine_tyan".to_string(),
+                    source: String::new(),
                 },
             ],
             ..ServiceSettings::default()
@@ -9762,6 +9770,7 @@ mod tests {
                 machine_id: "machine-tyan".to_string(),
                 machine_name: "Tyan machine".to_string(),
                 api_key: "sk_machine_tyan".to_string(),
+                source: String::new(),
             }],
             ..ServiceSettings::default()
         };
@@ -9805,6 +9814,7 @@ mod tests {
                 machine_id: "machine-open".to_string(),
                 machine_name: "Open machine".to_string(),
                 api_key: "sk_machine_open".to_string(),
+                source: String::new(),
             }],
             ..ServiceSettings::default()
         };
@@ -9839,6 +9849,7 @@ mod tests {
             machine_id: "bound".to_string(),
             machine_name: "Bound machine".to_string(),
             api_key: String::new(),
+            source: String::new(),
         };
         let machines = vec![
             ApiMachine {
@@ -9885,6 +9896,7 @@ mod tests {
             machine_id: "missing".to_string(),
             machine_name: "Slock Desktop".to_string(),
             api_key: String::new(),
+            source: String::new(),
         };
         let machines = vec![ApiMachine {
             id: "other".to_string(),
@@ -9950,6 +9962,7 @@ mod tests {
                 machine_id: "machine".to_string(),
                 machine_name: "Machine".to_string(),
                 api_key: "sk_rotating".to_string(),
+                source: String::new(),
             }],
             ..ServiceSettings::default()
         });
