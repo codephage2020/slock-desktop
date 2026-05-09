@@ -155,7 +155,7 @@ pub struct ThemeStyleConfig {
 
 impl Default for ThemeStyleConfig {
     fn default() -> Self {
-        default_style_config()
+        original_style_config()
     }
 }
 
@@ -225,47 +225,303 @@ fn original_style_config() -> ThemeStyleConfig {
     ThemeStyleConfig {
         id: "original".to_string(),
         name: "Original".to_string(),
-        summary: "Use Slock's native appearance without desktop style overrides.".to_string(),
+        summary: "Warm neutral".to_string(),
         native: true,
-        light: default_light_palette(),
-        dark: default_dark_palette(),
-        accent_soft_light_mix: default_accent_soft_light_mix(),
-        accent_soft_dark_mix: default_accent_soft_dark_mix(),
-        radius_xs: default_radius_xs(),
-        radius_sm: default_radius_sm(),
-        radius_md: default_radius_md(),
-        radius_lg: default_radius_lg(),
-        radius_xl: default_radius_xl(),
-        radius_pill: default_radius_pill(),
-        font_family: default_font_family(),
-        font_family_mono: default_font_family_mono(),
+        light: ThemeStylePalette {
+            canvas: "#f7f7f5".to_string(),
+            toolbar: "#ecede8".to_string(),
+            sidebar: "#ecede8".to_string(),
+            panel: "#f1f2ee".to_string(),
+            surface: "#ffffff".to_string(),
+            surface_strong: "#f3f4f1".to_string(),
+            surface_secondary: "#f3f4f1".to_string(),
+            surface_tertiary: "#ecefea".to_string(),
+            line: "#e2e4de".to_string(),
+            line_strong: "#d4d8d0".to_string(),
+            text: "#1f1f1c".to_string(),
+            muted: "#6b6f67".to_string(),
+            tertiary: "#8a8f86".to_string(),
+            danger: "#c24141".to_string(),
+            selection: "#e7f5f1".to_string(),
+            hover: "rgba(31,31,28,0.04)".to_string(),
+            focus_ring: "rgba(16,163,127,0.28)".to_string(),
+        },
+        dark: ThemeStylePalette {
+            canvas: "#1f1f1c".to_string(),
+            toolbar: "#2f302c".to_string(),
+            sidebar: "#2f302c".to_string(),
+            panel: "#282925".to_string(),
+            surface: "#252623".to_string(),
+            surface_strong: "#2f302c".to_string(),
+            surface_secondary: "#2f302c".to_string(),
+            surface_tertiary: "#383a34".to_string(),
+            line: "#3e413a".to_string(),
+            line_strong: "#51554b".to_string(),
+            text: "#f4f4ef".to_string(),
+            muted: "#b7bbae".to_string(),
+            tertiary: "#8f9488".to_string(),
+            danger: "#c24141".to_string(),
+            selection: "color-mix(in srgb, var(--accent) 22%, var(--canvas))".to_string(),
+            hover: "rgba(244,244,239,0.06)".to_string(),
+            focus_ring: "rgba(16,163,127,0.28)".to_string(),
+        },
+        accent_soft_light_mix: 12,
+        accent_soft_dark_mix: 18,
+        radius_xs: 8.0,
+        radius_sm: 10.0,
+        radius_md: 12.0,
+        radius_lg: 16.0,
+        radius_xl: 20.0,
+        radius_pill: 999.0,
+        font_family: preset_font_family(),
+        font_family_mono: preset_font_family_mono(),
     }
 }
 
-fn default_style_config() -> ThemeStyleConfig {
+fn ocean_style_config() -> ThemeStyleConfig {
     ThemeStyleConfig {
-        id: "default".to_string(),
-        name: "Default".to_string(),
-        summary: "Desktop refined style with calm surfaces, softened borders, and accent-aware controls."
-            .to_string(),
-        native: false,
-        light: default_light_palette(),
-        dark: default_dark_palette(),
-        accent_soft_light_mix: default_accent_soft_light_mix(),
-        accent_soft_dark_mix: default_accent_soft_dark_mix(),
-        radius_xs: default_radius_xs(),
-        radius_sm: default_radius_sm(),
-        radius_md: default_radius_md(),
-        radius_lg: default_radius_lg(),
-        radius_xl: default_radius_xl(),
-        radius_pill: default_radius_pill(),
-        font_family: default_font_family(),
-        font_family_mono: default_font_family_mono(),
+        id: "ocean".to_string(),
+        name: "Ocean".to_string(),
+        summary: "Cool blue".to_string(),
+        native: true,
+        light: ThemeStylePalette {
+            canvas: "#f4f6fa".to_string(),
+            toolbar: "#e8ecf3".to_string(),
+            sidebar: "#e8ecf3".to_string(),
+            panel: "#edf0f6".to_string(),
+            surface: "#ffffff".to_string(),
+            surface_strong: "#f0f2f8".to_string(),
+            surface_secondary: "#f0f2f8".to_string(),
+            surface_tertiary: "#e6eaf2".to_string(),
+            line: "#d8dde8".to_string(),
+            line_strong: "#c8d0df".to_string(),
+            text: "#1a1e28".to_string(),
+            muted: "#5c6578".to_string(),
+            tertiary: "#7d869a".to_string(),
+            danger: "#d14343".to_string(),
+            selection: "#e3edf8".to_string(),
+            hover: "rgba(26,30,40,0.04)".to_string(),
+            focus_ring: "rgba(60,120,220,0.28)".to_string(),
+        },
+        dark: ThemeStylePalette {
+            canvas: "#181c24".to_string(),
+            toolbar: "#1e2430".to_string(),
+            sidebar: "#1e2430".to_string(),
+            panel: "#1c2029".to_string(),
+            surface: "#222833".to_string(),
+            surface_strong: "#28303c".to_string(),
+            surface_secondary: "#28303c".to_string(),
+            surface_tertiary: "#303846".to_string(),
+            line: "#354050".to_string(),
+            line_strong: "#455266".to_string(),
+            text: "#e4e8f0".to_string(),
+            muted: "#a0aabb".to_string(),
+            tertiary: "#7d8698".to_string(),
+            danger: "#e05555".to_string(),
+            selection: "rgba(80,140,220,0.18)".to_string(),
+            hover: "rgba(228,232,240,0.06)".to_string(),
+            focus_ring: "rgba(80,140,240,0.28)".to_string(),
+        },
+        accent_soft_light_mix: 14,
+        accent_soft_dark_mix: 20,
+        radius_xs: 8.0,
+        radius_sm: 10.0,
+        radius_md: 12.0,
+        radius_lg: 16.0,
+        radius_xl: 20.0,
+        radius_pill: 999.0,
+        font_family: preset_font_family(),
+        font_family_mono: preset_font_family_mono(),
     }
+}
+
+fn monokai_style_config() -> ThemeStyleConfig {
+    ThemeStyleConfig {
+        id: "monokai".to_string(),
+        name: "Monokai".to_string(),
+        summary: "Classic warm".to_string(),
+        native: true,
+        light: ThemeStylePalette {
+            canvas: "#f9f6f1".to_string(),
+            toolbar: "#efe9e0".to_string(),
+            sidebar: "#efe9e0".to_string(),
+            panel: "#f3efe8".to_string(),
+            surface: "#fffdf8".to_string(),
+            surface_strong: "#f5f0e8".to_string(),
+            surface_secondary: "#f5f0e8".to_string(),
+            surface_tertiary: "#ede6db".to_string(),
+            line: "#ddd5c8".to_string(),
+            line_strong: "#cfc4b2".to_string(),
+            text: "#272218".to_string(),
+            muted: "#75695a".to_string(),
+            tertiary: "#938778".to_string(),
+            danger: "#cc3333".to_string(),
+            selection: "#f0eade".to_string(),
+            hover: "rgba(39,34,24,0.04)".to_string(),
+            focus_ring: "rgba(166,226,46,0.28)".to_string(),
+        },
+        dark: ThemeStylePalette {
+            canvas: "#272822".to_string(),
+            toolbar: "#33342d".to_string(),
+            sidebar: "#33342d".to_string(),
+            panel: "#2d2e28".to_string(),
+            surface: "#2d2e27".to_string(),
+            surface_strong: "#383930".to_string(),
+            surface_secondary: "#383930".to_string(),
+            surface_tertiary: "#44453a".to_string(),
+            line: "#49493e".to_string(),
+            line_strong: "#5e5e50".to_string(),
+            text: "#f8f8f2".to_string(),
+            muted: "#b8b4a8".to_string(),
+            tertiary: "#908a7e".to_string(),
+            danger: "#f92672".to_string(),
+            selection: "rgba(230,219,116,0.14)".to_string(),
+            hover: "rgba(248,248,242,0.06)".to_string(),
+            focus_ring: "rgba(166,226,46,0.24)".to_string(),
+        },
+        accent_soft_light_mix: 10,
+        accent_soft_dark_mix: 16,
+        radius_xs: 6.0,
+        radius_sm: 8.0,
+        radius_md: 10.0,
+        radius_lg: 14.0,
+        radius_xl: 18.0,
+        radius_pill: 999.0,
+        font_family: preset_font_family(),
+        font_family_mono: "\"JetBrains Mono\", \"Space Mono\", ui-monospace, monospace".to_string(),
+    }
+}
+
+fn nord_style_config() -> ThemeStyleConfig {
+    ThemeStyleConfig {
+        id: "nord".to_string(),
+        name: "Nord".to_string(),
+        summary: "Nordic frost".to_string(),
+        native: true,
+        light: ThemeStylePalette {
+            canvas: "#eceff4".to_string(),
+            toolbar: "#e0e5ed".to_string(),
+            sidebar: "#e0e5ed".to_string(),
+            panel: "#e5eaf2".to_string(),
+            surface: "#ffffff".to_string(),
+            surface_strong: "#e8ecf3".to_string(),
+            surface_secondary: "#e8ecf3".to_string(),
+            surface_tertiary: "#dce2ec".to_string(),
+            line: "#d0d6e1".to_string(),
+            line_strong: "#bfc7d5".to_string(),
+            text: "#2e3440".to_string(),
+            muted: "#616e88".to_string(),
+            tertiary: "#7b869e".to_string(),
+            danger: "#bf616a".to_string(),
+            selection: "#dfe6f0".to_string(),
+            hover: "rgba(46,52,64,0.04)".to_string(),
+            focus_ring: "rgba(136,192,208,0.30)".to_string(),
+        },
+        dark: ThemeStylePalette {
+            canvas: "#2e3440".to_string(),
+            toolbar: "#3b4252".to_string(),
+            sidebar: "#3b4252".to_string(),
+            panel: "#353c4a".to_string(),
+            surface: "#3b4252".to_string(),
+            surface_strong: "#434c5e".to_string(),
+            surface_secondary: "#434c5e".to_string(),
+            surface_tertiary: "#4c566a".to_string(),
+            line: "#4c566a".to_string(),
+            line_strong: "#5e6a82".to_string(),
+            text: "#eceff4".to_string(),
+            muted: "#a5b1c7".to_string(),
+            tertiary: "#8892a8".to_string(),
+            danger: "#bf616a".to_string(),
+            selection: "rgba(136,192,208,0.16)".to_string(),
+            hover: "rgba(236,239,244,0.06)".to_string(),
+            focus_ring: "rgba(136,192,208,0.28)".to_string(),
+        },
+        accent_soft_light_mix: 14,
+        accent_soft_dark_mix: 18,
+        radius_xs: 8.0,
+        radius_sm: 10.0,
+        radius_md: 12.0,
+        radius_lg: 16.0,
+        radius_xl: 20.0,
+        radius_pill: 999.0,
+        font_family: preset_font_family(),
+        font_family_mono: preset_font_family_mono(),
+    }
+}
+
+fn rose_style_config() -> ThemeStyleConfig {
+    ThemeStyleConfig {
+        id: "rose".to_string(),
+        name: "Rosé".to_string(),
+        summary: "Soft rose".to_string(),
+        native: true,
+        light: ThemeStylePalette {
+            canvas: "#fdf4f5".to_string(),
+            toolbar: "#f5e8ea".to_string(),
+            sidebar: "#f5e8ea".to_string(),
+            panel: "#f8eced".to_string(),
+            surface: "#ffffff".to_string(),
+            surface_strong: "#f9eced".to_string(),
+            surface_secondary: "#f9eced".to_string(),
+            surface_tertiary: "#f2e2e4".to_string(),
+            line: "#e8d4d8".to_string(),
+            line_strong: "#dbc2c8".to_string(),
+            text: "#2d1a1e".to_string(),
+            muted: "#8a6670".to_string(),
+            tertiary: "#a0808a".to_string(),
+            danger: "#d44050".to_string(),
+            selection: "#fce8ec".to_string(),
+            hover: "rgba(45,26,30,0.04)".to_string(),
+            focus_ring: "rgba(200,100,120,0.28)".to_string(),
+        },
+        dark: ThemeStylePalette {
+            canvas: "#1e1517".to_string(),
+            toolbar: "#2a1e22".to_string(),
+            sidebar: "#2a1e22".to_string(),
+            panel: "#241a1d".to_string(),
+            surface: "#261c20".to_string(),
+            surface_strong: "#302428".to_string(),
+            surface_secondary: "#302428".to_string(),
+            surface_tertiary: "#3a2c30".to_string(),
+            line: "#43333a".to_string(),
+            line_strong: "#564450".to_string(),
+            text: "#f5e8eb".to_string(),
+            muted: "#c0a0aa".to_string(),
+            tertiary: "#9a7e88".to_string(),
+            danger: "#e05565".to_string(),
+            selection: "rgba(220,120,140,0.16)".to_string(),
+            hover: "rgba(245,232,235,0.06)".to_string(),
+            focus_ring: "rgba(220,120,140,0.26)".to_string(),
+        },
+        accent_soft_light_mix: 16,
+        accent_soft_dark_mix: 22,
+        radius_xs: 10.0,
+        radius_sm: 12.0,
+        radius_md: 14.0,
+        radius_lg: 18.0,
+        radius_xl: 22.0,
+        radius_pill: 999.0,
+        font_family: preset_font_family(),
+        font_family_mono: preset_font_family_mono(),
+    }
+}
+
+fn preset_font_family() -> String {
+    "Inter, \"SF Pro Display\", \"PingFang SC\", system-ui, sans-serif".to_string()
+}
+
+fn preset_font_family_mono() -> String {
+    "\"Space Mono\", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace".to_string()
 }
 
 pub fn built_in_style_configs() -> Vec<ThemeStyleConfig> {
-    vec![original_style_config(), default_style_config()]
+    vec![
+        original_style_config(),
+        ocean_style_config(),
+        monokai_style_config(),
+        nord_style_config(),
+        rose_style_config(),
+    ]
 }
 
 pub fn default_color_scheme() -> &'static str {
@@ -273,7 +529,7 @@ pub fn default_color_scheme() -> &'static str {
 }
 
 pub fn default_style_scheme() -> &'static str {
-    "default"
+    "original"
 }
 
 fn default_light_palette() -> ThemeStylePalette {
@@ -552,20 +808,24 @@ pub fn style_catalog(
 }
 
 pub fn resolve_style(id: &str, custom_styles: &CustomStyleSet) -> ThemeStyleConfig {
-    if id == "original" {
+    // Check built-in presets first
+    let builtins = built_in_style_configs();
+    if let Some(preset) = builtins.iter().find(|s| s.id == id).cloned() {
+        return preset;
+    }
+
+    // Fall back to "original" for empty/default/unknown built-in IDs
+    if id.is_empty() || id == "default" {
         return original_style_config();
     }
 
-    if id == "default" || id.is_empty() {
-        return default_style_config();
-    }
-
+    // Then check custom styles
     custom_styles
         .items
         .iter()
         .find(|item| item.id == id)
         .cloned()
-        .unwrap_or_else(default_style_config)
+        .unwrap_or_else(original_style_config)
 }
 
 pub fn resolve_theme(id: &str, mode: &str, custom: &CustomThemeSet) -> ThemeDefinition {
@@ -596,7 +856,8 @@ pub fn resolve_theme_with_style(
 
 pub fn sanitize_style_config(mut style: ThemeStyleConfig) -> ThemeStyleConfig {
     let trimmed_id = style.id.trim();
-    style.id = if trimmed_id.is_empty() || trimmed_id == "original" || trimmed_id == "default" {
+    let built_in_ids = ["original", "default", "ocean", "monokai", "nord", "rose"];
+    style.id = if trimmed_id.is_empty() || built_in_ids.contains(&trimmed_id) {
         format!("style-{}", uuid::Uuid::new_v4())
     } else {
         trimmed_id.to_string()
@@ -777,9 +1038,9 @@ fn materialize_theme(
         dark_muted: style.dark.muted.clone(),
         dark_tertiary: sanitize_hex(&style.dark.tertiary).unwrap_or_else(|| default_dark_tertiary()),
         dark_danger: sanitize_hex(&style.dark.danger).unwrap_or_else(|| default_dark_danger()),
-        dark_selection: sanitize_hex(&style.dark.selection).unwrap_or_else(|| default_dark_selection()),
-        dark_hover: sanitize_hex(&style.dark.hover).unwrap_or_else(|| default_dark_hover()),
-        dark_focus_ring: sanitize_hex(&style.dark.focus_ring).unwrap_or_else(|| default_dark_focus_ring()),
+        dark_selection: sanitize_css_color(&style.dark.selection, &default_dark_selection()),
+        dark_hover: sanitize_css_color(&style.dark.hover, &default_dark_hover()),
+        dark_focus_ring: sanitize_css_color(&style.dark.focus_ring, &default_dark_focus_ring()),
         dark_accent,
         dark_accent_soft,
     }
@@ -866,6 +1127,24 @@ pub fn sanitize_hex(value: &str) -> Option<String> {
     Some(format!("#{normalized}"))
 }
 
+/// Accept hex colors, rgba(...), and color-mix(...) as valid CSS color values.
+/// Used for palette fields that support CSS functions (selection, hover, focusRing).
+fn sanitize_css_color(value: &str, fallback: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return fallback.to_string();
+    }
+    // Accept hex
+    if let Some(hex) = sanitize_hex(trimmed) {
+        return hex;
+    }
+    // Accept rgba(...) and color-mix(...)
+    if trimmed.starts_with("rgba(") || trimmed.starts_with("color-mix(") {
+        return trimmed.to_string();
+    }
+    fallback.to_string()
+}
+
 fn sanitize_palette(value: ThemeStylePalette, fallback: ThemeStylePalette) -> ThemeStylePalette {
     ThemeStylePalette {
         canvas: sanitize_hex(&value.canvas).unwrap_or(fallback.canvas),
@@ -882,9 +1161,9 @@ fn sanitize_palette(value: ThemeStylePalette, fallback: ThemeStylePalette) -> Th
         muted: sanitize_hex(&value.muted).unwrap_or(fallback.muted),
         tertiary: sanitize_hex(&value.tertiary).unwrap_or(fallback.tertiary),
         danger: sanitize_hex(&value.danger).unwrap_or(fallback.danger),
-        selection: sanitize_hex(&value.selection).unwrap_or(fallback.selection),
-        hover: sanitize_hex(&value.hover).unwrap_or(fallback.hover),
-        focus_ring: sanitize_hex(&value.focus_ring).unwrap_or(fallback.focus_ring),
+        selection: sanitize_css_color(&value.selection, &fallback.selection),
+        hover: sanitize_css_color(&value.hover, &fallback.hover),
+        focus_ring: sanitize_css_color(&value.focus_ring, &fallback.focus_ring),
     }
 }
 
