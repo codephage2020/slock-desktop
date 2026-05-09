@@ -283,7 +283,7 @@ fn ocean_style_config() -> ThemeStyleConfig {
         id: "ocean".to_string(),
         name: "Ocean".to_string(),
         summary: "Cool blue".to_string(),
-        native: true,
+        native: false,
         light: ThemeStylePalette {
             canvas: "#f4f6fa".to_string(),
             toolbar: "#e8ecf3".to_string(),
@@ -340,7 +340,7 @@ fn monokai_style_config() -> ThemeStyleConfig {
         id: "monokai".to_string(),
         name: "Monokai".to_string(),
         summary: "Classic warm".to_string(),
-        native: true,
+        native: false,
         light: ThemeStylePalette {
             canvas: "#f9f6f1".to_string(),
             toolbar: "#efe9e0".to_string(),
@@ -397,7 +397,7 @@ fn nord_style_config() -> ThemeStyleConfig {
         id: "nord".to_string(),
         name: "Nord".to_string(),
         summary: "Nordic frost".to_string(),
-        native: true,
+        native: false,
         light: ThemeStylePalette {
             canvas: "#eceff4".to_string(),
             toolbar: "#e0e5ed".to_string(),
@@ -454,7 +454,7 @@ fn rose_style_config() -> ThemeStyleConfig {
         id: "rose".to_string(),
         name: "Rosé".to_string(),
         summary: "Soft rose".to_string(),
-        native: true,
+        native: false,
         light: ThemeStylePalette {
             canvas: "#fdf4f5".to_string(),
             toolbar: "#f5e8ea".to_string(),
