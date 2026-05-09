@@ -620,6 +620,7 @@ function App() {
   const [inboxLoadingMore, setInboxLoadingMore] = useState(false)
   const [inboxHasMore, setInboxHasMore] = useState(false)
   const [inboxOffset, setInboxOffset] = useState(0)
+  const inboxHasLoadedRef = useRef(false)
   const [inboxFilter, setInboxFilter] = useState<'all' | 'unread'>('all')
   const [inboxSearch, setInboxSearch] = useState('')
   const [selectedChannel, setSelectedChannel] = useState<{ serverSlug: string; channelId: string; itemType?: 'channel' | 'thread' | 'dm' } | null>(null)
@@ -1246,7 +1247,8 @@ function App() {
     const apiFilter = inboxFilter === 'unread' ? 'unread' : 'all'
 
     async function loadUnifiedInbox() {
-      setInboxLoading(true)
+      // Show skeleton only on first load; on subsequent refreshes keep old data visible
+      if (!inboxHasLoadedRef.current) setInboxLoading(true)
       setInboxOffset(0)
       setInboxHasMore(false)
       try {
@@ -1276,6 +1278,7 @@ function App() {
           setUnifiedItems(allItems)
           setInboxHasMore(anyHasMore)
           setInboxOffset(30)
+          inboxHasLoadedRef.current = true
         }
       } finally {
         if (!cancelled) {
@@ -2806,7 +2809,7 @@ function App() {
             <div className="inbox-list" role="listbox">
               {(() => {
                 if (inboxLoading) {
-                  return <div className="inbox-list-empty"><SpinnerIcon /></div>
+                  return <InboxSkeleton />
                 }
 
                 const normalizedSearch = inboxSearch.trim().toLowerCase()
@@ -4094,6 +4097,30 @@ function SpinnerIcon() {
       <path d="M21 12a9 9 0 0 1-9 9" />
       <path d="M3 12a9 9 0 0 1 9-9" />
     </svg>
+  )
+}
+
+function InboxSkeleton() {
+  const items = [3, 2] // rows per skeleton group
+  return (
+    <>
+      {items.map((count, gi) => (
+        <div key={gi} className="inbox-skeleton-group">
+          <div className="inbox-skeleton-header">
+            <span className="inbox-skeleton-bar" />
+          </div>
+          {Array.from({ length: count }, (_, i) => (
+            <div key={i} className="inbox-skeleton-item">
+              <div className="inbox-skeleton-row">
+                <span className="inbox-skeleton-bar source" />
+                <span className="inbox-skeleton-bar time" />
+              </div>
+              <span className="inbox-skeleton-bar preview" />
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
   )
 }
 
