@@ -786,24 +786,32 @@ static SETTINGS_SAVE_GEN: AtomicU64 = AtomicU64::new(0);
 /// Serialization happens on the calling thread (fast); only the fs::write is deferred.
 /// Uses a generation counter so that only the latest save wins when multiple background
 /// writes are in flight (e.g. fast preset switching: Ocean→Nord→Rosé).
+/// Each generation uses its own tmp file to avoid cross-thread collisions.
 fn save_settings_background(app: &AppHandle, settings: &AppSettings) {
     match config::settings_path(app) {
         Ok(path) => match serde_json::to_vec_pretty(settings) {
             Ok(payload) => {
                 let gen = SETTINGS_SAVE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
                 thread::spawn(move || {
-                    // If a newer save was requested while we were waiting to run, skip.
+                    // Pre-write check: skip if a newer save was already requested.
                     if SETTINGS_SAVE_GEN.load(Ordering::SeqCst) != gen {
                         return;
                     }
-                    // Atomic write: tmp file + rename to avoid partial/corrupt writes.
-                    let tmp = path.with_extension("json.tmp");
+                    // Per-generation tmp file avoids cross-thread collisions.
+                    let tmp = path.with_extension(format!("json.{gen}.tmp"));
                     if let Err(e) = fs::write(&tmp, &payload) {
                         log::warn!("failed to write settings tmp file: {e}");
                         return;
                     }
+                    // Post-write check: if a newer save arrived while we were writing,
+                    // discard our tmp and let the newer thread handle it.
+                    if SETTINGS_SAVE_GEN.load(Ordering::SeqCst) != gen {
+                        let _ = fs::remove_file(&tmp);
+                        return;
+                    }
                     if let Err(e) = fs::rename(&tmp, &path) {
                         log::warn!("failed to rename settings tmp file: {e}");
+                        let _ = fs::remove_file(&tmp);
                     }
                 });
             }
