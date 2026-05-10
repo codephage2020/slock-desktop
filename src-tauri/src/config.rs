@@ -204,7 +204,7 @@ pub fn save_settings<R: Runtime>(app: &AppHandle<R>, settings: &AppSettings) -> 
     fs::write(path, payload).map_err(|err| err.to_string())
 }
 
-fn settings_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+pub fn settings_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let dir = app.path().app_config_dir().map_err(|err| err.to_string())?;
     fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     Ok(dir.join(SETTINGS_FILE))

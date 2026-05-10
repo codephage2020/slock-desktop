@@ -19,7 +19,10 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex, OnceLock,
+    },
     thread::{self, sleep},
     time::{Duration, Instant},
 };
@@ -773,6 +776,51 @@ struct InboxUnreadEntry {
     unread_count: u32,
 }
 
+/// Monotonic generation counter for background settings saves.
+/// Each call to `save_settings_background` increments this counter and captures its
+/// value. The spawned thread only writes to disk if its generation is still the latest,
+/// guaranteeing latest-wins semantics even when rapid sequential saves race.
+static SETTINGS_SAVE_GEN: AtomicU64 = AtomicU64::new(0);
+
+/// Persist settings to disk on a background thread to avoid blocking the IPC thread.
+/// Serialization happens on the calling thread (fast); only the fs::write is deferred.
+/// Uses a generation counter so that only the latest save wins when multiple background
+/// writes are in flight (e.g. fast preset switching: Ocean→Nord→Rosé).
+/// Each generation uses its own tmp file to avoid cross-thread collisions.
+fn save_settings_background(app: &AppHandle, settings: &AppSettings) {
+    match config::settings_path(app) {
+        Ok(path) => match serde_json::to_vec_pretty(settings) {
+            Ok(payload) => {
+                let gen = SETTINGS_SAVE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+                thread::spawn(move || {
+                    // Pre-write check: skip if a newer save was already requested.
+                    if SETTINGS_SAVE_GEN.load(Ordering::SeqCst) != gen {
+                        return;
+                    }
+                    // Per-generation tmp file avoids cross-thread collisions.
+                    let tmp = path.with_extension(format!("json.{gen}.tmp"));
+                    if let Err(e) = fs::write(&tmp, &payload) {
+                        log::warn!("failed to write settings tmp file: {e}");
+                        return;
+                    }
+                    // Post-write check: if a newer save arrived while we were writing,
+                    // discard our tmp and let the newer thread handle it.
+                    if SETTINGS_SAVE_GEN.load(Ordering::SeqCst) != gen {
+                        let _ = fs::remove_file(&tmp);
+                        return;
+                    }
+                    if let Err(e) = fs::rename(&tmp, &path) {
+                        log::warn!("failed to rename settings tmp file: {e}");
+                        let _ = fs::remove_file(&tmp);
+                    }
+                });
+            }
+            Err(e) => log::warn!("failed to serialize settings: {e}"),
+        },
+        Err(e) => log::warn!("failed to resolve settings path: {e}"),
+    }
+}
+
 #[tauri::command]
 fn bootstrap(
     app: AppHandle,
@@ -808,7 +856,7 @@ fn set_theme(
             );
             settings.color_scheme = theme.id;
         }
-        save_settings(&app, &settings)?;
+        save_settings_background(&app, &settings);
         (
             settings.color_scheme.clone(),
             settings.style_scheme.clone(),
@@ -828,7 +876,7 @@ fn set_theme(
         &custom,
         &styles,
     );
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles, true)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -847,7 +895,7 @@ fn set_theme_style(
         let styles = custom_style_set(&settings.custom_styles);
         let style = resolve_style(&style_id, &styles);
         settings.style_scheme = style.id;
-        save_settings(&app, &settings)?;
+        save_settings_background(&app, &settings);
         (
             settings.color_scheme.clone(),
             settings.style_scheme.clone(),
@@ -867,7 +915,7 @@ fn set_theme_style(
         &custom,
         &styles,
     );
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles, true)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -887,7 +935,7 @@ fn import_theme_style(
         settings.custom_styles.retain(|item| item.id != style.id);
         settings.custom_styles.push(style.clone());
         settings.style_scheme = style.id;
-        save_settings(&app, &settings)?;
+        save_settings_background(&app, &settings);
         (
             settings.color_scheme.clone(),
             settings.style_scheme.clone(),
@@ -907,7 +955,7 @@ fn import_theme_style(
         &custom,
         &styles,
     );
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles, true)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -924,7 +972,7 @@ fn set_theme_mode(
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         settings.appearance_mode = theme::normalize_mode(&theme_mode).to_string();
-        save_settings(&app, &settings)?;
+        save_settings_background(&app, &settings);
         (
             settings.color_scheme.clone(),
             settings.style_scheme.clone(),
@@ -944,7 +992,7 @@ fn set_theme_mode(
         &custom,
         &styles,
     );
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles, true)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -969,7 +1017,7 @@ fn create_custom_theme(
         };
         settings.custom_themes.push(theme);
         settings.color_scheme = id.clone();
-        save_settings(&app, &settings)?;
+        save_settings_background(&app, &settings);
         (
             settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
@@ -983,7 +1031,7 @@ fn create_custom_theme(
     let custom = custom_theme_set(&custom_themes);
     let styles = custom_style_set(&custom_styles);
     let theme = resolve_theme_with_style(&new_id, &style_scheme, &appearance_mode, &custom, &styles);
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles, true)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -1004,7 +1052,7 @@ fn rename_custom_theme(
         if let Some(item) = settings.custom_themes.iter_mut().find(|item| item.id == id) {
             item.name = trimmed;
         }
-        save_settings(&app, &settings)?;
+        save_settings_background(&app, &settings);
     }
 
     build_bootstrap(&app, &state, false)
@@ -1026,7 +1074,7 @@ fn update_custom_theme_accent(
         if let Some(item) = settings.custom_themes.iter_mut().find(|item| item.id == id) {
             item.accent = cleaned;
         }
-        save_settings(&app, &settings)?;
+        save_settings_background(&app, &settings);
         (
             settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
@@ -1046,7 +1094,7 @@ fn update_custom_theme_accent(
         &custom,
         &styles,
     );
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles, true)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -1066,7 +1114,7 @@ fn delete_custom_theme(
         if settings.color_scheme == id {
             settings.color_scheme = theme::default_color_scheme().to_string();
         }
-        save_settings(&app, &settings)?;
+        save_settings_background(&app, &settings);
         (
             settings.style_scheme.clone(),
             settings.appearance_mode.clone(),
@@ -1086,7 +1134,7 @@ fn delete_custom_theme(
         &custom,
         &styles,
     );
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles, true)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -1103,7 +1151,7 @@ fn set_language(
             .lock()
             .map_err(|_| "Unable to lock desktop settings".to_string())?;
         settings.language = sanitize_language(&language).to_string();
-        save_settings(&app, &settings)?;
+        save_settings_background(&app, &settings);
         (
             settings.color_scheme.clone(),
             settings.style_scheme.clone(),
@@ -1123,7 +1171,7 @@ fn set_language(
         &custom,
         &styles,
     );
-    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles)?;
+    apply_theme_to_workspace(&app, theme, &appearance_mode, &language, &custom, &styles, false)?;
 
     build_bootstrap(&app, &state, false)
 }
@@ -4936,6 +4984,7 @@ fn apply_theme_to_workspace(
     language: &str,
     custom_theme: &CustomThemeSet,
     custom_style: &CustomStyleSet,
+    theme_only: bool,
 ) -> Result<(), String> {
     let server_slug = app
         .state::<DesktopState>()
@@ -4944,23 +4993,39 @@ fn apply_theme_to_workspace(
         .map(|s| s.service.selected_server_slug.clone())
         .unwrap_or_default();
     if let Some(window) = app.get_webview_window(MAIN_LABEL) {
-        apply_window_language(app, &window, language, window_is_workspace(&window));
+        if !theme_only {
+            apply_window_language(app, &window, language, window_is_workspace(&window));
+        }
         if window_is_workspace(&window) {
             apply_window_theme(&window, theme_mode);
             let active_theme_id = theme.id.clone();
             let active_style_id = theme.style_id.clone();
-            apply_workspace_scripts_to_window(
-                &window,
-                theme,
-                &active_theme_id,
-                &active_style_id,
-                theme_mode,
-                language,
-                resolve_desktop_language(language),
-                &server_slug,
-                custom_theme,
-                custom_style,
-            )?;
+            if theme_only {
+                apply_theme_scripts_to_window(
+                    &window,
+                    theme,
+                    &active_theme_id,
+                    &active_style_id,
+                    theme_mode,
+                    language,
+                    resolve_desktop_language(language),
+                    custom_theme,
+                    custom_style,
+                )?;
+            } else {
+                apply_workspace_scripts_to_window(
+                    &window,
+                    theme,
+                    &active_theme_id,
+                    &active_style_id,
+                    theme_mode,
+                    language,
+                    resolve_desktop_language(language),
+                    &server_slug,
+                    custom_theme,
+                    custom_style,
+                )?;
+            }
         } else {
             apply_launcher_window_theme(&window, theme_mode);
         }
@@ -5162,6 +5227,39 @@ fn apply_workspace_scripts_to_window(
     custom_theme: &CustomThemeSet,
     custom_style: &CustomStyleSet,
 ) -> Result<(), String> {
+    apply_theme_scripts_to_window(
+        window,
+        theme,
+        active_theme_id,
+        active_style_id,
+        active_theme_mode,
+        active_language,
+        resolved_language,
+        custom_theme,
+        custom_style,
+    )?;
+    window
+        .eval(agent_env_import::agent_env_import_script(resolved_language))
+        .map_err(|err| err.to_string())?;
+    window
+        .eval(agent_card_inject::agent_card_inject_script(server_slug, resolved_language))
+        .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+/// Lightweight path: only re-eval theme + settings overlay scripts.
+/// Skips agent_env_import and agent_card_inject which don't change with theme/style.
+fn apply_theme_scripts_to_window(
+    window: &tauri::WebviewWindow,
+    theme: theme::ThemeDefinition,
+    active_theme_id: &str,
+    active_style_id: &str,
+    active_theme_mode: &str,
+    active_language: &str,
+    resolved_language: &str,
+    custom_theme: &CustomThemeSet,
+    custom_style: &CustomStyleSet,
+) -> Result<(), String> {
     window
         .eval(theme::injected_script(theme))
         .map_err(|err| err.to_string())?;
@@ -5175,12 +5273,6 @@ fn apply_workspace_scripts_to_window(
             &color_catalog(active_theme_mode, active_style_id, custom_theme, custom_style),
             &style_catalog(active_theme_mode, active_theme_id, custom_theme, custom_style),
         ))
-        .map_err(|err| err.to_string())?;
-    window
-        .eval(agent_env_import::agent_env_import_script(resolved_language))
-        .map_err(|err| err.to_string())?;
-    window
-        .eval(agent_card_inject::agent_card_inject_script(server_slug, resolved_language))
         .map_err(|err| err.to_string())?;
     Ok(())
 }
