@@ -643,6 +643,14 @@ function App() {
   const detailScrollRef = useRef<HTMLDivElement>(null)
   const detailAutoScrollRef = useRef(true)
 
+  // Refs for stable socket handler access (avoid socket effect dep churn)
+  const selectedChannelRef = useRef(selectedChannel)
+  selectedChannelRef.current = selectedChannel
+  const inboxFilterRef = useRef(inboxFilter)
+  inboxFilterRef.current = inboxFilter
+  const serversRef = useRef(snapshot?.service.servers ?? [])
+  serversRef.current = snapshot?.service.servers ?? []
+
   // Quick Send attachment state (#68)
   const [quickSendAttachments, setQuickSendAttachments] = useState<{ file: File; uploading: boolean; error?: boolean; id?: string }[]>([])
 
@@ -663,6 +671,8 @@ function App() {
   const serviceAuthenticated = snapshot?.service.authenticated ?? false
   const latestUpdate = snapshot?.updates.latest ?? null
   const copy = snapshot ? getCopy(snapshot.language, snapshot.resolvedLanguage) : getCopy('system')
+  const copyRef = useRef(copy)
+  copyRef.current = copy
   const serviceLogContent = serviceLogViewer?.snapshot?.content ?? ''
   const serviceLogInputQuery = serviceLogViewer?.query ?? ''
   const serviceLogQuery = useDeferredValue(serviceLogInputQuery.trim())
@@ -1309,12 +1319,15 @@ function App() {
     return () => { cancelled = true }
   }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone, inboxFilter, copy.inboxThread, mapInboxFeedItem])
 
+  // Stable server slugs key for socket effect (avoid reconnect on unrelated snapshot changes)
+  const apiReadySlugs = useMemo(
+    () => (snapshot?.service.servers ?? []).filter((s) => s.apiKeyReady).map((s) => s.slug).sort().join(','),
+    [snapshot?.service.servers],
+  )
+
   // Socket.IO real-time feed updates (#64)
   useEffect(() => {
-    if (!snapshot?.service.authenticated || !initialServiceRefreshDone) return
-
-    const servers = snapshot.service.servers.filter((s) => s.apiKeyReady)
-    if (servers.length === 0) return
+    if (!snapshot?.service.authenticated || !initialServiceRefreshDone || !apiReadySlugs) return
 
     let socket: Socket | null = null
     let cancelled = false
@@ -1326,10 +1339,14 @@ function App() {
       if (debounceTimer !== null) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
         if (cancelled) return
-        // Re-fetch the inbox to get updated data (same logic as loadUnifiedInbox)
-        const apiFilter = inboxFilter === 'unread' ? 'unread' : 'all'
+        // Read current values from refs to avoid stale closures
+        const currentFilter = inboxFilterRef.current
+        const currentServers = serversRef.current.filter((s) => s.apiKeyReady)
+        const currentCopy = copyRef.current
+        const apiFilter = currentFilter === 'unread' ? 'unread' : 'all'
+
         Promise.allSettled(
-          servers.map(async (server) => {
+          currentServers.map(async (server) => {
             const resp = await fetchInbox(server.slug, { filter: apiFilter, limit: 30, offset: 0 })
             return { server, resp }
           })
@@ -1342,7 +1359,7 @@ function App() {
             const { server, resp } = r.value
             if (resp.hasMore) anyHasMore = true
             for (const item of resp.items) {
-              const mapped = mapInboxFeedItem(item, server.slug, server.name, copy.inboxThread)
+              const mapped = mapInboxFeedItem(item, server.slug, server.name, currentCopy.inboxThread)
               if (mapped) allItems.push(mapped)
             }
           }
@@ -1350,6 +1367,25 @@ function App() {
           setInboxHasMore(anyHasMore)
           setInboxOffset(30)
         })
+
+        // Also refresh detail messages if a conversation is open (#70)
+        const sel = selectedChannelRef.current
+        if (sel) {
+          const fetcher = sel.itemType === 'thread' ? fetchThreadMessages : fetchChannelMessages
+          fetcher(sel.serverSlug, sel.channelId, { limit: 50 }).then((resp) => {
+            if (cancelled) return
+            setDetailMessages(normalizeMessages(resp.messages))
+            setDetailHasMore(resp.hasMore)
+            // Auto-scroll if user was at bottom
+            if (detailAutoScrollRef.current) {
+              requestAnimationFrame(() => {
+                if (detailScrollRef.current) {
+                  detailScrollRef.current.scrollTop = detailScrollRef.current.scrollHeight
+                }
+              })
+            }
+          }).catch(() => { /* ignore */ })
+        }
       }, DEBOUNCE_MS)
     }
 
@@ -1407,7 +1443,8 @@ function App() {
         socket = null
       }
     }
-  }, [snapshot?.service.servers, snapshot?.service.authenticated, initialServiceRefreshDone, inboxFilter, copy.inboxThread, mapInboxFeedItem])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilized: only reconnect on auth/server slug changes
+  }, [apiReadySlugs, snapshot?.service.authenticated, initialServiceRefreshDone])
 
   // Fetch joined channels for Quick Send target list (separate from feed)
   useEffect(() => {
@@ -2824,7 +2861,7 @@ function App() {
                     placeholder={copy.customThemeNamePlaceholder}
                     aria-label={copy.themeNewTitle}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
+                      if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229) {
                         event.preventDefault()
                         void handleCreateTheme()
                       } else if (event.key === 'Escape') {
@@ -3564,7 +3601,7 @@ function App() {
                     value={serviceLogViewer.query}
                     onChange={(event) => handleServiceLogQueryChange(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
+                      if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229) {
                         event.preventDefault()
                         handleServiceLogMatchStep(event.shiftKey ? -1 : 1)
                       }
@@ -4512,7 +4549,8 @@ function ComposeBox({
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
+          // Skip Enter during IME composition (e.g. Chinese/Japanese input)
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
             e.preventDefault()
             if (canSend && !sending && !disabled) onSend()
           }
@@ -4607,21 +4645,44 @@ function sanitizeHref(raw: string): string | null {
 }
 
 function renderMarkdown(text: string): string {
-  return text
+  // Escape HTML entities first
+  let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
-      const safe = sanitizeHref(href)
-      if (safe) {
-        return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>`
-      }
-      return label // strip link, keep label text
-    })
-    .replace(/\n/g, '<br/>')
+
+  // Fenced code blocks (```...```) — must come before inline code
+  html = html.replace(/```([^`]*?)```/gs, '<pre><code>$1</code></pre>')
+  // Inline code
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>')
+  // Bold (**text** or __text__)
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>')
+  // Italic (*text* or _text_)
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  html = html.replace(/(?<!\w)_(.+?)_(?!\w)/g, '<em>$1</em>')
+  // Strikethrough (~~text~~)
+  html = html.replace(/~~(.+?)~~/g, '<del>$1</del>')
+  // Links [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
+    const safe = sanitizeHref(href)
+    if (safe) {
+      return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>`
+    }
+    return label
+  })
+  // Bare URLs (http/https)
+  html = html.replace(/(?<!")(?<!=)\b(https?:\/\/[^\s<)]+)/g, (_match, url: string) => {
+    const safe = sanitizeHref(url)
+    if (safe) {
+      return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${url}</a>`
+    }
+    return url
+  })
+  // Line breaks
+  html = html.replace(/\n/g, '<br/>')
+
+  return html
 }
 
 // --- Relative time helper ---

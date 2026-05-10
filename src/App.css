@@ -3703,6 +3703,35 @@ body:has(.loading-shell),
   padding: 1px 4px;
   border-radius: 3px;
   font-size: 0.78rem;
+  font-family: var(--font-family-mono, monospace);
+}
+
+.inbox-detail-msg-content pre {
+  background: color-mix(in srgb, var(--line) 25%, transparent);
+  padding: 8px 10px;
+  border-radius: var(--radius-xs, 6px);
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+.inbox-detail-msg-content pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.76rem;
+  white-space: pre-wrap;
+}
+
+.inbox-detail-msg-content strong {
+  font-weight: 700;
+}
+
+.inbox-detail-msg-content em {
+  font-style: italic;
+}
+
+.inbox-detail-msg-content del {
+  text-decoration: line-through;
+  opacity: 0.7;
 }
 
 .inbox-detail-msg-content a {
