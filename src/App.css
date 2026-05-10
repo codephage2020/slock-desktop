@@ -1995,7 +1995,9 @@ body:has(.loading-shell),
   cursor: pointer;
   transition:
     border-color 160ms ease,
-    background 160ms ease;
+    background 160ms ease,
+    box-shadow 160ms ease,
+    opacity 120ms ease;
 }
 
 .service-server-row:hover {
@@ -2017,6 +2019,7 @@ body:has(.loading-shell),
 .service-server-row.selected {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
   background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .service-server-row.running {

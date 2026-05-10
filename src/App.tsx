@@ -1929,7 +1929,22 @@ function App() {
     try {
       setBusyAction(`select-service:${selectedServerSlug}`)
       setErrorMessage(null)
-      await waitForNextPaint()
+      // Optimistic update: immediately reflect the new selection in the UI
+      // so the selected state transitions instantly without waiting for IPC.
+      setSnapshot((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          service: {
+            ...prev.service,
+            selectedServerSlug,
+            servers: prev.service.servers.map((s) => ({
+              ...s,
+              selected: s.slug === selectedServerSlug,
+            })),
+          },
+        }
+      })
       const next = await selectServiceServer(selectedServerSlug)
       startTransition(() => setSnapshot(next))
     } catch (error) {
