@@ -39,6 +39,7 @@ body:has(.loading-shell),
   --danger: #ef4444;
   --success: #22c55e;
   --warning: #f59e0b;
+  font-family: var(--font-family, Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif);
 }
 
 .studio-shell[aria-busy='true'],
