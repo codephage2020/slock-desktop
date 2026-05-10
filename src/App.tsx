@@ -564,7 +564,6 @@ function App() {
   const serverPanelRef = useRef<HTMLDivElement | null>(null)
   const stylePanelRef = useRef<HTMLDivElement | null>(null)
   const releaseNotesRef = useRef<HTMLDivElement | null>(null)
-  const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
   const serviceLogSearchRef = useRef<HTMLInputElement | null>(null)
   const serviceLogContentRef = useRef<HTMLPreElement | null>(null)
@@ -981,9 +980,6 @@ function App() {
         return
       }
       if (stylePanelRef.current?.contains(target)) {
-        return
-      }
-      if (themeDraftRef.current?.contains(target)) {
         return
       }
       setNewThemeDraft(null)
