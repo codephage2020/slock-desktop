@@ -19,7 +19,10 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex, OnceLock,
+    },
     thread::{self, sleep},
     time::{Duration, Instant},
 };
@@ -773,15 +776,34 @@ struct InboxUnreadEntry {
     unread_count: u32,
 }
 
+/// Monotonic generation counter for background settings saves.
+/// Each call to `save_settings_background` increments this counter and captures its
+/// value. The spawned thread only writes to disk if its generation is still the latest,
+/// guaranteeing latest-wins semantics even when rapid sequential saves race.
+static SETTINGS_SAVE_GEN: AtomicU64 = AtomicU64::new(0);
+
 /// Persist settings to disk on a background thread to avoid blocking the IPC thread.
 /// Serialization happens on the calling thread (fast); only the fs::write is deferred.
+/// Uses a generation counter so that only the latest save wins when multiple background
+/// writes are in flight (e.g. fast preset switching: Ocean→Nord→Rosé).
 fn save_settings_background(app: &AppHandle, settings: &AppSettings) {
     match config::settings_path(app) {
         Ok(path) => match serde_json::to_vec_pretty(settings) {
             Ok(payload) => {
+                let gen = SETTINGS_SAVE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
                 thread::spawn(move || {
-                    if let Err(e) = fs::write(&path, &payload) {
-                        log::warn!("failed to persist settings in background: {e}");
+                    // If a newer save was requested while we were waiting to run, skip.
+                    if SETTINGS_SAVE_GEN.load(Ordering::SeqCst) != gen {
+                        return;
+                    }
+                    // Atomic write: tmp file + rename to avoid partial/corrupt writes.
+                    let tmp = path.with_extension("json.tmp");
+                    if let Err(e) = fs::write(&tmp, &payload) {
+                        log::warn!("failed to write settings tmp file: {e}");
+                        return;
+                    }
+                    if let Err(e) = fs::rename(&tmp, &path) {
+                        log::warn!("failed to rename settings tmp file: {e}");
                     }
                 });
             }
