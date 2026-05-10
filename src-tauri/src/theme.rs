@@ -1704,9 +1704,11 @@ pub fn injected_script(theme: ThemeDefinition) -> String {
 
     }};
 
-    markAvatarInitials();
-    markSemanticStatusTokens();
-    markWorkspaceModuleSurfaces();
+    requestAnimationFrame(() => {{
+      markAvatarInitials();
+      markSemanticStatusTokens();
+      markWorkspaceModuleSurfaces();
+    }});
     if (!window.__slockDesktopAvatarObserver && document.body) {{
       let avatarPending = false;
       window.__slockDesktopAvatarObserver = new MutationObserver(() => {{
