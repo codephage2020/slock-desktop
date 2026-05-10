@@ -2030,7 +2030,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     host.style.setProperty("--desktop-sidebar", theme.sidebar);
     host.style.setProperty("--desktop-panel", theme.panel);
     host.style.setProperty("--desktop-surface", theme.surface);
-    host.style.setProperty("--desktop-surface-secondary", theme.surfaceSecondary || theme.surfaceStrong);
+    host.style.setProperty("--desktop-surface-secondary", theme.surfaceSecondary);
     host.style.setProperty("--desktop-surface-tertiary", theme.surfaceTertiary);
     host.style.setProperty("--desktop-line", theme.line);
     host.style.setProperty("--desktop-line-strong", theme.lineStrong);
@@ -2044,12 +2044,15 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     host.style.setProperty("--desktop-accent", theme.accent);
     host.style.setProperty("--desktop-accent-hover", `color-mix(in srgb, ${theme.accent} 88%, black)`);
     host.style.setProperty("--desktop-accent-active", `color-mix(in srgb, ${theme.accent} 76%, black)`);
+    host.style.setProperty("--desktop-accent-soft", theme.accentSoft);
     host.style.setProperty("--desktop-radius-xs", theme.radiusXs + "px");
     host.style.setProperty("--desktop-radius-sm", theme.radiusSm + "px");
     host.style.setProperty("--desktop-radius-md", theme.radiusMd + "px");
     host.style.setProperty("--desktop-radius-lg", theme.radiusLg + "px");
     host.style.setProperty("--desktop-radius-xl", theme.radiusXl + "px");
     host.style.setProperty("--desktop-radius-pill", theme.radiusPill + "px");
+    host.style.setProperty("--desktop-font-family", theme.fontFamily);
+    host.style.setProperty("--desktop-font-family-mono", theme.fontFamilyMono);
   };
 
   const css = `
@@ -2070,6 +2073,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       --desktop-accent: #10a37f;
       --desktop-accent-hover: #0e8f70;
       --desktop-accent-active: #0c7a60;
+      --desktop-accent-soft: #e7f5f1;
       --desktop-selection: #e7f5f1;
       --desktop-hover: rgba(31, 31, 28, 0.04);
       --desktop-focus-ring: rgba(16, 163, 127, 0.28);
@@ -2080,8 +2084,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       --desktop-radius-xl: 20px;
       --desktop-radius-pill: 999px;
       --desktop-danger: #c24141;
+      --desktop-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --desktop-font-family-mono: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
       color: var(--desktop-text);
-      font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+      font-family: var(--desktop-font-family);
     }
 
     @media (prefers-color-scheme: dark) {
