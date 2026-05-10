@@ -1,6 +1,5 @@
 import {
   type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
   startTransition,
   useCallback,
   useDeferredValue,
@@ -88,15 +87,6 @@ interface MessageReminderToast {
 }
 
 const DEFAULT_NEW_THEME_ACCENT = '#10a37f'
-const THEME_ACCENT_PRESETS = [
-  '#ff3b30',
-  '#ff9500',
-  '#ffcc00',
-  '#34c759',
-  '#32ade6',
-  '#007aff',
-  '#af52de',
-] as const
 
 const THEME_MODES = [
   { id: 'light', icon: 'sun', labelKey: 'modeLight' },
@@ -505,15 +495,8 @@ type ServiceRefreshPhase = 'catalog' | 'status' | null
 interface NewThemeDraft {
   name: string
   accent: string
-  hexInput: string
-  rgbInput: {
-    r: string
-    g: string
-    b: string
-  }
 }
 
-type RgbChannel = keyof NewThemeDraft['rgbInput']
 
 interface ServiceLogViewerState {
   loading: boolean
@@ -562,10 +545,8 @@ function App() {
   const [browserLoginPending, setBrowserLoginPending] = useState(false)
   const [serviceRefreshPhase, setServiceRefreshPhase] = useState<ServiceRefreshPhase>(null)
   const [newThemeDraft, setNewThemeDraft] = useState<NewThemeDraft | null>(null)
-  const [newThemeWheelOpen, setNewThemeWheelOpen] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [serverPanelOpen, setServerPanelOpen] = useState(false)
-  const [themePanelOpen, setThemePanelOpen] = useState(false)
   const [stylePanelOpen, setStylePanelOpen] = useState(false)
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
   const [computerCreateFlow, setComputerCreateFlow] = useState<{
@@ -581,10 +562,8 @@ function App() {
   } | null>(null)
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const serverPanelRef = useRef<HTMLDivElement | null>(null)
-  const themePanelRef = useRef<HTMLDivElement | null>(null)
   const stylePanelRef = useRef<HTMLDivElement | null>(null)
   const releaseNotesRef = useRef<HTMLDivElement | null>(null)
-  const themeDraftRef = useRef<HTMLDivElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
   const serviceLogSearchRef = useRef<HTMLInputElement | null>(null)
   const serviceLogContentRef = useRef<HTMLPreElement | null>(null)
@@ -992,7 +971,6 @@ function App() {
 
   useEffect(() => {
     if (!newThemeDraft) {
-      setNewThemeWheelOpen(false)
       return
     }
 
@@ -1001,14 +979,10 @@ function App() {
       if (!(target instanceof Node)) {
         return
       }
-      if (themePanelRef.current?.contains(target)) {
-        return
-      }
-      if (themeDraftRef.current?.contains(target)) {
+      if (stylePanelRef.current?.contains(target)) {
         return
       }
       setNewThemeDraft(null)
-      setNewThemeWheelOpen(false)
     }
 
     document.addEventListener('pointerdown', closeDraftOnOutsidePointer)
@@ -1054,26 +1028,6 @@ function App() {
     document.addEventListener('pointerdown', closeServerPanelOnOutsidePointer)
     return () => document.removeEventListener('pointerdown', closeServerPanelOnOutsidePointer)
   }, [serverPanelOpen])
-
-  useEffect(() => {
-    if (!themePanelOpen) {
-      return
-    }
-
-    const closeThemePanelOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) {
-        return
-      }
-      if (themePanelRef.current?.contains(target)) {
-        return
-      }
-      setThemePanelOpen(false)
-    }
-
-    document.addEventListener('pointerdown', closeThemePanelOnOutsidePointer)
-    return () => document.removeEventListener('pointerdown', closeThemePanelOnOutsidePointer)
-  }, [themePanelOpen])
 
   useEffect(() => {
     if (!stylePanelOpen) {
@@ -1696,64 +1650,16 @@ function App() {
 
   function startNewTheme() {
     setNewThemeDraft(createNewThemeDraft())
-    setNewThemeWheelOpen(true)
   }
 
   function cancelNewTheme() {
     setNewThemeDraft(null)
-    setNewThemeWheelOpen(false)
   }
 
   function updateNewThemeAccent(accent: string) {
     setNewThemeDraft((current) =>
       current ? syncNewThemeDraftAccent(current, accent) : current,
     )
-  }
-
-  function handleNewThemeHexChange(value: string) {
-    setNewThemeDraft((current) => {
-      if (!current) {
-        return current
-      }
-      const normalized = normalizeHexColor(value)
-      if (!normalized) {
-        return { ...current, hexInput: value.toUpperCase() }
-      }
-      return syncNewThemeDraftAccent({ ...current, hexInput: value.toUpperCase() }, normalized)
-    })
-  }
-
-  function handleNewThemeRgbChange(channel: RgbChannel, value: string) {
-    const nextValue = sanitizeRgbInput(value)
-    setNewThemeDraft((current) => {
-      if (!current) {
-        return current
-      }
-
-      const rgbInput = { ...current.rgbInput, [channel]: nextValue }
-      const rgb = parseRgbInput(rgbInput)
-      if (!rgb) {
-        return { ...current, rgbInput }
-      }
-
-      return syncNewThemeDraftAccent(
-        { ...current, rgbInput },
-        rgbToHex(rgb.r, rgb.g, rgb.b),
-      )
-    })
-  }
-
-  function handleNewThemeWheelPointer(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    updateNewThemeAccent(getAccentFromWheelPointer(event.clientX, event.clientY, event.currentTarget))
-  }
-
-  function handleNewThemeWheelMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.buttons !== 1) {
-      return
-    }
-    updateNewThemeAccent(getAccentFromWheelPointer(event.clientX, event.clientY, event.currentTarget))
   }
 
   async function handleCreateTheme() {
@@ -1769,7 +1675,6 @@ function App() {
       })
       startTransition(() => setSnapshot(next))
       setNewThemeDraft(null)
-      setNewThemeWheelOpen(false)
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
     } finally {
@@ -2715,221 +2620,179 @@ function App() {
           </button>
         ) : null}
 
-        <div className="titlebar-style" ref={stylePanelRef}>
+        {/* Unified Appearance panel (#75/#76 Phase 2) */}
+        <div className="titlebar-appearance" ref={stylePanelRef}>
           <button
             type="button"
-            className="titlebar-icon-button"
+            className="titlebar-theme-button"
             onClick={() => setStylePanelOpen((open) => !open)}
             aria-expanded={stylePanelOpen}
             title={copy.themeStyle}
             aria-label={copy.themeStyle}
-          >
-            <StyleIcon />
-          </button>
-          {stylePanelOpen ? (
-            <div className="titlebar-style-panel" aria-label={copy.themeStyle}>
-              <div className="control-card-head">
-                <p className="eyebrow">{copy.themeStyle}</p>
-              </div>
-              <ul className="theme-rail theme-style-rail" role="radiogroup" aria-label={copy.themeStyle}>
-                {snapshot.themeStyles.map((style) => (
-                  <li key={style.id}>
-                    <ThemeStyleRow
-                      style={style}
-                      name={getThemeStyleName(style, copy)}
-                      summary={getThemeStyleSummary(style, copy)}
-                      selected={style.id === snapshot.styleScheme || (style.id === 'original' && activeIsOriginal)}
-                      busy={busyAction === `style:${style.id}`}
-                      onSelect={() => handleThemeStyleChange(style.id)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="titlebar-theme" ref={themePanelRef}>
-          <button
-            type="button"
-            className="titlebar-theme-button"
-            onClick={() => setThemePanelOpen((open) => !open)}
-            aria-expanded={themePanelOpen}
-            aria-label={copy.themeColor}
-            title={copy.themeColor}
             style={{ '--current-accent': selectedThemeAccent } as CSSProperties}
           >
             <span className="titlebar-theme-swatch" aria-hidden="true" />
           </button>
-          {themePanelOpen ? (
-            <div className="titlebar-theme-menu" aria-label={copy.themeColor}>
-              <div className="control-card-head">
-                <p className="eyebrow">{copy.themeColor}</p>
-                <button
-                  className="icon-action-button positive theme-add-button"
-                  type="button"
-                  onClick={startNewTheme}
-                  disabled={Boolean(newThemeDraft) || busyAction === 'create-theme'}
-                  aria-label={copy.themeNewLabel}
-                  title={copy.themeNewLabel}
-                >
-                  <PlusIcon />
-                </button>
-              </div>
-
-              <div className="theme-menu-list" role="radiogroup" aria-label={copy.themeColor}>
-                {snapshot.themes.map((theme) => {
-                  const customTheme = snapshot.customThemes.find((item) => item.id === theme.id)
-                  const selected = theme.id === snapshot.colorScheme
-                  const builtIn = !customTheme
-                  const swatch = customTheme?.accent ?? DEFAULT_NEW_THEME_ACCENT
-                  return (
-                    <ThemeRow
-                      key={theme.id}
-                      themeId={theme.id}
-                      swatch={swatch}
-                      name={builtIn ? copy.themeDefaultColorName : (customTheme?.name ?? theme.name)}
-                      summary={swatch.toUpperCase()}
-                      selected={selected}
-                      busy={busyAction === `theme:${theme.id}`}
-                      locked={builtIn}
-                      onSelect={() => handleThemeChange(theme.id)}
-                      onAccentChange={customTheme ? (value) => void handleAccentChange(theme.id, value) : undefined}
-                      onDelete={customTheme ? () => void handleDeleteTheme(theme.id) : undefined}
-                      deleting={busyAction === `delete:${theme.id}`}
-                      deleteLabel={copy.themeDelete}
-                      accentLabel={copy.customThemeAccentAria}
-                    />
-                  )
-                })}
-                {snapshot.customThemes.length === 0 && !newThemeDraft ? (
-                  <div className="theme-empty-row">
-                    <p className="inline-note">{copy.themeEmptyHint}</p>
-                  </div>
-                ) : null}
-              </div>
-
-            {newThemeDraft ? (
-              <div
-                ref={themeDraftRef}
-                className="theme-draft-row theme-draft-floating"
-                role="dialog"
-                aria-label={copy.themeNewTitle}
-              >
-                <div
-                  className="theme-draft-accent"
-                  style={{ '--custom-accent': newThemeDraft.accent } as CSSProperties}
-                >
-                  <button
-                    className={`accent-wheel${newThemeWheelOpen ? ' expanded' : ''}`}
-                    type="button"
-                    onClick={() => setNewThemeWheelOpen((open) => !open)}
-                    aria-label={copy.customThemeAccentAria}
-                    aria-expanded={newThemeWheelOpen}
-                  >
-                    <span aria-hidden="true" />
-                  </button>
-                  {newThemeWheelOpen ? (
-                    <div className="accent-wheel-popover">
-                      <div
-                        className="accent-wheel-large"
-                        role="slider"
-                        tabIndex={0}
-                        aria-label={copy.customThemeAccentAria}
-                        aria-valuetext={newThemeDraft.hexInput}
-                        style={getAccentWheelMarkerStyle(newThemeDraft.accent)}
-                        onPointerDown={handleNewThemeWheelPointer}
-                        onPointerMove={handleNewThemeWheelMove}
+          {stylePanelOpen ? (
+            <div className="appearance-panel" aria-label={copy.themeStyle}>
+              {/* Style presets — compact color blocks */}
+              <div className="appearance-section">
+                <p className="eyebrow">{copy.themeStyle}</p>
+                <div className="appearance-style-row" role="radiogroup" aria-label={copy.themeStyle}>
+                  {snapshot.themeStyles.map((style) => {
+                    const selected = style.id === snapshot.styleScheme || (style.id === 'original' && activeIsOriginal)
+                    return (
+                      <button
+                        key={style.id}
+                        type="button"
+                        className={`appearance-style-block${selected ? ' selected' : ''}${busyAction === `style:${style.id}` ? ' busy' : ''}`}
+                        role="radio"
+                        aria-checked={selected}
+                        aria-label={getThemeStyleName(style, copy)}
+                        title={getThemeStyleName(style, copy)}
+                        style={{
+                          '--block-a': style.preview[0],
+                          '--block-b': style.preview[1],
+                          '--block-c': style.preview[2],
+                        } as CSSProperties}
+                        onClick={() => handleThemeStyleChange(style.id)}
+                        disabled={busyAction?.startsWith('style:')}
                       >
-                        <span className="accent-wheel-marker" aria-hidden="true" />
-                      </div>
-                    </div>
-                  ) : null}
+                        <span className="appearance-style-preview" aria-hidden="true" />
+                        {selected && <span className="appearance-style-check" aria-hidden="true" />}
+                      </button>
+                    )
+                  })}
                 </div>
-                <div className="theme-draft-fields">
-                  <div className="theme-color-picker-label">{copy.customThemeAccent}</div>
-                  <div className="theme-preset-row" aria-label={copy.customThemeAccentAria}>
-                    {THEME_ACCENT_PRESETS.map((accent) => {
-                      const selected = normalizeHexColor(accent) === newThemeDraft.accent
-                      return (
-                        <button
-                          key={accent}
-                          className={`theme-preset-swatch${selected ? ' selected' : ''}`}
-                          type="button"
-                          style={{ '--preset-accent': accent } as CSSProperties}
-                          onClick={() => updateNewThemeAccent(accent)}
-                          aria-label={accent.toUpperCase()}
-                          title={accent.toUpperCase()}
-                        />
-                      )
-                    })}
-                  </div>
-                  <input
-                    ref={newNameInputRef}
-                    className="theme-name-input"
-                    value={newThemeDraft.name}
-                    onChange={(event) =>
-                      setNewThemeDraft((current) =>
-                        current ? { ...current, name: event.target.value } : current,
-                      )
-                    }
-                    placeholder={copy.customThemeNamePlaceholder}
-                    aria-label={copy.themeNewTitle}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229) {
-                        event.preventDefault()
-                        void handleCreateTheme()
-                      } else if (event.key === 'Escape') {
-                        event.preventDefault()
-                        cancelNewTheme()
-                      }
-                    }}
-                  />
-                  <div className="theme-color-inputs">
-                    <label className="theme-hex-input">
-                      <span>HEX</span>
-                      <input
-                        value={newThemeDraft.hexInput}
-                        onChange={(event) => handleNewThemeHexChange(event.target.value)}
-                        inputMode="text"
-                        spellCheck={false}
-                        aria-label="HEX"
-                      />
-                    </label>
-                    {(['r', 'g', 'b'] as const).map((channel) => (
-                      <label key={channel} className="theme-rgb-input">
-                        <span>{channel.toUpperCase()}</span>
-                        <input
-                          value={newThemeDraft.rgbInput[channel]}
-                          onChange={(event) =>
-                            handleNewThemeRgbChange(channel, event.target.value)
-                          }
-                          inputMode="numeric"
-                          aria-label={channel.toUpperCase()}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div className="theme-draft-actions">
-                  <button
-                    className="tiny-button accent"
-                    type="button"
-                    onClick={handleCreateTheme}
-                    disabled={busyAction === 'create-theme'}
-                  >
-                    {busyAction === 'create-theme' ? copy.creatingTheme : copy.themeCreate}
-                  </button>
-                  <button
-                    className="tiny-button muted"
-                    type="button"
-                    onClick={cancelNewTheme}
-                  >
-                    {copy.themeCancel}
-                  </button>
-                </div>
+                <span className="appearance-style-name">{getThemeStyleName(
+                  snapshot.themeStyles.find((s) => s.id === snapshot.styleScheme) ??
+                  snapshot.themeStyles.find((s) => s.id === 'original') ??
+                  snapshot.themeStyles[0],
+                  copy,
+                )}</span>
               </div>
-            ) : null}
+
+              <hr className="appearance-divider" />
+
+              {/* Accent color dots */}
+              <div className="appearance-section">
+                <p className="eyebrow">{copy.themeColor}</p>
+                <div className="appearance-accent-row" role="radiogroup" aria-label={copy.themeColor}>
+                  {snapshot.themes.map((theme) => {
+                    const customTheme = snapshot.customThemes.find((item) => item.id === theme.id)
+                    const selected = theme.id === snapshot.colorScheme
+                    const swatch = customTheme?.accent ?? DEFAULT_NEW_THEME_ACCENT
+                    const builtIn = !customTheme
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        className={`appearance-accent-dot${selected ? ' selected' : ''}`}
+                        role="radio"
+                        aria-checked={selected}
+                        aria-label={builtIn ? copy.themeDefaultColorName : (customTheme?.name ?? theme.name)}
+                        title={builtIn ? copy.themeDefaultColorName : (customTheme?.name ?? theme.name)}
+                        style={{ '--dot-color': swatch } as CSSProperties}
+                        onClick={() => handleThemeChange(theme.id)}
+                        disabled={busyAction === `theme:${theme.id}`}
+                      />
+                    )
+                  })}
+                  <button
+                    type="button"
+                    className="appearance-accent-add"
+                    onClick={startNewTheme}
+                    disabled={Boolean(newThemeDraft) || busyAction === 'create-theme'}
+                    aria-label={copy.themeNewLabel}
+                    title={copy.themeNewLabel}
+                  >
+                    +
+                  </button>
+                </div>
+                {/* Inline edit/delete for selected custom theme */}
+                {(() => {
+                  const selectedTheme = snapshot.themes.find((t) => t.id === snapshot.colorScheme)
+                  const customTheme = selectedTheme ? snapshot.customThemes.find((c) => c.id === selectedTheme.id) : null
+                  if (!customTheme) return null
+                  return (
+                    <div className="appearance-custom-actions">
+                      <input
+                        type="color"
+                        className="appearance-accent-picker"
+                        value={customTheme.accent}
+                        onChange={(e) => void handleAccentChange(customTheme.id, e.target.value)}
+                        aria-label={copy.customThemeAccentAria}
+                        title={copy.customThemeAccentAria}
+                      />
+                      <button
+                        type="button"
+                        className="tiny-button muted"
+                        onClick={() => void handleDeleteTheme(customTheme.id)}
+                        disabled={busyAction === `delete:${customTheme.id}`}
+                      >
+                        {copy.themeDelete}
+                      </button>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* New theme draft — compact */}
+              {newThemeDraft ? (
+                <div className="appearance-new-theme">
+                  <hr className="appearance-divider" />
+                  <div className="appearance-section">
+                    <p className="eyebrow">{copy.themeNewTitle}</p>
+                    <div className="appearance-new-theme-row">
+                      <input
+                        type="color"
+                        className="appearance-accent-picker"
+                        value={newThemeDraft.accent}
+                        onChange={(e) => updateNewThemeAccent(e.target.value)}
+                        aria-label={copy.customThemeAccentAria}
+                      />
+                      <input
+                        ref={newNameInputRef}
+                        className="appearance-name-input"
+                        value={newThemeDraft.name}
+                        onChange={(event) =>
+                          setNewThemeDraft((current) =>
+                            current ? { ...current, name: event.target.value } : current,
+                          )
+                        }
+                        placeholder={copy.customThemeNamePlaceholder}
+                        aria-label={copy.themeNewTitle}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+                            event.preventDefault()
+                            void handleCreateTheme()
+                          } else if (event.key === 'Escape') {
+                            event.preventDefault()
+                            cancelNewTheme()
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="appearance-new-theme-actions">
+                      <button
+                        className="tiny-button accent"
+                        type="button"
+                        onClick={handleCreateTheme}
+                        disabled={busyAction === 'create-theme'}
+                      >
+                        {busyAction === 'create-theme' ? copy.creatingTheme : copy.themeCreate}
+                      </button>
+                      <button
+                        className="tiny-button muted"
+                        type="button"
+                        onClick={cancelNewTheme}
+                      >
+                        {copy.themeCancel}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -3791,22 +3654,6 @@ function App() {
   )
 }
 
-interface ThemeRowProps {
-  themeId: string
-  swatch: string
-  name: string
-  summary: string
-  selected: boolean
-  busy: boolean
-  locked?: boolean
-  onSelect: () => void
-  onAccentChange?: (value: string) => void
-  onDelete?: () => void
-  deleting?: boolean
-  deleteLabel?: string
-  accentLabel?: string
-}
-
 function AccountAvatar({
   account,
 }: {
@@ -3828,133 +3675,6 @@ function AccountAvatar({
         />
       ) : null}
     </span>
-  )
-}
-
-function ThemeRow(props: ThemeRowProps) {
-  const {
-    swatch,
-    name,
-    summary,
-    selected,
-    locked,
-    onSelect,
-    onAccentChange,
-    onDelete,
-    deleting,
-    deleteLabel,
-    accentLabel,
-  } = props
-
-  return (
-    <div
-      className={`theme-row${selected ? ' selected' : ''}${locked ? ' locked' : ''}`}
-      role="radio"
-      aria-checked={selected}
-      tabIndex={0}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onSelect()
-        }
-      }}
-      onClick={(event) => {
-        const target = event.target as HTMLElement
-        if (target.closest('button, input, label')) {
-          return
-        }
-        onSelect()
-      }}
-    >
-      {locked ? (
-        <span
-          className="theme-row-swatch locked"
-          style={{ background: swatch }}
-          aria-hidden="true"
-        />
-      ) : (
-        <label
-          className="theme-row-swatch interactive"
-          style={{ background: swatch }}
-          title={accentLabel}
-        >
-          <span className="sr-only">{accentLabel}</span>
-          <input
-            type="color"
-            value={swatch}
-            onChange={(event) => onAccentChange?.(event.target.value)}
-            aria-label={accentLabel}
-          />
-        </label>
-      )}
-
-      <div className="theme-row-copy">
-        <span className="theme-row-name">{name}</span>
-        <span className="theme-row-summary">{summary}</span>
-      </div>
-
-      {!locked ? (
-        <div className="theme-row-actions">
-          <button
-            className="icon-action-button danger compact"
-            type="button"
-            onClick={onDelete}
-            disabled={deleting}
-            aria-label={deleteLabel}
-            title={deleteLabel}
-          >
-            {deleting ? <SpinnerIcon /> : <XIcon />}
-          </button>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-interface ThemeStyleRowProps {
-  style: ThemeStyleDefinition
-  name: string
-  summary: string
-  selected: boolean
-  busy: boolean
-  onSelect: () => void
-}
-
-function ThemeStyleRow({
-  style,
-  name,
-  summary,
-  selected,
-  busy,
-  onSelect,
-}: ThemeStyleRowProps) {
-  return (
-    <div
-      className={`theme-row theme-style-row${selected ? ' selected' : ''}`}
-      role="radio"
-      aria-checked={selected}
-      tabIndex={0}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onSelect()
-        }
-      }}
-      onClick={onSelect}
-    >
-      <span className="theme-style-preview" aria-hidden="true">
-        {style.preview.map((color, index) => (
-          <span key={`${style.id}-${index}`} style={{ background: color }} />
-        ))}
-      </span>
-      <span className="theme-row-copy">
-        <span className="theme-row-name">{name}</span>
-        <span className="theme-row-summary">{summary}</span>
-      </span>
-      <span className="theme-row-actions visible">
-        {busy ? <SpinnerIcon /> : null}
-      </span>
-    </div>
   )
 }
 
@@ -4018,12 +3738,16 @@ function buildShellStyle(theme: ThemeDefinition) {
     '--focus-ring': theme.focusRing,
     '--accent': theme.accent,
     '--accent-soft': theme.accentSoft,
+    '--accent-hover': `color-mix(in srgb, ${theme.accent} 88%, black)`,
+    '--accent-active': `color-mix(in srgb, ${theme.accent} 76%, black)`,
     '--radius-xs': theme.radiusXs + 'px',
     '--radius-sm': theme.radiusSm + 'px',
     '--radius-md': theme.radiusMd + 'px',
     '--radius-lg': theme.radiusLg + 'px',
     '--radius-xl': theme.radiusXl + 'px',
     '--radius-pill': theme.radiusPill + 'px',
+    '--font-family': theme.fontFamily,
+    '--font-family-mono': theme.fontFamilyMono,
   } as CSSProperties
 }
 
@@ -4378,24 +4102,6 @@ function ServerSearchIcon() {
   )
 }
 
-function PlusIcon() {
-  return (
-    <svg
-      className="service-action-icon"
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-  )
-}
-
 function XIcon() {
   return (
     <svg
@@ -4410,25 +4116,6 @@ function XIcon() {
     >
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
-    </svg>
-  )
-}
-
-function StyleIcon() {
-  return (
-    <svg
-      className="service-action-icon"
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 2.7 2 7l10 5 10-5-10-4.3Z" />
-      <path d="m2 17 10 5 10-5" />
-      <path d="m2 12 10 5 10-5" />
     </svg>
   )
 }
@@ -4899,28 +4586,10 @@ function getThemeStyleName(style: ThemeStyleDefinition, copy: UiCopy) {
   return style.name
 }
 
-function getThemeStyleSummary(style: ThemeStyleDefinition, copy: UiCopy) {
-  if (style.id === 'original') {
-    return copy.themeStyleOriginalSummary
-  }
-  if (style.id === 'default') {
-    return copy.themeStyleDefaultSummary
-  }
-  return style.summary
-}
-
 function createNewThemeDraft(accent = DEFAULT_NEW_THEME_ACCENT): NewThemeDraft {
-  const normalized = normalizeHexColor(accent) ?? DEFAULT_NEW_THEME_ACCENT
-  const rgb = hexToRgb(normalized)
   return {
     name: '',
-    accent: normalized,
-    hexInput: normalized.toUpperCase(),
-    rgbInput: {
-      r: String(rgb.r),
-      g: String(rgb.g),
-      b: String(rgb.b),
-    },
+    accent: normalizeHexColor(accent) ?? DEFAULT_NEW_THEME_ACCENT,
   }
 }
 
@@ -4928,17 +4597,9 @@ function syncNewThemeDraftAccent(
   draft: NewThemeDraft,
   accent: string,
 ): NewThemeDraft {
-  const normalized = normalizeHexColor(accent) ?? draft.accent
-  const rgb = hexToRgb(normalized)
   return {
     ...draft,
-    accent: normalized,
-    hexInput: normalized.toUpperCase(),
-    rgbInput: {
-      r: String(rgb.r),
-      g: String(rgb.g),
-      b: String(rgb.b),
-    },
+    accent: normalizeHexColor(accent) ?? draft.accent,
   }
 }
 
@@ -4958,119 +4619,6 @@ function normalizeHexColor(value: string) {
   return null
 }
 
-function hexToRgb(hex: string) {
-  const normalized = normalizeHexColor(hex) ?? DEFAULT_NEW_THEME_ACCENT
-  const value = normalized.slice(1)
-  return {
-    r: parseInt(value.slice(0, 2), 16),
-    g: parseInt(value.slice(2, 4), 16),
-    b: parseInt(value.slice(4, 6), 16),
-  }
-}
-
-function rgbToHex(r: number, g: number, b: number) {
-  return `#${[r, g, b]
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('')}`
-}
-
-function hsvToHex(hue: number, saturation: number, value: number) {
-  const chroma = value * saturation
-  const huePrime = (((hue % 360) + 360) % 360) / 60
-  const x = chroma * (1 - Math.abs((huePrime % 2) - 1))
-  const match = value - chroma
-  const [r1, g1, b1] =
-    huePrime < 1
-      ? [chroma, x, 0]
-      : huePrime < 2
-        ? [x, chroma, 0]
-        : huePrime < 3
-          ? [0, chroma, x]
-          : huePrime < 4
-            ? [0, x, chroma]
-            : huePrime < 5
-              ? [x, 0, chroma]
-              : [chroma, 0, x]
-
-  return rgbToHex(
-    Math.round((r1 + match) * 255),
-    Math.round((g1 + match) * 255),
-    Math.round((b1 + match) * 255),
-  )
-}
-
-function rgbToHsv(r: number, g: number, b: number) {
-  const red = r / 255
-  const green = g / 255
-  const blue = b / 255
-  const max = Math.max(red, green, blue)
-  const min = Math.min(red, green, blue)
-  const delta = max - min
-  const saturation = max === 0 ? 0 : delta / max
-  let hue = 0
-
-  if (delta !== 0) {
-    if (max === red) {
-      hue = 60 * (((green - blue) / delta) % 6)
-    } else if (max === green) {
-      hue = 60 * ((blue - red) / delta + 2)
-    } else {
-      hue = 60 * ((red - green) / delta + 4)
-    }
-  }
-
-  return {
-    h: (hue + 360) % 360,
-    s: saturation,
-    v: max,
-  }
-}
-
-function getAccentFromWheelPointer(clientX: number, clientY: number, target: HTMLElement) {
-  const rect = target.getBoundingClientRect()
-  const radius = Math.min(rect.width, rect.height) / 2
-  const dx = clientX - (rect.left + rect.width / 2)
-  const dy = clientY - (rect.top + rect.height / 2)
-  const distance = Math.min(radius, Math.hypot(dx, dy))
-  const saturation = radius === 0 ? 0 : distance / radius
-  const hue = (Math.atan2(dy, dx) * 180) / Math.PI + 180
-  return hsvToHex(hue, saturation, 0.96)
-}
-
-function getAccentWheelMarkerStyle(accent: string): CSSProperties {
-  const rgb = hexToRgb(accent)
-  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
-  const angle = (hsv.h - 180) * (Math.PI / 180)
-  const radius = Math.max(0.08, Math.min(1, hsv.s)) * 46
-  const x = 50 + Math.cos(angle) * radius
-  const y = 50 + Math.sin(angle) * radius
-
-  return {
-    '--wheel-x': `${x}%`,
-    '--wheel-y': `${y}%`,
-    '--custom-accent': accent,
-  } as CSSProperties
-}
-
-function sanitizeRgbInput(value: string) {
-  return value.replace(/\D/g, '').slice(0, 3)
-}
-
-function parseRgbInput(input: NewThemeDraft['rgbInput']) {
-  const r = Number(input.r)
-  const g = Number(input.g)
-  const b = Number(input.b)
-  if (
-    !input.r ||
-    !input.g ||
-    !input.b ||
-    [r, g, b].some((value) => !Number.isInteger(value) || value < 0 || value > 255)
-  ) {
-    return null
-  }
-
-  return { r, g, b }
-}
 
 function getAccountEmailLabel(
   account: ServiceAccountSnapshot | null,
