@@ -1742,8 +1742,11 @@ fn select_service_server(
     state: State<'_, DesktopState>,
     selected_server_slug: String,
 ) -> Result<BootstrapPayload, String> {
-    persist_service_target_slug(&app, &state, Some(selected_server_slug), false)?;
-    build_bootstrap_with_service_options(&app, &state, false, true)
+    // Use background save + skip process detection for fast server switching.
+    // Process detection (ps scan) is the heaviest operation and is unnecessary
+    // here — daemon status will be picked up on next bootstrap/refresh.
+    persist_service_target_slug_impl(&app, &state, Some(selected_server_slug), false, true)?;
+    build_bootstrap_with_service_options(&app, &state, false, false)
 }
 
 #[tauri::command]
@@ -9030,6 +9033,16 @@ fn persist_service_target_slug(
     selected_server_slug: Option<String>,
     prefer_active_runtime: bool,
 ) -> Result<(), String> {
+    persist_service_target_slug_impl(app, state, selected_server_slug, prefer_active_runtime, false)
+}
+
+fn persist_service_target_slug_impl(
+    app: &AppHandle,
+    state: &DesktopState,
+    selected_server_slug: Option<String>,
+    prefer_active_runtime: bool,
+    background: bool,
+) -> Result<(), String> {
     let mut candidate = selected_server_slug
         .map(|slug| slug.trim().to_string())
         .filter(|slug| !slug.is_empty());
@@ -9059,7 +9072,12 @@ fn persist_service_target_slug(
     }
 
     settings.service.selected_server_slug = candidate;
-    save_settings(app, &settings)
+    if background {
+        save_settings_background(app, &settings);
+        Ok(())
+    } else {
+        save_settings(app, &settings)
+    }
 }
 
 fn sanitize_theme_name(name: &str) -> String {
