@@ -2031,6 +2031,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     host.style.setProperty("--desktop-panel", theme.panel);
     host.style.setProperty("--desktop-surface", theme.surface);
     host.style.setProperty("--desktop-surface-secondary", theme.surfaceSecondary);
+    host.style.setProperty("--desktop-surface-strong", theme.surfaceStrong);
     host.style.setProperty("--desktop-surface-tertiary", theme.surfaceTertiary);
     host.style.setProperty("--desktop-line", theme.line);
     host.style.setProperty("--desktop-line-strong", theme.lineStrong);
@@ -2064,6 +2065,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       --desktop-panel: #f1f2ee;
       --desktop-surface: #ffffff;
       --desktop-surface-secondary: #f3f4f1;
+      --desktop-surface-strong: #f3f4f1;
       --desktop-surface-tertiary: #ecefea;
       --desktop-line: #e2e4de;
       --desktop-line-strong: #d4d8d0;
@@ -2098,6 +2100,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         --desktop-panel: #282925;
         --desktop-surface: #252623;
         --desktop-surface-secondary: #2f302c;
+        --desktop-surface-strong: #2f302c;
         --desktop-surface-tertiary: #383a34;
         --desktop-line: #3e413a;
         --desktop-line-strong: #51554b;
@@ -2759,7 +2762,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       gap: 4px;
       min-width: 58px;
       padding: 3px 9px;
-      font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: var(--desktop-font-family-mono);
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.03em;
@@ -2910,7 +2913,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       min-width: 0;
       overflow: hidden;
       color: var(--desktop-muted);
-      font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: var(--desktop-font-family-mono);
       font-size: 11px;
       line-height: 1.3;
       text-overflow: ellipsis;
@@ -2953,7 +2956,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       border: 0;
       color: var(--desktop-muted);
       font-size: 9px;
-      font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: var(--desktop-font-family-mono);
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
@@ -3078,7 +3081,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       border-radius: var(--desktop-radius-md);
       background: var(--desktop-surface-secondary);
       color: var(--desktop-text);
-      font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: var(--desktop-font-family-mono);
       font-size: 11px;
       line-height: 1.6;
       white-space: pre-wrap;
