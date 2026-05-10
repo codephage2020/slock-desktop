@@ -1409,6 +1409,7 @@ fn exit_workspace(app: AppHandle, state: State<'_, DesktopState>) -> Result<Boot
     };
 
     apply_window_language(&app, &window, &language, false);
+    inject_transition_cover(&window, transition_bg_for_launcher(&window, &appearance_mode));
     apply_launcher_window_theme(&window, &appearance_mode);
     apply_launcher_titlebar_style(&window);
     apply_launcher_window_size(&window);
@@ -4871,6 +4872,7 @@ fn enter_workspace_url_in_main_window(
 
     apply_window_language(app, &window, language, true);
     apply_window_theme(&window, theme_mode);
+    inject_transition_cover(&window, transition_bg_for_workspace(&window, theme_mode));
     apply_workspace_window_size(&window, true);
     apply_workspace_titlebar_style(&window);
     let _ = window.set_focus();
@@ -4915,6 +4917,33 @@ fn apply_workspace_titlebar_style(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "macos")]
     {
         let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
+    }
+}
+
+/// Inject a full-screen solid-color cover over the current page content.
+/// This masks content stretching during window resize and the blank flash
+/// between page teardown and new page first paint.
+fn inject_transition_cover(window: &tauri::WebviewWindow, bg_color: &str) {
+    let script = format!(
+        r#"(function(){{if(document.getElementById("slock-tc"))return;var c=document.createElement("div");c.id="slock-tc";c.style.cssText="position:fixed;inset:0;z-index:2147483647;background:{bg_color};";document.body.appendChild(c)}})()"#
+    );
+    let _ = window.eval(&script);
+}
+
+/// Determine the appropriate transition cover background color for the target page.
+fn transition_bg_for_workspace(window: &tauri::WebviewWindow, theme_mode: &str) -> &'static str {
+    if effective_window_dark(window, theme_mode) {
+        "#252623"
+    } else {
+        "#ffffff"
+    }
+}
+
+fn transition_bg_for_launcher(window: &tauri::WebviewWindow, theme_mode: &str) -> &'static str {
+    if effective_window_dark(window, theme_mode) {
+        "#1f1f1c"
+    } else {
+        "#f7f7f5"
     }
 }
 
