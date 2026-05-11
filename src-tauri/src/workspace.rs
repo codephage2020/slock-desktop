@@ -3781,7 +3781,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         const busy = appearanceBusyAction === `style:${style.id}`;
         const name = getThemeStyleName(style);
         const colors = style.preview || [];
-        return `<button class="appearance-style-block${sel ? " selected" : ""}${busy ? " busy" : ""}" type="button" role="radio" aria-checked="${sel}" data-appearance-style-option="${escapeHtml(style.id)}" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}" style="--block-a:${escapeHtml(colors[0] || "#333")};--block-b:${escapeHtml(colors[1] || "#666")};--block-c:${escapeHtml(colors[2] || "#999")}" ${busy ? "disabled" : ""}><span class="appearance-style-preview" aria-hidden="true"></span>${sel ? '<span class="appearance-style-check" aria-hidden="true"></span>' : ""}</button>`;
+        return `<button class="appearance-style-block${sel ? " selected" : ""}${busy ? " busy" : ""}" type="button" role="radio" aria-checked="${sel}" data-appearance-style-option="${escapeHtml(style.id)}" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}" style="--block-a:${escapeHtml(colors[0] || '#333')};--block-b:${escapeHtml(colors[1] || '#666')};--block-c:${escapeHtml(colors[2] || '#999')}" ${busy ? "disabled" : ""}><span class="appearance-style-preview" aria-hidden="true"></span>${sel ? '<span class="appearance-style-check" aria-hidden="true"></span>' : ""}</button>`;
       })
       .join("");
     const activeStyleName = getThemeStyleName(
