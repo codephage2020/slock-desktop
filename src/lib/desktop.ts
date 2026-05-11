@@ -628,3 +628,99 @@ export interface SocketAuthInfo {
 export async function getSocketAuth() {
   return invoke<SocketAuthInfo>('get_socket_auth')
 }
+
+// Agent creation types and commands
+
+export interface AgentListItem {
+  id: string
+  name: string
+  status: string
+  displayName: string | null
+  description: string | null
+  updatedAt: string | null
+}
+
+export interface AgentDetail {
+  id: string
+  name: string
+  status: string
+  displayName: string | null
+  description: string | null
+  instructions: string | null
+  model: string | null
+  maxTurns: number | null
+  channelId: string | null
+  machineId: string | null
+  updatedAt: string | null
+}
+
+export interface MachineListItem {
+  id: string
+  name: string
+  status: string
+}
+
+export interface AgentTemplateConfig {
+  instructions: string
+  model: string
+  maxTurns: number
+  channelId: string | null
+}
+
+export interface AgentTemplate {
+  id: string
+  name: string
+  source: string
+  sourceAgentId: string | null
+  config: AgentTemplateConfig
+  createdAt: string
+  updatedAt: string
+}
+
+export async function fetchAgents(serverSlug: string) {
+  return invoke<AgentListItem[]>('fetch_agents', { serverSlug })
+}
+
+export async function fetchAgentDetail(serverSlug: string, agentId: string) {
+  return invoke<AgentDetail>('fetch_agent_detail', { serverSlug, agentId })
+}
+
+export async function createAgent(
+  serverSlug: string,
+  params: {
+    name: string
+    displayName?: string
+    machineId: string
+    instructions?: string
+    model?: string
+    maxTurns?: number
+    channelId?: string
+  }
+) {
+  return invoke<AgentListItem>('create_agent', {
+    serverSlug,
+    name: params.name,
+    displayName: params.displayName,
+    machineId: params.machineId,
+    instructions: params.instructions,
+    model: params.model,
+    maxTurns: params.maxTurns,
+    channelId: params.channelId,
+  })
+}
+
+export async function fetchMachines(serverSlug: string) {
+  return invoke<MachineListItem[]>('fetch_machines', { serverSlug })
+}
+
+export async function getAgentTemplates() {
+  return invoke<AgentTemplate[]>('get_agent_templates')
+}
+
+export async function saveAgentTemplate(template: AgentTemplate) {
+  return invoke<void>('save_agent_template', { template })
+}
+
+export async function deleteAgentTemplate(id: string) {
+  return invoke<void>('delete_agent_template', { id })
+}
