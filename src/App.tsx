@@ -151,10 +151,10 @@ const COPY = {
     agentTemplates: 'Templates',
     agentBack: '← Back',
     agentCreateTitle: 'Create Agent',
-    agentCreateMode: 'Mode',
-    agentModeBlank: 'From scratch',
-    agentModeTemplate: 'From template',
-    agentModeAgent: 'From existing agent',
+    agentCreateMode: 'Start from',
+    agentModeBlank: 'Scratch',
+    agentModeTemplate: 'Template',
+    agentModeAgent: 'Agent',
     agentName: 'Name',
     agentDisplayName: 'Display Name',
     agentComputer: 'Computer',
@@ -181,6 +181,8 @@ const COPY = {
     agentTemplateSave: 'Save',
     agentTemplateDelete: 'Delete',
     agentTemplateDeleting: 'Deleting…',
+    agentTemplateTurns: 'turns',
+    agentTemplateUntitled: 'Untitled',
     messageReminderTitle: 'New message',
     messageReminderOpen: 'Open',
     messageReminderDismiss: 'Dismiss',
@@ -373,10 +375,10 @@ const COPY = {
     agentTemplates: '模板管理',
     agentBack: '← 返回',
     agentCreateTitle: '创建 Agent',
-    agentCreateMode: '模式',
-    agentModeBlank: '空白创建',
-    agentModeTemplate: '从模板创建',
-    agentModeAgent: '从现有 Agent 创建',
+    agentCreateMode: '创建方式',
+    agentModeBlank: '空白',
+    agentModeTemplate: '模板',
+    agentModeAgent: 'Agent',
     agentName: '名称',
     agentDisplayName: '显示名称',
     agentComputer: '计算机',
@@ -403,6 +405,8 @@ const COPY = {
     agentTemplateSave: '保存',
     agentTemplateDelete: '删除',
     agentTemplateDeleting: '删除中…',
+    agentTemplateTurns: '轮',
+    agentTemplateUntitled: '未命名',
     messageReminderTitle: '新消息',
     messageReminderOpen: '打开',
     messageReminderDismiss: '关闭',
@@ -1921,8 +1925,8 @@ function App() {
   async function handleSaveAsTemplate() {
     const template: AgentTemplate = {
       id: crypto.randomUUID(),
-      name: agentCreateForm.name || 'Untitled',
-      source: agentCreateMode === 'agent' ? 'agent' : 'manual',
+      name: agentCreateForm.name || copy.agentTemplateUntitled,
+      source: agentCreateMode === 'agent' ? 'from-agent' : 'custom',
       sourceAgentId: agentCreateMode === 'agent' ? agentCreateForm.sourceAgentId || null : null,
       config: {
         instructions: agentCreateForm.instructions,
@@ -1977,7 +1981,7 @@ function App() {
     const blank: AgentTemplate = {
       id: crypto.randomUUID(),
       name: '',
-      source: 'manual',
+      source: 'custom',
       sourceAgentId: null,
       config: { instructions: '', model: '', maxTurns: 0, channelId: null },
       createdAt: new Date().toISOString(),
@@ -1999,7 +2003,7 @@ function App() {
     const blank: AgentTemplate = {
       id: crypto.randomUUID(),
       name: '',
-      source: 'agent',
+      source: 'from-agent',
       sourceAgentId: null,
       config: { instructions: '', model: '', maxTurns: 0, channelId: null },
       createdAt: new Date().toISOString(),
@@ -3008,23 +3012,26 @@ function App() {
                   </button>
                   <p className="eyebrow">{copy.agentCreateTitle}</p>
 
-                  {/* Mode selector */}
+                  {/* Mode segmented control */}
                   <div className="agent-field">
                     <label className="agent-label">{copy.agentCreateMode}</label>
-                    <select
-                      className="agent-select"
-                      value={agentCreateMode}
-                      onChange={(e) => {
-                        const mode = e.target.value as 'scratch' | 'template' | 'agent'
-                        setAgentCreateMode(mode)
-                        resetAgentCreateForm()
-                        setAgentCreateMode(mode)
-                      }}
-                    >
-                      <option value="scratch">{copy.agentModeBlank}</option>
-                      <option value="template">{copy.agentModeTemplate}</option>
-                      <option value="agent">{copy.agentModeAgent}</option>
-                    </select>
+                    <div className="agent-segmented" role="radiogroup" aria-label={copy.agentCreateMode}>
+                      {(['scratch', 'template', 'agent'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          role="radio"
+                          aria-checked={agentCreateMode === mode}
+                          className={`agent-segment${agentCreateMode === mode ? ' active' : ''}`}
+                          onClick={() => {
+                            resetAgentCreateForm()
+                            setAgentCreateMode(mode)
+                          }}
+                        >
+                          {mode === 'scratch' ? copy.agentModeBlank : mode === 'template' ? copy.agentModeTemplate : copy.agentModeAgent}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Template selector */}
@@ -3211,9 +3218,9 @@ function App() {
                       {agentTemplateList.map((tpl) => (
                         <div key={tpl.id} className="agent-template-card">
                           <div className="agent-template-info">
-                            <span className="agent-template-name">{tpl.name || 'Untitled'}</span>
+                            <span className="agent-template-name">{tpl.name || copy.agentTemplateUntitled}</span>
                             <span className="agent-template-meta">
-                              {tpl.config.model || '—'} · {tpl.config.maxTurns || '∞'} turns
+                              {tpl.config.model || '—'} · {tpl.config.maxTurns || '∞'} {copy.agentTemplateTurns}
                             </span>
                           </div>
                           <div className="agent-template-card-actions">
@@ -3276,7 +3283,7 @@ function App() {
                   <p className="eyebrow">{copy.agentEditTemplate}</p>
 
                   {/* Import from agent (for source=agent templates) */}
-                  {agentEditTemplate.source === 'agent' ? (
+                  {agentEditTemplate.source === 'from-agent' ? (
                     <div className="agent-field">
                       <label className="agent-label">{copy.agentSelectAgent}</label>
                       <select

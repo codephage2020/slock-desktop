@@ -1653,7 +1653,8 @@ body:has(.loading-shell),
 }
 
 .agent-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");
+  /* Arrow color is hardcoded — CSS vars cannot be used inside data-URIs */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
   padding-right: 24px;
@@ -1690,6 +1691,43 @@ body:has(.loading-shell),
 
 .agent-textarea::placeholder {
   color: var(--muted);
+}
+
+/* Segmented control */
+.agent-segmented {
+  display: flex;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: var(--radius-xs, 8px);
+  overflow: hidden;
+}
+
+.agent-segment {
+  flex: 1;
+  appearance: none;
+  border: none;
+  border-right: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 5px 4px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.agent-segment:last-child {
+  border-right: none;
+}
+
+.agent-segment:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.agent-segment.active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* Advanced toggle */
