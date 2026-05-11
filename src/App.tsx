@@ -136,6 +136,7 @@ const COPY = {
     languageSystem: 'System',
     focusSlock: 'Focus Slock',
     openSlock: 'Enter Slock',
+    agentCreate: 'Agent',
     messageReminderTitle: 'New message',
     messageReminderOpen: 'Open',
     messageReminderDismiss: 'Dismiss',
@@ -323,6 +324,7 @@ const COPY = {
     languageSystem: '系统',
     focusSlock: '聚焦 Slock',
     openSlock: '进入 Slock',
+    agentCreate: 'Agent',
     messageReminderTitle: '新消息',
     messageReminderOpen: '打开',
     messageReminderDismiss: '关闭',
@@ -548,6 +550,7 @@ function App() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [serverPanelOpen, setServerPanelOpen] = useState(false)
   const [stylePanelOpen, setStylePanelOpen] = useState(false)
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
   const [computerCreateFlow, setComputerCreateFlow] = useState<{
     phase: 'prompt' | 'waiting' | 'ready' | 'command'
@@ -2575,7 +2578,7 @@ function App() {
 
         <button
           type="button"
-          className={`titlebar-icon-button titlebar-launch${workspaceLaunching ? ' launching' : ''}`}
+          className={`titlebar-pill-button titlebar-launch${workspaceLaunching ? ' launching' : ''}`}
           onClick={() => {
             launchButtonAccentRef.current = selectedThemeAccent
             void handleWorkspaceOpen(selectedServiceSlug || undefined)
@@ -2585,9 +2588,8 @@ function App() {
           aria-label={stackButtonLabel}
         >
           {busyAction === 'workspace' ? <SpinnerIcon /> : <EnterIcon />}
+          <span>{stackButtonLabel}</span>
         </button>
-
-        <div className="tauri-titlebar-drag" data-tauri-drag-region />
 
         <button
           type="button"
@@ -2619,6 +2621,19 @@ function App() {
             <LogsIcon />
           </button>
         ) : null}
+
+        <button
+          type="button"
+          className="titlebar-icon-button"
+          onClick={() => setAgentPanelOpen((open) => !open)}
+          aria-expanded={agentPanelOpen}
+          title={copy.agentCreate}
+          aria-label={copy.agentCreate}
+        >
+          <BotIcon />
+        </button>
+
+        <div className="tauri-titlebar-drag" data-tauri-drag-region />
 
         {/* Unified Appearance panel (#75/#76 Phase 2) */}
         <div className="titlebar-appearance" ref={stylePanelRef}>
@@ -4138,6 +4153,28 @@ function LogsIcon() {
       <path d="M8 12h4" />
       <circle cx="16.5" cy="16.5" r="2.5" />
       <path d="m18.5 18.5 2 2" />
+    </svg>
+  )
+}
+
+function BotIcon() {
+  return (
+    <svg
+      className="service-action-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 8V4H8" />
+      <rect width="16" height="12" x="4" y="8" rx="2" />
+      <path d="M2 14h2" />
+      <path d="M20 14h2" />
+      <path d="M15 13v2" />
+      <path d="M9 13v2" />
     </svg>
   )
 }
