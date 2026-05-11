@@ -3740,6 +3740,7 @@ function buildShellStyle(theme: ThemeDefinition) {
     '--accent-soft': theme.accentSoft,
     '--accent-hover': `color-mix(in srgb, ${theme.accent} 88%, black)`,
     '--accent-active': `color-mix(in srgb, ${theme.accent} 76%, black)`,
+    '--on-accent': '#fff',
     '--radius-xs': theme.radiusXs + 'px',
     '--radius-sm': theme.radiusSm + 'px',
     '--radius-md': theme.radiusMd + 'px',
