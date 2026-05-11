@@ -12,13 +12,15 @@ use config::{
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+#[cfg(desktop)]
+use std::process::{Child, Stdio};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
     collections::{HashSet, VecDeque},
     env, fs,
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::Command,
     sync::{
         atomic::{AtomicU64, Ordering},
         Mutex, OnceLock,
@@ -49,7 +51,9 @@ const DESKTOP_AUTH_CALLBACK_EVENT: &str = "desktop-auth-complete";
 const DESKTOP_AUTH_CANCELLED_EVENT: &str = "desktop-auth-cancelled";
 const MESSAGE_REMINDER_EVENT: &str = "slock-message-reminder";
 const DEFAULT_SERVER_URL: &str = "https://api.slock.ai";
+#[cfg(desktop)]
 const DAEMON_PACKAGE: &str = "@slock-ai/daemon@latest";
+#[cfg(desktop)]
 const DAEMON_MACHINE_NAME: &str = "Slock Desktop";
 const LAUNCHER_WINDOW_WIDTH: f64 = 1200.0;
 const LAUNCHER_WINDOW_HEIGHT: f64 = 800.0;
@@ -64,16 +68,23 @@ const WORKSPACE_WINDOW_HEIGHT: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_WIDTH: f64 = 980.0;
 const WORKSPACE_WINDOW_MIN_HEIGHT: f64 = 760.0;
 const WORKSPACE_WINDOW_MARGIN: f64 = 24.0;
+#[cfg(desktop)]
 const DAEMON_SERVER_SLUG_ARG: &str = "--slock-desktop-server-slug";
+#[cfg(desktop)]
 const DAEMON_MACHINE_ID_ARG: &str = "--slock-desktop-machine-id";
+#[cfg(desktop)]
 const DAEMON_DESKTOP_MANAGED_ARG: &str = "--slock-desktop-managed";
+#[cfg(all(desktop, unix))]
 const RUNTIME_WRAPPER_DIR: &str = "runtime-wrappers";
+#[cfg(all(desktop, unix))]
 const CLAUDE_WRAPPER_NAME: &str = "claude";
 const DESKTOP_UPDATER_ENDPOINT: &str =
     "https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json";
 const DESKTOP_UPDATE_CHECK_TIMEOUT: u64 = 8;
 const SERVICE_MACHINE_FETCH_CONCURRENCY_LIMIT: usize = 8;
+#[cfg(desktop)]
 const SERVICE_LOG_MAX_BYTES: u64 = 2 * 1024 * 1024;
+#[cfg(desktop)]
 const SERVICE_LOG_DEFAULT_WINDOW_MS: i64 = 30 * 60 * 1000;
 const MESSAGE_REMINDER_RECENT_LIMIT: usize = 200;
 const MESSAGE_REMINDER_RETRY_AFTER_MS: u64 = 30_000;
@@ -112,6 +123,7 @@ struct BootstrapPayload {
 }
 
 struct ServiceRuntime {
+    #[cfg(desktop)]
     child: Option<Child>,
     last_error: Option<String>,
     active_server_slug: Option<String>,
@@ -162,6 +174,7 @@ struct AuthRuntime {
     clear_login_session_storage: bool,
 }
 
+#[cfg(desktop)]
 #[derive(Debug, Clone)]
 struct ServiceCommand {
     executable: PathBuf,
@@ -182,6 +195,7 @@ struct WorkspaceLaunchTrace {
     page_started: Option<Instant>,
 }
 
+#[cfg(desktop)]
 #[derive(Debug, Clone)]
 struct ServiceDaemonProcess {
     pid: u32,
@@ -189,6 +203,7 @@ struct ServiceDaemonProcess {
     machine_id: Option<String>,
 }
 
+#[cfg(desktop)]
 #[derive(Debug, Clone)]
 struct ResolvedServiceMachine {
     binding: ServiceMachineBinding,
@@ -196,6 +211,7 @@ struct ResolvedServiceMachine {
     machine_status: String,
 }
 
+#[cfg(desktop)]
 #[derive(Debug, Clone)]
 struct ServiceStartTarget {
     binding: ServiceMachineBinding,
@@ -1817,6 +1833,7 @@ fn save_service_settings(
     build_bootstrap(&app, &state, true)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn start_service(
     app: AppHandle,
@@ -1836,6 +1853,7 @@ fn start_service(
     build_bootstrap(&app, &state, false)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn stop_service(
     app: AppHandle,
@@ -2141,6 +2159,7 @@ fn refresh_service_server_catalog(
     build_bootstrap(&app, &state, false)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn update_service(
     app: AppHandle,
@@ -4308,6 +4327,7 @@ fn bind_local_machine(
     build_bootstrap(&app, &state, true)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn open_service_log(
     app: AppHandle,
@@ -4338,6 +4358,7 @@ fn open_service_log(
     read_service_log_range(slug, &log_path, from_epoch_ms, to_epoch_ms)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn start_window_drag(app: AppHandle) -> Result<(), String> {
     let window = app
@@ -4471,6 +4492,7 @@ fn handle_app_exit_requested(app: &AppHandle, state: &DesktopState) -> bool {
 
 fn handle_app_exit(app: &AppHandle, state: &DesktopState) {
     stop_message_reminders(state);
+    #[cfg(desktop)]
     if current_close_app_behavior(state) == CloseAppServiceBehavior::Stop {
         if take_app_close_service_stop_completed(state) {
             return;
@@ -4496,6 +4518,7 @@ fn handle_app_exit(app: &AppHandle, state: &DesktopState) {
     }
 }
 
+#[cfg(desktop)]
 fn running_daemon_slugs(state: &DesktopState) -> Vec<String> {
     if let Ok(runtime) = state.service.lock() {
         runtime
@@ -4516,7 +4539,8 @@ fn finish_app_close_async(
 ) {
     thread::spawn(move || {
         let state = app.state::<DesktopState>();
-        let result = if behavior == CloseAppServiceBehavior::Stop {
+        #[cfg(desktop)]
+        let result: Result<(), String> = if behavior == CloseAppServiceBehavior::Stop {
             let slugs = running_daemon_slugs(&state);
             if slugs.is_empty() {
                 stop_service_process(&app, &state, service_settings.as_ref(), None)
@@ -4540,6 +4564,11 @@ fn finish_app_close_async(
                 }
             }
         } else {
+            Ok(())
+        };
+        #[cfg(not(desktop))]
+        let result: Result<(), String> = {
+            let _ = &service_settings;
             Ok(())
         };
 
@@ -4567,27 +4596,36 @@ fn finish_app_close_selected_async(
 ) {
     thread::spawn(move || {
         let state = app.state::<DesktopState>();
-        let mut errors = Vec::new();
-        for slug in &slugs {
-            if let Err(err) = stop_service_process(
-                &app,
-                &state,
-                Some(&service_settings),
-                Some(slug.as_str()),
-            ) {
-                log::warn!("failed to stop daemon for {slug}: {err}");
-                errors.push(format!("{slug}: {err}"));
+        #[cfg(desktop)]
+        {
+            let mut errors = Vec::new();
+            for slug in &slugs {
+                if let Err(err) = stop_service_process(
+                    &app,
+                    &state,
+                    Some(&service_settings),
+                    Some(slug.as_str()),
+                ) {
+                    log::warn!("failed to stop daemon for {slug}: {err}");
+                    errors.push(format!("{slug}: {err}"));
+                }
+            }
+
+            if errors.is_empty() {
+                mark_app_close_service_stop_completed(&state);
+                mark_app_close_confirmed(&state);
+                app.exit(0);
+            } else {
+                let message = errors.join("; ");
+                mark_app_close_prompt_visible(&state, false);
+                show_app_close_error(&app, &message);
             }
         }
-
-        if errors.is_empty() {
-            mark_app_close_service_stop_completed(&state);
+        #[cfg(not(desktop))]
+        {
+            let _ = (&slugs, &service_settings);
             mark_app_close_confirmed(&state);
             app.exit(0);
-        } else {
-            let message = errors.join("; ");
-            mark_app_close_prompt_visible(&state, false);
-            show_app_close_error(&app, &message);
         }
     });
 }
@@ -5007,11 +5045,14 @@ fn service_may_be_running(_app: &AppHandle, state: &DesktopState) -> bool {
     let mut runtime_active_machine_id = None;
     let mut cached_server = None;
     if let Ok(mut runtime) = state.service.lock() {
-        if let Some(child) = runtime.child.as_mut() {
-            if child.try_wait().ok().flatten().is_none() {
-                return true;
+        #[cfg(desktop)]
+        {
+            if let Some(child) = runtime.child.as_mut() {
+                if child.try_wait().ok().flatten().is_none() {
+                    return true;
+                }
+                runtime.child = None;
             }
-            runtime.child = None;
         }
         // Check ALL cached servers for any running daemon
         for server in &runtime.cached_servers {
@@ -5055,16 +5096,24 @@ fn service_may_be_running(_app: &AppHandle, state: &DesktopState) -> bool {
         .map(|binding| binding.api_key.as_str())
         .filter(|api_key| !api_key.trim().is_empty());
 
-    find_daemon_process_ids(
-        &service_settings.server_url,
-        Some(target_slug.as_str()),
-        machine_id,
-        api_key_prefix,
-        api_key,
-        false,
-    )
-    .map(|pids| !pids.is_empty())
-    .unwrap_or(false)
+    #[cfg(desktop)]
+    {
+        return find_daemon_process_ids(
+            &service_settings.server_url,
+            Some(target_slug.as_str()),
+            machine_id,
+            api_key_prefix,
+            api_key,
+            false,
+        )
+        .map(|pids| !pids.is_empty())
+        .unwrap_or(false);
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (machine_id, api_key_prefix, api_key);
+        false
+    }
 }
 
 fn close_app_behavior_from_action(action: &str) -> Option<CloseAppServiceBehavior> {
@@ -5897,36 +5946,39 @@ fn collect_service_snapshot(
     let mut running = false;
     let mut pid = None;
 
-    if let Some(child) = runtime.child.as_mut() {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                runtime.last_error = Some(format!("Service exited with status {status}"));
-                runtime.child = None;
-                runtime.active_pid = None;
+    #[cfg(desktop)]
+    {
+        if let Some(child) = runtime.child.as_mut() {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    runtime.last_error = Some(format!("Service exited with status {status}"));
+                    runtime.child = None;
+                    runtime.active_pid = None;
+                }
+                Ok(None) => {
+                    running = true;
+                    pid = Some(child.id());
+                    runtime.active_pid = pid;
+                }
+                Err(err) => {
+                    runtime.last_error = Some(format!("Service state check failed: {err}"));
+                    runtime.child = None;
+                    runtime.active_pid = None;
+                }
             }
-            Ok(None) => {
-                running = true;
-                pid = Some(child.id());
-                runtime.active_pid = pid;
-            }
-            Err(err) => {
-                runtime.last_error = Some(format!("Service state check failed: {err}"));
-                runtime.child = None;
-                runtime.active_pid = None;
-            }
-        }
-    } else if let Some(active_pid) = runtime.active_pid {
-        match process_is_alive(active_pid) {
-            Ok(true) => {
-                running = true;
-                pid = Some(active_pid);
-            }
-            Ok(false) => {
-                runtime.active_pid = None;
-            }
-            Err(err) => {
-                runtime.last_error = Some(format!("Service state check failed: {err}"));
-                runtime.active_pid = None;
+        } else if let Some(active_pid) = runtime.active_pid {
+            match process_is_alive(active_pid) {
+                Ok(true) => {
+                    running = true;
+                    pid = Some(active_pid);
+                }
+                Ok(false) => {
+                    runtime.active_pid = None;
+                }
+                Err(err) => {
+                    runtime.last_error = Some(format!("Service state check failed: {err}"));
+                    runtime.active_pid = None;
+                }
             }
         }
     }
@@ -5998,6 +6050,7 @@ fn collect_service_snapshot(
         server.selected = server.slug == settings.selected_server_slug;
     }
 
+    #[cfg(desktop)]
     if should_detect_selected_service_process(
         detect_service_process,
         &settings.selected_server_slug,
@@ -6064,6 +6117,7 @@ fn selected_service_has_local_binding(settings: &ServiceSettings) -> bool {
         })
 }
 
+#[cfg(desktop)]
 fn selected_service_running_on_current_computer(
     state: &DesktopState,
     settings: &ServiceSettings,
@@ -6117,6 +6171,7 @@ fn selected_service_running_on_current_computer(
     Ok(true)
 }
 
+#[cfg(desktop)]
 fn selected_service_daemon_process_from_cached_state(
     settings: &ServiceSettings,
     cached_servers: &[ServiceServerSnapshot],
@@ -6150,6 +6205,7 @@ fn selected_service_daemon_process_from_cached_state(
     }
 }
 
+#[cfg(desktop)]
 fn selected_service_daemon_process_from_cached_output(
     settings: &ServiceSettings,
     cached_servers: &[ServiceServerSnapshot],
@@ -6189,6 +6245,7 @@ fn selected_service_daemon_process_from_cached_output(
     )
 }
 
+#[cfg(desktop)]
 fn cached_service_start_target(
     app: &AppHandle,
     state: &DesktopState,
@@ -6234,6 +6291,7 @@ fn cached_service_start_target(
     }))
 }
 
+#[cfg(desktop)]
 fn force_start_service(
     app: &AppHandle,
     state: &DesktopState,
@@ -6326,6 +6384,7 @@ fn force_start_service(
     spawn_service_daemon(app, state, settings, target)
 }
 
+#[cfg(desktop)]
 fn spawn_service_daemon(
     app: &AppHandle,
     state: &DesktopState,
@@ -6398,6 +6457,7 @@ fn spawn_service_daemon(
     Ok(())
 }
 
+#[cfg(desktop)]
 fn open_service_log_file(app: &AppHandle, server_slug: &str) -> Result<fs::File, String> {
     let log_path = service_log_path(app, server_slug)?;
     fs::OpenOptions::new()
@@ -6407,6 +6467,7 @@ fn open_service_log_file(app: &AppHandle, server_slug: &str) -> Result<fs::File,
         .map_err(|err| format!("Unable to open service log: {err}"))
 }
 
+#[cfg(desktop)]
 fn pipe_service_output_to_log<R>(reader: R, mut log_file: fs::File, stream: &'static str)
 where
     R: Read + Send + 'static,
@@ -6445,6 +6506,7 @@ where
     });
 }
 
+#[cfg(desktop)]
 fn service_log_path(app: &AppHandle, server_slug: &str) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -6456,6 +6518,7 @@ fn service_log_path(app: &AppHandle, server_slug: &str) -> Result<PathBuf, Strin
     Ok(dir.join(format!("{}.log", safe_log_slug(server_slug))))
 }
 
+#[cfg(desktop)]
 fn read_service_log_range(
     server_slug: &str,
     log_path: &Path,
@@ -6523,6 +6586,7 @@ fn read_service_log_range(
     })
 }
 
+#[cfg(desktop)]
 fn read_service_log_tail(
     server_slug: &str,
     log_path: &Path,
@@ -6563,6 +6627,7 @@ fn read_service_log_tail(
     })
 }
 
+#[cfg(desktop)]
 fn current_epoch_ms() -> i64 {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(duration) => duration.as_millis().min(i64::MAX as u128) as i64,
@@ -6570,12 +6635,14 @@ fn current_epoch_ms() -> i64 {
     }
 }
 
+#[cfg(desktop)]
 fn parse_log_line_epoch_ms(line: &str) -> Option<i64> {
     parse_log_marker_epoch_ms(line)
         .or_else(|| parse_system_time_debug_epoch_ms(line))
         .or_else(|| parse_common_datetime_epoch_ms(line))
 }
 
+#[cfg(desktop)]
 fn parse_log_marker_epoch_ms(line: &str) -> Option<i64> {
     for marker in ["ts=", "timestamp="] {
         let Some(start) = line.find(marker).map(|index| index + marker.len()) else {
@@ -6592,12 +6659,14 @@ fn parse_log_marker_epoch_ms(line: &str) -> Option<i64> {
     None
 }
 
+#[cfg(desktop)]
 fn parse_system_time_debug_epoch_ms(line: &str) -> Option<i64> {
     let seconds = parse_i64_after(line, "tv_sec:")?;
     let nanos = parse_i64_after(line, "tv_nsec:").unwrap_or(0);
     Some(seconds.saturating_mul(1000).saturating_add(nanos / 1_000_000))
 }
 
+#[cfg(desktop)]
 fn parse_i64_after(line: &str, marker: &str) -> Option<i64> {
     let start = line.find(marker)? + marker.len();
     let digits: String = line[start..]
@@ -6608,6 +6677,7 @@ fn parse_i64_after(line: &str, marker: &str) -> Option<i64> {
     digits.parse::<i64>().ok()
 }
 
+#[cfg(desktop)]
 fn parse_common_datetime_epoch_ms(line: &str) -> Option<i64> {
     let trimmed = line
         .trim_start()
@@ -6634,6 +6704,7 @@ fn parse_common_datetime_epoch_ms(line: &str) -> Option<i64> {
     None
 }
 
+#[cfg(desktop)]
 fn safe_log_slug(value: &str) -> String {
     let sanitized: String = value
         .trim()
@@ -6654,6 +6725,7 @@ fn safe_log_slug(value: &str) -> String {
     }
 }
 
+#[cfg(desktop)]
 fn resolve_service_command() -> Result<ServiceCommand, String> {
     let mut search_dirs = service_command_search_dirs();
     if let Some(command) = resolve_service_command_from_dirs(search_dirs.clone()) {
@@ -6667,6 +6739,7 @@ fn resolve_service_command() -> Result<ServiceCommand, String> {
     })
 }
 
+#[cfg(desktop)]
 fn prepare_service_path_env(app: &AppHandle, path_env: &str) -> Result<String, String> {
     #[cfg(unix)]
     {
@@ -6681,7 +6754,7 @@ fn prepare_service_path_env(app: &AppHandle, path_env: &str) -> Result<String, S
     }
 }
 
-#[cfg(unix)]
+#[cfg(all(desktop, unix))]
 fn install_runtime_command_wrappers(app: &AppHandle) -> Result<PathBuf, String> {
     let wrapper_dir = app
         .path()
@@ -6704,7 +6777,7 @@ fn install_runtime_command_wrappers(app: &AppHandle) -> Result<PathBuf, String> 
     Ok(wrapper_dir)
 }
 
-#[cfg(unix)]
+#[cfg(all(desktop, unix))]
 fn prepend_path_env_dir(dir: &Path, path_env: &str) -> String {
     let mut path_dirs = vec![dir.to_path_buf()];
     push_path_env_dirs(&mut path_dirs, std::ffi::OsStr::new(path_env));
@@ -6720,7 +6793,7 @@ fn prepend_path_env_dir(dir: &Path, path_env: &str) -> String {
         })
 }
 
-#[cfg(unix)]
+#[cfg(all(desktop, unix))]
 fn claude_wrapper_script() -> &'static str {
     r#"#!/usr/bin/env node
 const fs = require("fs");
@@ -6828,6 +6901,7 @@ process.exit(typeof result.status === "number" ? result.status : 1);
 "#
 }
 
+#[cfg(desktop)]
 fn resolve_service_command_from_dirs(search_dirs: Vec<PathBuf>) -> Option<ServiceCommand> {
     let executable = find_executable_in_dirs("npx", &search_dirs)?;
     let mut path_dirs = Vec::new();
@@ -6856,6 +6930,7 @@ fn resolve_service_command_from_dirs(search_dirs: Vec<PathBuf>) -> Option<Servic
     })
 }
 
+#[cfg(desktop)]
 fn service_command_search_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(path_env) = env::var_os("PATH") {
@@ -6879,6 +6954,7 @@ fn service_command_search_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+#[cfg(desktop)]
 fn append_login_shell_path_dirs(dirs: &mut Vec<PathBuf>) {
     let shell = env::var("SHELL")
         .ok()
@@ -6897,6 +6973,7 @@ fn append_login_shell_path_dirs(dirs: &mut Vec<PathBuf>) {
     }
 }
 
+#[cfg(desktop)]
 fn append_node_install_dirs(dirs: &mut Vec<PathBuf>) {
     append_homebrew_node_dirs(dirs, Path::new("/opt/homebrew/opt"));
     append_homebrew_node_dirs(dirs, Path::new("/usr/local/opt"));
@@ -6920,6 +6997,7 @@ fn append_node_install_dirs(dirs: &mut Vec<PathBuf>) {
     );
 }
 
+#[cfg(desktop)]
 fn append_homebrew_node_dirs(dirs: &mut Vec<PathBuf>, root: &Path) {
     let Ok(entries) = fs::read_dir(root) else {
         return;
@@ -6943,6 +7021,7 @@ fn append_homebrew_node_dirs(dirs: &mut Vec<PathBuf>, root: &Path) {
     }
 }
 
+#[cfg(desktop)]
 fn append_versioned_node_bins(dirs: &mut Vec<PathBuf>, root: &Path, suffix: &[&str]) {
     let Ok(entries) = fs::read_dir(root) else {
         return;
@@ -6962,12 +7041,14 @@ fn append_versioned_node_bins(dirs: &mut Vec<PathBuf>, root: &Path, suffix: &[&s
     }
 }
 
+#[cfg(desktop)]
 fn find_executable_in_dirs(command_name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
     dirs.iter()
         .map(|dir| dir.join(command_name))
         .find(|path| executable_exists(path))
 }
 
+#[cfg(desktop)]
 fn executable_exists(path: &Path) -> bool {
     let Ok(metadata) = fs::metadata(path) else {
         return false;
@@ -6987,24 +7068,28 @@ fn executable_exists(path: &Path) -> bool {
     }
 }
 
+#[cfg(desktop)]
 fn push_path_env_dirs(dirs: &mut Vec<PathBuf>, path_env: &std::ffi::OsStr) {
     for dir in env::split_paths(path_env) {
         push_unique_path(dirs, dir);
     }
 }
 
+#[cfg(desktop)]
 fn push_existing_dir(dirs: &mut Vec<PathBuf>, dir: PathBuf) {
     if dir.is_dir() {
         push_unique_path(dirs, dir);
     }
 }
 
+#[cfg(desktop)]
 fn push_unique_path(dirs: &mut Vec<PathBuf>, dir: PathBuf) {
     if !dirs.iter().any(|existing| existing == &dir) {
         dirs.push(dir);
     }
 }
 
+#[cfg(desktop)]
 fn prepare_runtime_for_service_target(
     state: &DesktopState,
     server_slug: &str,
@@ -7052,6 +7137,7 @@ fn prepare_runtime_for_service_target(
     Ok(matching_child_running)
 }
 
+#[cfg(desktop)]
 fn adopt_service_daemon_process(
     state: &DesktopState,
     process: &ServiceDaemonProcess,
@@ -7075,6 +7161,7 @@ fn adopt_service_daemon_process(
     Ok(())
 }
 
+#[cfg(desktop)]
 fn service_daemon_process_for_resolved_target(
     settings: &ServiceSettings,
     target: &ResolvedServiceMachine,
@@ -7103,6 +7190,7 @@ fn service_daemon_process_for_resolved_target(
     }
 }
 
+#[cfg(desktop)]
 fn service_daemon_process_for_start_target(
     settings: &ServiceSettings,
     target: &ServiceStartTarget,
@@ -7131,6 +7219,7 @@ fn service_daemon_process_for_start_target(
     }
 }
 
+#[cfg(desktop)]
 fn service_daemon_process_from_resolved_target(
     settings: &ServiceSettings,
     target: &ResolvedServiceMachine,
@@ -7146,6 +7235,7 @@ fn service_daemon_process_from_resolved_target(
     )
 }
 
+#[cfg(desktop)]
 fn service_daemon_process_from_start_target(
     settings: &ServiceSettings,
     target: &ServiceStartTarget,
@@ -7161,6 +7251,7 @@ fn service_daemon_process_from_start_target(
     )
 }
 
+#[cfg(desktop)]
 fn unique_untagged_service_daemon_process(
     target_server_url: &str,
     server_slug: &str,
@@ -7179,6 +7270,7 @@ fn unique_untagged_service_daemon_process(
         }))
 }
 
+#[cfg(desktop)]
 fn mark_service_daemon_process_running(
     state: &DesktopState,
     process: &ServiceDaemonProcess,
@@ -7195,6 +7287,7 @@ fn mark_service_daemon_process_running(
     Ok(())
 }
 
+#[cfg(desktop)]
 fn stop_service_process(
     _app: &AppHandle,
     state: &DesktopState,
@@ -7313,6 +7406,7 @@ fn stop_service_process(
     Ok(())
 }
 
+#[cfg(desktop)]
 fn should_resolve_remote_daemon_after_local_stop(
     stopped_daemon_process: bool,
     stopped_tracked_child: bool,
@@ -7320,6 +7414,7 @@ fn should_resolve_remote_daemon_after_local_stop(
     !stopped_daemon_process && !stopped_tracked_child
 }
 
+#[cfg(desktop)]
 fn find_daemon_process_ids(
     target_server_url: &str,
     target_server_slug: Option<&str>,
@@ -7362,6 +7457,7 @@ fn find_daemon_process_ids(
     }
 }
 
+#[cfg(desktop)]
 fn unique_untagged_daemon_process_ids(target_server_url: &str) -> Result<Vec<u32>, String> {
     let pids = find_untagged_daemon_process_ids(target_server_url)?;
     if pids.len() == 1 {
@@ -7371,6 +7467,7 @@ fn unique_untagged_daemon_process_ids(target_server_url: &str) -> Result<Vec<u32
     }
 }
 
+#[cfg(desktop)]
 fn find_untagged_daemon_process_ids(target_server_url: &str) -> Result<Vec<u32>, String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
@@ -7396,6 +7493,7 @@ fn find_untagged_daemon_process_ids(target_server_url: &str) -> Result<Vec<u32>,
     }
 }
 
+#[cfg(desktop)]
 fn daemon_pids_from_ps_output(
     output: &str,
     target_server_url: &str,
@@ -7431,6 +7529,7 @@ fn daemon_pids_from_ps_output(
         .collect()
 }
 
+#[cfg(desktop)]
 fn untagged_daemon_pids_from_ps_output(output: &str, target_server_url: &str) -> Vec<u32> {
     let entries = process_entries_from_ps_output(output);
     entries
@@ -7448,6 +7547,7 @@ fn untagged_daemon_pids_from_ps_output(output: &str, target_server_url: &str) ->
         .collect()
 }
 
+#[cfg(desktop)]
 #[derive(Debug)]
 struct ProcessEntry {
     pid: u32,
@@ -7455,6 +7555,7 @@ struct ProcessEntry {
     command: String,
 }
 
+#[cfg(desktop)]
 fn process_entries_from_ps_output(output: &str) -> Vec<ProcessEntry> {
     output
         .lines()
@@ -7486,6 +7587,7 @@ fn process_entries_from_ps_output(output: &str) -> Vec<ProcessEntry> {
         .collect()
 }
 
+#[cfg(desktop)]
 fn process_tree_pids_from_entries(root_pid: u32, entries: &[ProcessEntry]) -> Vec<u32> {
     let mut pids = vec![root_pid];
     let mut stack = vec![root_pid];
@@ -7506,6 +7608,7 @@ fn process_tree_pids_from_entries(root_pid: u32, entries: &[ProcessEntry]) -> Ve
     pids
 }
 
+#[cfg(desktop)]
 fn process_entry_has_agent_descendant(pid: u32, entries: &[ProcessEntry]) -> bool {
     let mut stack: Vec<u32> = entries
         .iter()
@@ -7530,6 +7633,7 @@ fn process_entry_has_agent_descendant(pid: u32, entries: &[ProcessEntry]) -> boo
     false
 }
 
+#[cfg(desktop)]
 fn process_command_is_agent_runtime(command: &str) -> bool {
     command.contains("codex app-server")
         || command.contains("/codex app-server")
@@ -7537,12 +7641,14 @@ fn process_command_is_agent_runtime(command: &str) -> bool {
         || (command.contains(" claude ") && command.contains("You are \""))
 }
 
+#[cfg(desktop)]
 fn daemon_command_is_desktop_managed(command: &str) -> bool {
     command
         .split_whitespace()
         .any(|part| part == DAEMON_DESKTOP_MANAGED_ARG)
 }
 
+#[cfg(desktop)]
 fn daemon_command_matches(
     command: &str,
     target_server_url: &str,
@@ -7613,6 +7719,7 @@ fn daemon_command_matches(
     include_untagged
 }
 
+#[cfg(desktop)]
 fn daemon_command_is_untagged(command: &str, target_server_url: &str) -> bool {
     daemon_command_has_marker(command)
         && command.contains("--server-url")
@@ -7621,6 +7728,7 @@ fn daemon_command_is_untagged(command: &str, target_server_url: &str) -> bool {
         && !command.contains(DAEMON_SERVER_SLUG_ARG)
 }
 
+#[cfg(desktop)]
 fn daemon_command_has_marker(command: &str) -> bool {
     command.contains("@slock-ai/daemon")
         || command.contains("slock-ai/daemon")
@@ -7632,6 +7740,7 @@ fn daemon_command_has_marker(command: &str) -> bool {
         })
 }
 
+#[cfg(desktop)]
 fn command_arg_value_starts_with(command: &str, arg: &str, expected_prefix: &str) -> bool {
     let expected_prefix = expected_prefix.trim();
     if expected_prefix.is_empty() {
@@ -7659,6 +7768,7 @@ fn command_arg_value_starts_with(command: &str, arg: &str, expected_prefix: &str
     false
 }
 
+#[cfg(desktop)]
 fn command_arg_value_matches(command: &str, arg: &str, expected: &str) -> bool {
     let expected = expected.trim();
     if expected.is_empty() {
@@ -7685,6 +7795,7 @@ fn command_arg_value_matches(command: &str, arg: &str, expected: &str) -> bool {
 
 /// Extract the value of a CLI argument from a command string.
 /// Supports both `--arg value` and `--arg=value` forms.
+#[cfg(desktop)]
 fn extract_arg_value_from_command<'a>(command: &'a str, arg: &str) -> Option<&'a str> {
     let equals_prefix = format!("{arg}=");
     let mut parts = command.split_whitespace();
@@ -7701,6 +7812,7 @@ fn extract_arg_value_from_command<'a>(command: &'a str, arg: &str) -> Option<&'a
 
 /// Scan local daemon processes for a machine_id matching the given server URL.
 /// Returns (machine_id, machine_name_from_process) if found.
+#[cfg(desktop)]
 fn detect_local_machine_by_pid(
     target_server_url: &str,
     target_server_slug: &str,
@@ -7749,6 +7861,7 @@ fn detect_local_machine_by_pid(
     }
 }
 
+#[cfg(desktop)]
 fn selected_service_daemon_process_from_servers(
     settings: &ServiceSettings,
     servers: &[ServiceServerSnapshot],
@@ -7777,6 +7890,7 @@ fn selected_service_daemon_process_from_servers(
     }
 }
 
+#[cfg(desktop)]
 fn selected_service_daemon_process_from_server_snapshots(
     settings: &ServiceSettings,
     servers: &[ServiceServerSnapshot],
@@ -7796,6 +7910,7 @@ fn selected_service_daemon_process_from_server_snapshots(
     )
 }
 
+#[cfg(desktop)]
 fn service_daemon_process_from_target(
     settings: &ServiceSettings,
     server_slug: &str,
@@ -7824,6 +7939,7 @@ fn service_daemon_process_from_target(
     })
 }
 
+#[cfg(desktop)]
 fn terminate_daemon_processes(mut pids: Vec<u32>) -> Result<(), String> {
     pids.sort_unstable_by(|left, right| right.cmp(left));
     pids.dedup();
@@ -7835,6 +7951,7 @@ fn terminate_daemon_processes(mut pids: Vec<u32>) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn terminate_process_tree(root_pid: u32) -> Result<(), String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
@@ -7859,6 +7976,7 @@ fn terminate_process_tree(root_pid: u32) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn terminate_daemon_process(pid: u32) -> Result<(), String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
@@ -7897,6 +8015,7 @@ fn terminate_daemon_process(pid: u32) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn process_is_alive(pid: u32) -> Result<bool, String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
@@ -8845,6 +8964,7 @@ fn fetch_service_servers(
         let mut binding = find_service_binding(settings, &server.id, &server.slug);
 
         // PID scan: if no binding exists, try to detect a local daemon for this server
+        #[cfg(desktop)]
         if binding.is_none() {
             if let Some(detected_machine_id) = detect_local_machine_by_pid(&server_url, &server.slug) {
                 // Verify this machine_id exists in the server's machine list
@@ -9192,6 +9312,7 @@ fn resolve_service_server(
     Err("Pick a server in the launcher before starting Slock.".to_string())
 }
 
+#[cfg(desktop)]
 fn resolve_existing_service_machine(
     app: &AppHandle,
     state: &DesktopState,
@@ -9231,6 +9352,7 @@ fn resolve_existing_service_machine(
     }))
 }
 
+#[cfg(desktop)]
 fn ensure_machine_binding(
     app: &AppHandle,
     state: &DesktopState,
@@ -9667,6 +9789,7 @@ pub fn run() {
         .manage(DesktopState {
             settings: Mutex::new(AppSettings::default()),
             service: Mutex::new(ServiceRuntime {
+                #[cfg(desktop)]
                 child: None,
                 last_error: None,
                 active_server_slug: None,
@@ -9856,69 +9979,132 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            bootstrap,
-            set_theme,
-            set_theme_style,
-            import_theme_style,
-            set_theme_mode,
-            create_custom_theme,
-            rename_custom_theme,
-            update_custom_theme_accent,
-            delete_custom_theme,
-            set_language,
-            save_session_tokens,
-            open_workspace,
-            exit_workspace,
-            save_service_settings,
-            refresh_service_servers,
-            refresh_service_server_status,
-            refresh_service_server_catalog,
-            select_service_server,
-            start_service,
-            stop_service,
-            resolve_app_close_request,
-            update_service,
-            open_service_log,
-            start_window_drag,
-            check_desktop_update,
-            install_desktop_update,
-            enqueue_message_reminder_event,
-            open_login,
-            open_login_browser,
-            switch_account,
-            switch_account_browser,
-            close_login_window,
-            activate_account,
-            forget_account,
-            fetch_dashboard,
-            fetch_agent_activity,
-            stop_agent,
-            start_agent,
-            fetch_inbox,
-            fetch_followed_threads,
-            fetch_dm_channels,
-            fetch_unread_channels,
-            fetch_thread_messages,
-            fetch_channel_messages,
-            fetch_server_members,
-            fetch_server_unread_summary,
-            send_message,
-            upload_attachment,
-            mark_channel_read,
-            bind_local_machine,
-            check_server_machines,
-            open_computer_create_page,
-            prepare_daemon_command,
-            get_socket_auth,
-            fetch_agents,
-            fetch_agent_detail,
-            create_agent,
-            fetch_machines,
-            get_agent_templates,
-            save_agent_template,
-            delete_agent_template
-        ])
+        .invoke_handler({
+            #[cfg(desktop)]
+            let handler = tauri::generate_handler![
+                bootstrap,
+                set_theme,
+                set_theme_style,
+                import_theme_style,
+                set_theme_mode,
+                create_custom_theme,
+                rename_custom_theme,
+                update_custom_theme_accent,
+                delete_custom_theme,
+                set_language,
+                save_session_tokens,
+                open_workspace,
+                exit_workspace,
+                save_service_settings,
+                refresh_service_servers,
+                refresh_service_server_status,
+                refresh_service_server_catalog,
+                select_service_server,
+                start_service,
+                stop_service,
+                resolve_app_close_request,
+                update_service,
+                open_service_log,
+                start_window_drag,
+                check_desktop_update,
+                install_desktop_update,
+                enqueue_message_reminder_event,
+                open_login,
+                open_login_browser,
+                switch_account,
+                switch_account_browser,
+                close_login_window,
+                activate_account,
+                forget_account,
+                fetch_dashboard,
+                fetch_agent_activity,
+                stop_agent,
+                start_agent,
+                fetch_inbox,
+                fetch_followed_threads,
+                fetch_dm_channels,
+                fetch_unread_channels,
+                fetch_thread_messages,
+                fetch_channel_messages,
+                fetch_server_members,
+                fetch_server_unread_summary,
+                send_message,
+                upload_attachment,
+                mark_channel_read,
+                bind_local_machine,
+                check_server_machines,
+                open_computer_create_page,
+                prepare_daemon_command,
+                get_socket_auth,
+                fetch_agents,
+                fetch_agent_detail,
+                create_agent,
+                fetch_machines,
+                get_agent_templates,
+                save_agent_template,
+                delete_agent_template
+            ];
+            #[cfg(not(desktop))]
+            let handler = tauri::generate_handler![
+                bootstrap,
+                set_theme,
+                set_theme_style,
+                import_theme_style,
+                set_theme_mode,
+                create_custom_theme,
+                rename_custom_theme,
+                update_custom_theme_accent,
+                delete_custom_theme,
+                set_language,
+                save_session_tokens,
+                open_workspace,
+                exit_workspace,
+                save_service_settings,
+                refresh_service_servers,
+                refresh_service_server_status,
+                refresh_service_server_catalog,
+                select_service_server,
+                resolve_app_close_request,
+                check_desktop_update,
+                install_desktop_update,
+                enqueue_message_reminder_event,
+                open_login,
+                open_login_browser,
+                switch_account,
+                switch_account_browser,
+                close_login_window,
+                activate_account,
+                forget_account,
+                fetch_dashboard,
+                fetch_agent_activity,
+                stop_agent,
+                start_agent,
+                fetch_inbox,
+                fetch_followed_threads,
+                fetch_dm_channels,
+                fetch_unread_channels,
+                fetch_thread_messages,
+                fetch_channel_messages,
+                fetch_server_members,
+                fetch_server_unread_summary,
+                send_message,
+                upload_attachment,
+                mark_channel_read,
+                bind_local_machine,
+                check_server_machines,
+                open_computer_create_page,
+                prepare_daemon_command,
+                get_socket_auth,
+                fetch_agents,
+                fetch_agent_detail,
+                create_agent,
+                fetch_machines,
+                get_agent_templates,
+                save_agent_template,
+                delete_agent_template
+            ];
+            handler
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -9974,25 +10160,33 @@ mod tests {
     use super::{
         app_close_prompt_script, clear_desktop_session_service_cache,
         clear_desktop_session_settings, close_app_behavior_from_action, close_app_behavior_from_id,
-        close_app_behavior_id, daemon_command_matches, daemon_pids_from_ps_output,
+        close_app_behavior_id,
         desktop_session_expired_message, mark_app_close_service_stop_completed,
-        normalize_app_settings, prepare_runtime_for_service_target, process_entries_from_ps_output,
-        process_tree_pids_from_entries, resolve_service_command_from_dirs, sanitize_saved_accounts,
+        normalize_app_settings, sanitize_saved_accounts,
         sanitize_service_settings, select_existing_machine,
-        selected_service_daemon_process_from_cached_output,
-        selected_service_daemon_process_from_server_snapshots,
-        service_daemon_process_from_resolved_target, service_machine_fetch_concurrency,
+        service_machine_fetch_concurrency,
         service_server_machine_fields, session_account_snapshots,
         should_detect_selected_service_process,
-        should_refresh_service_servers, should_resolve_remote_daemon_after_local_stop,
+        should_refresh_service_servers,
         take_app_close_service_stop_completed,
-        terminate_daemon_process, untagged_daemon_pids_from_ps_output,
         upsert_saved_session_account, workspace_session_clear_script,
         workspace_session_seed_script, ApiMachine, AppCloseRuntime, AuthRuntime,
-        CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState, ResolvedServiceMachine,
+        CloseAppPromptCopy, CloseAppServiceBehavior, DesktopState,
         ServiceRuntime, ServiceServerSnapshot, WorkspaceLaunchMetrics, WorkspaceSessionSeed,
     };
-    #[cfg(unix)]
+    #[cfg(desktop)]
+    use super::{
+        daemon_command_matches, daemon_pids_from_ps_output,
+        prepare_runtime_for_service_target, process_entries_from_ps_output,
+        process_tree_pids_from_entries, resolve_service_command_from_dirs,
+        selected_service_daemon_process_from_cached_output,
+        selected_service_daemon_process_from_server_snapshots,
+        service_daemon_process_from_resolved_target,
+        should_resolve_remote_daemon_after_local_stop,
+        terminate_daemon_process, untagged_daemon_pids_from_ps_output,
+        ResolvedServiceMachine,
+    };
+    #[cfg(all(desktop, unix))]
     use super::{claude_wrapper_script, prepend_path_env_dir};
     use crate::config::{
         AppSettings, SavedAccountSettings, ServiceMachineBinding, ServiceSettings, SessionSettings,
@@ -10133,6 +10327,7 @@ mod tests {
         settings.session.access_token = "stale-access-token".to_string();
         settings.session.refresh_token = "stale-refresh-token".to_string();
         let mut runtime = ServiceRuntime {
+            #[cfg(desktop)]
             child: None,
             last_error: None,
             active_server_slug: Some("open-have".to_string()),
@@ -10226,6 +10421,7 @@ mod tests {
         assert_eq!(position.y, 49.0);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn service_command_resolution_adds_node_dir_for_npx_shebang() {
         let root = temp_test_dir("service-command-path");
@@ -10247,6 +10443,7 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(desktop)]
     #[test]
     fn service_command_resolution_requires_node_for_npx() {
         let root = temp_test_dir("service-command-missing-node");
@@ -10259,7 +10456,7 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    #[cfg(unix)]
+    #[cfg(all(desktop, unix))]
     #[test]
     fn runtime_wrapper_path_is_prepended_to_service_path() {
         let root = temp_test_dir("runtime-wrapper-path");
@@ -10278,7 +10475,7 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    #[cfg(unix)]
+    #[cfg(all(desktop, unix))]
     #[test]
     fn claude_wrapper_supports_model_override_env_vars() {
         let script = claude_wrapper_script();
@@ -10290,7 +10487,7 @@ mod tests {
         assert!(script.contains("arg.startsWith(\"--model=\")"));
     }
 
-    #[cfg(unix)]
+    #[cfg(all(desktop, unix))]
     #[test]
     fn claude_wrapper_rewrites_model_argument_from_env() {
         if Command::new("node").arg("--version").output().is_err() {
@@ -10340,6 +10537,7 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(desktop)]
     #[test]
     fn daemon_command_matching_respects_target_api_key() {
         let command = "node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_machine_current";
@@ -10373,6 +10571,7 @@ mod tests {
         ));
     }
 
+    #[cfg(desktop)]
     #[test]
     fn daemon_command_matching_prefers_stable_desktop_markers() {
         let command = "node /tmp/npx/@slock-ai/daemon --server-url https://api.slock.ai --api-key sk_rotating --slock-desktop-server-slug open-have --slock-desktop-machine-id machine-open";
@@ -10397,6 +10596,7 @@ mod tests {
         ));
     }
 
+    #[cfg(desktop)]
     #[test]
     fn daemon_pid_parser_keeps_only_matching_target_processes() {
         let output = r#"
@@ -10418,6 +10618,7 @@ mod tests {
         assert_eq!(pids, vec![101]);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn daemon_pid_parser_includes_masked_npm_parent_for_marked_daemon() {
         let output = r#"
@@ -10439,6 +10640,7 @@ mod tests {
         assert_eq!(pids, vec![101, 102]);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn daemon_pid_parser_excludes_agent_hosted_daemons() {
         let output = r#"
@@ -10461,6 +10663,7 @@ mod tests {
         assert_eq!(pids, vec![102, 103]);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn daemon_pid_parser_keeps_desktop_managed_daemon_with_agent_descendants() {
         let output = r#"
@@ -10481,6 +10684,7 @@ mod tests {
         assert_eq!(pids, vec![101]);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn desktop_managed_daemon_parser_requires_machine_match_when_binding_exists() {
         let output = r#"
@@ -10500,6 +10704,7 @@ mod tests {
         assert!(pids.is_empty());
     }
 
+    #[cfg(desktop)]
     #[test]
     fn desktop_managed_daemon_parser_matches_slug_without_machine_target() {
         let output = r#"
@@ -10519,6 +10724,7 @@ mod tests {
         assert_eq!(pids, vec![101]);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn resolved_service_target_detects_running_daemon_before_key_rotation() {
         let settings = ServiceSettings::default();
@@ -10551,6 +10757,7 @@ mod tests {
         );
     }
 
+    #[cfg(desktop)]
     #[test]
     fn tracked_service_process_tree_includes_npx_wrapper_and_daemon_child() {
         let output = r#"
@@ -10566,6 +10773,7 @@ mod tests {
         assert_eq!(pids, vec![101, 102, 103]);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn preparing_runtime_for_another_server_detaches_without_stopping_existing_child() {
         let child = Command::new("sleep")
@@ -10576,6 +10784,7 @@ mod tests {
         let state = DesktopState {
             settings: Mutex::new(AppSettings::default()),
             service: Mutex::new(ServiceRuntime {
+                #[cfg(desktop)]
                 child: Some(child),
                 last_error: None,
                 active_server_slug: Some("tyan-dyun".to_string()),
@@ -10610,6 +10819,7 @@ mod tests {
         let state = DesktopState {
             settings: Mutex::new(AppSettings::default()),
             service: Mutex::new(ServiceRuntime {
+                #[cfg(desktop)]
                 child: None,
                 last_error: None,
                 active_server_slug: None,
@@ -10630,6 +10840,7 @@ mod tests {
         assert!(!take_app_close_service_stop_completed(&state));
     }
 
+    #[cfg(desktop)]
     #[test]
     fn local_stop_skips_remote_daemon_resolution() {
         assert!(should_resolve_remote_daemon_after_local_stop(false, false));
@@ -10638,6 +10849,7 @@ mod tests {
         assert!(!should_resolve_remote_daemon_after_local_stop(true, true));
     }
 
+    #[cfg(desktop)]
     #[test]
     fn untagged_daemon_parser_ignores_desktop_marked_processes() {
         let output = r#"
@@ -10651,6 +10863,7 @@ mod tests {
         assert_eq!(pids, vec![101]);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn daemon_update_requires_selected_process_on_current_computer() {
         let settings = ServiceSettings {
@@ -10684,6 +10897,7 @@ mod tests {
         assert!(process.is_none());
     }
 
+    #[cfg(desktop)]
     #[test]
     fn daemon_update_detects_selected_process_on_current_computer() {
         let settings = ServiceSettings {
@@ -10755,6 +10969,7 @@ mod tests {
         assert_eq!(service_machine_fetch_concurrency(64), 8);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn selected_service_process_detection_uses_desktop_markers() {
         let settings = ServiceSettings {
@@ -10823,6 +11038,7 @@ mod tests {
         );
     }
 
+    #[cfg(desktop)]
     #[test]
     fn selected_service_process_detection_matches_daemon_bin_name() {
         let settings = ServiceSettings {
@@ -10867,6 +11083,7 @@ mod tests {
         );
     }
 
+    #[cfg(desktop)]
     #[test]
     fn selected_service_process_detection_excludes_unmanaged_agent_host() {
         let settings = ServiceSettings {
