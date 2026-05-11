@@ -3611,7 +3611,7 @@ fn fetch_machines(
 
 #[tauri::command]
 fn get_agent_templates(
-    app: AppHandle,
+    _app: AppHandle,
     state: State<'_, DesktopState>,
 ) -> Result<Vec<config::AgentTemplate>, String> {
     let settings = state
@@ -9514,6 +9514,7 @@ fn normalize_app_settings(settings: AppSettings) -> AppSettings {
             accounts: sanitize_saved_accounts(settings.session.accounts),
         },
         service: sanitize_service_settings(settings.service),
+        agent_templates: settings.agent_templates,
     }
 }
 
