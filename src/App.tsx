@@ -1685,7 +1685,7 @@ function App() {
   useEffect(() => {
     if (
       !snapshotReady ||
-      snapshot.platform !== 'desktop' ||
+      snapshot?.platform !== 'desktop' ||
       autoReleaseCheckRef.current ||
       (serviceAuthenticated && !initialServiceRefreshDone)
     ) {
@@ -1727,7 +1727,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [snapshotReady, serviceAuthenticated, initialServiceRefreshDone, latestUpdate, snapshot.platform])
+  }, [snapshotReady, serviceAuthenticated, initialServiceRefreshDone, latestUpdate, snapshot?.platform])
 
   async function handleThemeChange(themeId: string) {
     try {
