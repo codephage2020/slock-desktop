@@ -1779,7 +1779,7 @@ body:has(.loading-shell),
   justify-content: center;
   background: none;
   border: none;
-  border-radius: var(--radius-xs, 4px);
+  border-radius: var(--radius-xs, 8px);
   color: var(--muted);
   font-size: 0.75rem;
   cursor: pointer;

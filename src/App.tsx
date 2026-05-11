@@ -1911,10 +1911,17 @@ function App() {
     }
   }
 
+  function normalizeEnvVars(vars: { key: string; value: string }[]) {
+    return vars
+      .map((v) => ({ key: v.key.trim(), value: v.value }))
+      .filter((v) => v.key.length > 0)
+  }
+
   async function handleAgentCreate() {
     if (!selectedServiceSlug || !agentCreateForm.name || !agentCreateForm.machineId) return
     setAgentCreateBusy(true)
     try {
+      const envNorm = normalizeEnvVars(agentCreateForm.envVars)
       await createAgent(selectedServiceSlug, {
         name: agentCreateForm.name,
         displayName: agentCreateForm.displayName || undefined,
@@ -1923,7 +1930,7 @@ function App() {
         model: agentCreateForm.model || undefined,
         maxTurns: agentCreateForm.maxTurns > 0 ? agentCreateForm.maxTurns : undefined,
         channelId: agentCreateForm.channelId || undefined,
-        environmentVariables: agentCreateForm.envVars.length > 0 ? agentCreateForm.envVars : undefined,
+        environmentVariables: envNorm.length > 0 ? envNorm : undefined,
       })
       setAgentPanelOpen(false)
       setAgentPanelView('menu')
@@ -1936,6 +1943,7 @@ function App() {
   }
 
   async function handleSaveAsTemplate() {
+    const envNorm = normalizeEnvVars(agentCreateForm.envVars)
     const template: AgentTemplate = {
       id: crypto.randomUUID(),
       name: agentCreateForm.name || copy.agentTemplateUntitled,
@@ -1946,7 +1954,7 @@ function App() {
         model: agentCreateForm.model,
         maxTurns: agentCreateForm.maxTurns,
         channelId: agentCreateForm.channelId || null,
-        envVars: agentCreateForm.envVars.length > 0 ? agentCreateForm.envVars : null,
+        envVars: envNorm.length > 0 ? envNorm : null,
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1979,7 +1987,12 @@ function App() {
     if (!agentEditTemplate) return
     setAgentTemplateBusy(true)
     try {
-      const updated = { ...agentEditTemplate, updatedAt: new Date().toISOString() }
+      const envNorm = normalizeEnvVars(agentEditTemplate.config.envVars ?? [])
+      const updated: AgentTemplate = {
+        ...agentEditTemplate,
+        config: { ...agentEditTemplate.config, envVars: envNorm.length > 0 ? envNorm : null },
+        updatedAt: new Date().toISOString(),
+      }
       await saveAgentTemplate(updated)
       setAgentTemplateList((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
       setAgentPanelView('templates')
