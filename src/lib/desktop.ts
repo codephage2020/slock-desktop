@@ -161,6 +161,7 @@ export interface ServiceLogRange {
 export interface BootstrapPayload {
   appName: string
   workspaceUrl: string
+  platform: 'desktop' | 'mobile'
   colorScheme: string
   styleScheme: string
   appearanceMode: 'light' | 'dark' | 'system'

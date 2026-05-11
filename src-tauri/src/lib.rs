@@ -118,6 +118,7 @@ pub struct DesktopState {
 struct BootstrapPayload {
     app_name: String,
     workspace_url: String,
+    platform: String,
     color_scheme: String,
     style_scheme: String,
     appearance_mode: String,
@@ -5249,6 +5250,7 @@ fn build_bootstrap_with_service_options(
     Ok(BootstrapPayload {
         app_name: "slock-desktop".to_string(),
         workspace_url: workspace_url_for_slug(&settings.service.selected_server_slug),
+        platform: current_platform().to_string(),
         color_scheme: settings.color_scheme.clone(),
         style_scheme: settings.style_scheme.clone(),
         appearance_mode: appearance_mode.clone(),
@@ -5927,6 +5929,16 @@ fn workspace_url_for_slug(server_slug: &str) -> String {
     } else {
         format!("{WORKSPACE_URL}/s/{slug}")
     }
+}
+
+#[cfg(desktop)]
+fn current_platform() -> &'static str {
+    "desktop"
+}
+
+#[cfg(not(desktop))]
+fn current_platform() -> &'static str {
+    "mobile"
 }
 
 fn begin_workspace_launch_trace(state: &DesktopState, command_started: Instant, target_url: &str) {

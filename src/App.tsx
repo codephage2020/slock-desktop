@@ -1685,6 +1685,7 @@ function App() {
   useEffect(() => {
     if (
       !snapshotReady ||
+      snapshot.platform !== 'desktop' ||
       autoReleaseCheckRef.current ||
       (serviceAuthenticated && !initialServiceRefreshDone)
     ) {
@@ -1726,7 +1727,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [snapshotReady, serviceAuthenticated, initialServiceRefreshDone, latestUpdate])
+  }, [snapshotReady, serviceAuthenticated, initialServiceRefreshDone, latestUpdate, snapshot.platform])
 
   async function handleThemeChange(themeId: string) {
     try {
@@ -2639,6 +2640,7 @@ function App() {
     snapshot.themes[0]
   const selectedThemeAccent = activeTheme.accent
   const stackButtonLabel = snapshot.workspaceOpen ? copy.focusSlock : copy.openSlock
+  const isDesktop = snapshot.platform === 'desktop'
   const selectedServiceServer =
     snapshot.service.servers.find(
       (server) => server.slug === snapshot.service.selectedServerSlug,
@@ -2945,21 +2947,23 @@ function App() {
           <span>{stackButtonLabel}</span>
         </button>
 
-        <button
-          type="button"
-          className={`titlebar-icon-button${selectedServiceRunning ? ' running' : ''}`}
-          onClick={handleSelectedServiceToggle}
-          disabled={!selectedServiceSlug || serviceActionBusy}
-          title={serviceToggleLabel}
-          aria-label={serviceToggleLabel}
-        >
-          <ServiceActionIcon
-            type={selectedServiceRunning ? 'stop' : 'start'}
-            busy={serviceToggleBusy}
-          />
-        </button>
+        {isDesktop ? (
+          <button
+            type="button"
+            className={`titlebar-icon-button${selectedServiceRunning ? ' running' : ''}`}
+            onClick={handleSelectedServiceToggle}
+            disabled={!selectedServiceSlug || serviceActionBusy}
+            title={serviceToggleLabel}
+            aria-label={serviceToggleLabel}
+          >
+            <ServiceActionIcon
+              type={selectedServiceRunning ? 'stop' : 'start'}
+              busy={serviceToggleBusy}
+            />
+          </button>
+        ) : null}
 
-        {selectedServiceRunning ? (
+        {isDesktop && selectedServiceRunning ? (
           <button
             type="button"
             className="titlebar-icon-button"
@@ -3776,61 +3780,63 @@ function App() {
         {snapshot.workspaceOpen ? (
           <span className="status-pill live">{copy.workspaceActive}</span>
         ) : null}
-        <div className="titlebar-release-wrap" ref={releaseNotesRef}>
-          <button
-            type="button"
-            className={`status-chip titlebar-version${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
-            title={releaseStatusTitle}
-            aria-expanded={releaseNotesOpen}
-            onClick={() => setReleaseNotesOpen((open) => !open)}
-          >
-            v{snapshot.updates.currentVersion}
-            {releaseStatusLabel ? ` · ${releaseStatusLabel}` : ''}
-          </button>
-          {releaseNotesOpen ? (
-            <div className="release-notes-popover" role="dialog" aria-label={copy.releaseCheck}>
-              <header className="release-notes-head">
-                <div className="release-notes-title">
-                  <span className="eyebrow">{copy.releaseCheck}</span>
-                  <strong>{releaseState.latest?.version ? `v${releaseState.latest.version}` : `v${snapshot.updates.currentVersion}`}</strong>
+        {isDesktop ? (
+          <div className="titlebar-release-wrap" ref={releaseNotesRef}>
+            <button
+              type="button"
+              className={`status-chip titlebar-version${releaseUpdateAvailable ? ' warm' : ''}${releaseState.error ? ' error' : ''}`}
+              title={releaseStatusTitle}
+              aria-expanded={releaseNotesOpen}
+              onClick={() => setReleaseNotesOpen((open) => !open)}
+            >
+              v{snapshot.updates.currentVersion}
+              {releaseStatusLabel ? ` · ${releaseStatusLabel}` : ''}
+            </button>
+            {releaseNotesOpen ? (
+              <div className="release-notes-popover" role="dialog" aria-label={copy.releaseCheck}>
+                <header className="release-notes-head">
+                  <div className="release-notes-title">
+                    <span className="eyebrow">{copy.releaseCheck}</span>
+                    <strong>{releaseState.latest?.version ? `v${releaseState.latest.version}` : `v${snapshot.updates.currentVersion}`}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="titlebar-icon-button"
+                    onClick={() => setReleaseNotesOpen(false)}
+                    aria-label={copy.close}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                  </button>
+                </header>
+                {releaseState.latest?.date ? (
+                  <p className="release-notes-date">{copy.published}: {new Date(releaseState.latest.date).toLocaleDateString()}</p>
+                ) : null}
+                <div className="release-notes-body">
+                  {releaseState.latest?.body
+                    ? releaseState.latest.body
+                    : copy.noReleaseNotes}
                 </div>
-                <button
-                  type="button"
-                  className="titlebar-icon-button"
-                  onClick={() => setReleaseNotesOpen(false)}
-                  aria-label={copy.close}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
-              </header>
-              {releaseState.latest?.date ? (
-                <p className="release-notes-date">{copy.published}: {new Date(releaseState.latest.date).toLocaleDateString()}</p>
-              ) : null}
-              <div className="release-notes-body">
-                {releaseState.latest?.body
-                  ? releaseState.latest.body
-                  : copy.noReleaseNotes}
+                {releaseUpdateAvailable ? (
+                  <button
+                    type="button"
+                    className="titlebar-update-button accent"
+                    onClick={handleDesktopUpdateInstall}
+                    disabled={releaseState.installing || releaseState.loading}
+                  >
+                    {releaseState.installing ? <SpinnerIcon /> : null}
+                    <span>
+                      {releaseState.installing
+                        ? copy.installingDesktopUpdate
+                        : copy.installDesktopUpdate}
+                    </span>
+                  </button>
+                ) : (
+                  <span className="release-notes-status">{copy.current}</span>
+                )}
               </div>
-              {releaseUpdateAvailable ? (
-                <button
-                  type="button"
-                  className="titlebar-update-button accent"
-                  onClick={handleDesktopUpdateInstall}
-                  disabled={releaseState.installing || releaseState.loading}
-                >
-                  {releaseState.installing ? <SpinnerIcon /> : null}
-                  <span>
-                    {releaseState.installing
-                      ? copy.installingDesktopUpdate
-                      : copy.installDesktopUpdate}
-                  </span>
-                </button>
-              ) : (
-                <span className="release-notes-status">{copy.current}</span>
-              )}
-            </div>
-          ) : null}
-        </div>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       <section className="launch-board" aria-label={copy.openSlock}>
@@ -4323,7 +4329,7 @@ function App() {
         </div>
       ) : null}
 
-      {serviceLogViewer ? (
+      {isDesktop && serviceLogViewer ? (
         <section
           className="service-log-backdrop"
           onMouseDown={(event) => {
@@ -4493,7 +4499,7 @@ function App() {
         </section>
       ) : null}
 
-      {computerCreateFlow ? (
+      {isDesktop && computerCreateFlow ? (
         <section
           className="computer-create-backdrop"
           onMouseDown={(event) => {
