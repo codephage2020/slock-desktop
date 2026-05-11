@@ -134,6 +134,8 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       : `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>`;
   const backIcon = () =>
     `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>`;
+  const botIcon = () =>
+    `<svg class="service-action-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>`;
   const styleIcon = () =>
     `<svg class="option-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7 2 7l10 5 10-5-10-4.3Z"></path><path d="m2 17 10 5 10-5"></path><path d="m2 12 10 5 10-5"></path></svg>`;
   const spinnerIcon = () =>
@@ -251,6 +253,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       releaseNotes: "Release notes",
       close: "Close",
       backToLauncher: "Back to launcher",
+      agentCreate: "Agent",
       themeStyle: "Style",
       themeStyleOriginalName: "Original style",
       themeStyleOriginalSummary: "Current web UI without desktop overrides.",
@@ -360,6 +363,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       releaseNotes: "发布说明",
       close: "关闭",
       backToLauncher: "返回启动页",
+      agentCreate: "Agent",
       themeStyle: "样式",
       themeStyleOriginalName: "原样式",
       themeStyleOriginalSummary: "保留当前 Web UI 原始样式。",
@@ -2047,28 +2051,70 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       user-select: none;
     }
 
-    .titlebar-back {
-      pointer-events: auto;
+    .titlebar-tools-inner {
+      pointer-events: none;
       position: absolute;
       top: 4px;
       left: 10px;
-      z-index: 1;
-    }
-
-    .platform-macos .titlebar-back {
-      left: 86px;
-    }
-
-    .titlebar-tools-inner {
-      pointer-events: auto;
-      position: absolute;
-      top: 4px;
       right: 10px;
       z-index: 1;
-      display: inline-flex;
+      display: flex;
       align-items: center;
       gap: 8px;
       padding: 0;
+    }
+
+    .titlebar-tools-inner > * {
+      pointer-events: auto;
+    }
+
+    .platform-macos .titlebar-tools-inner {
+      left: 86px;
+    }
+
+    .titlebar-right-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .titlebar-pill-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 26px;
+      padding: 0 10px;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 58%, transparent);
+      border-radius: var(--desktop-radius-pill);
+      background: color-mix(in srgb, var(--desktop-surface-strong) 64%, transparent);
+      color: var(--desktop-muted);
+      font-size: 11px;
+      font-weight: 500;
+      font-family: inherit;
+      white-space: nowrap;
+      cursor: pointer;
+      transition:
+        transform 150ms ease,
+        background 150ms ease,
+        border-color 150ms ease,
+        color 150ms ease;
+    }
+
+    .titlebar-pill-button:hover {
+      background: color-mix(in srgb, var(--desktop-surface-strong) 80%, transparent);
+      border-color: color-mix(in srgb, var(--desktop-line) 80%, transparent);
+      transform: translateY(-1px);
+    }
+
+    .titlebar-pill-button:active {
+      transform: scale(0.97);
+    }
+
+    .titlebar-pill-button .option-icon,
+    .titlebar-pill-button .service-action-icon {
+      width: 14px;
+      height: 14px;
     }
 
     .titlebar-button,
@@ -2285,7 +2331,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       cursor: pointer;
       width: 20px;
       height: 20px;
-      border-radius: 999px;
+      border-radius: var(--desktop-radius-pill);
       background: var(--dot-color);
       transition: border-color 120ms ease, transform 100ms ease;
     }
@@ -2310,7 +2356,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       cursor: pointer;
       width: 20px;
       height: 20px;
-      border-radius: 999px;
+      border-radius: var(--desktop-radius-pill);
       display: grid;
       place-items: center;
       font-size: 13px;
@@ -3622,17 +3668,18 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 		    }
 
     @media (max-width: 520px) {
-      .titlebar-back {
+      .titlebar-tools-inner {
         left: 8px;
+        right: 8px;
+        gap: 4px;
       }
 
-      .platform-macos .titlebar-back {
+      .platform-macos .titlebar-tools-inner {
         left: 86px;
       }
 
-      .titlebar-tools-inner {
-        right: 8px;
-        gap: 4px;
+      .titlebar-pill-button span {
+        display: none;
       }
 
       .titlebar-button {
@@ -3712,6 +3759,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         .service-row,
         .service-open-button,
         .titlebar-button,
+        .titlebar-pill-button,
         .titlebar-version,
         .appearance-style-block,
         .appearance-accent-dot,
@@ -3829,14 +3877,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
     return `
       <div class="titlebar-drag-strip" data-titlebar-drag data-tauri-drag-region aria-hidden="true"></div>
-      <button
-        class="titlebar-button titlebar-back"
-        type="button"
-        data-titlebar-back
-        title="${t("backToLauncher")}"
-        aria-label="${t("backToLauncher")}"
-      >${backIcon()}</button>
       <div class="titlebar-tools-inner">
+        <button
+          class="titlebar-pill-button titlebar-back"
+          type="button"
+          data-titlebar-back
+          title="${t("backToLauncher")}"
+          aria-label="${t("backToLauncher")}"
+        >${backIcon()}<span>${t("backToLauncher")}</span></button>
         <button
           class="titlebar-button${running ? " live" : ""}"
           type="button"
@@ -3845,14 +3893,22 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           aria-label="${running ? t("closeServer") : t("startService")}"
           ${!selectedSlug || serviceBusy ? "disabled" : ""}
         >${actionIcon(running ? "stop" : "start", serviceBusy)}</button>
-        <button
+        ${running ? `<button
           class="titlebar-button"
           type="button"
           data-titlebar-log
           title="${t("openServerLog")}"
           aria-label="${t("openServerLog")}"
           ${!selectedSlug ? "disabled" : ""}
-        >${logIcon()}</button>
+        >${logIcon()}</button>` : ""}
+        <button
+          class="titlebar-button"
+          type="button"
+          data-titlebar-agent
+          title="${t("agentCreate")}"
+          aria-label="${t("agentCreate")}"
+        >${botIcon()}</button>
+        <div class="titlebar-right-group">
         <div class="titlebar-appearance" style="--theme-accent:${escapeHtml(themeAccent)}">
           <button class="titlebar-theme-button" type="button" data-appearance-toggle title="${escapeHtml(themeLabel)}" aria-label="${t("theme")}" aria-expanded="${titlebarAppearanceOpen}">
             <span class="titlebar-theme-swatch"></span>
@@ -3914,6 +3970,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
             </div>
           </div>
         ` : ""}
+        </div>
       </div>
     `;
   };
@@ -4172,6 +4229,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     });
     toolbar.querySelector("[data-titlebar-log]")?.addEventListener("click", () => {
       void openSelectedServiceLog();
+    });
+    toolbar.querySelector("[data-titlebar-agent]")?.addEventListener("click", () => {
+      // Agent panel UI deferred to workspace-side implementation
     });
     toolbar.querySelector("[data-appearance-toggle]")?.addEventListener("click", () => {
       titlebarAppearanceOpen = !titlebarAppearanceOpen;
@@ -4740,6 +4800,7 @@ mod tests {
 
         assert!(script.contains("data-titlebar-service"));
         assert!(script.contains("data-titlebar-log"));
+        assert!(script.contains("data-titlebar-agent"));
         assert!(script.contains("data-appearance-toggle"));
         assert!(script.contains("data-titlebar-mode"));
         assert!(script.contains("data-titlebar-language"));
@@ -4773,6 +4834,8 @@ mod tests {
         assert!(script.contains("data-titlebar-release-install"));
         assert!(script.contains("releaseNotesOpen = !releaseNotesOpen"));
         assert!(script.contains("titlebar-drag-strip"));
+        assert!(script.contains("titlebar-pill-button"));
+        assert!(script.contains("titlebar-right-group"));
         assert!(script.contains("data-titlebar-drag"));
         assert!(script.contains("data-tauri-drag-region"));
         assert!(script.contains("start_window_drag"));
