@@ -516,13 +516,6 @@ struct AgentDetail {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateAgentResponse {
-    #[serde(flatten)]
-    agent: AgentListItem,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct MachineListItem {
     id: String,
     name: String,
@@ -3638,7 +3631,8 @@ fn save_agent_template(
         settings.agent_templates.push(template);
     }
 
-    save_settings(&app, &settings)
+    save_settings_background(&app, &settings);
+    Ok(())
 }
 
 #[tauri::command]
@@ -3658,7 +3652,8 @@ fn delete_agent_template(
         return Err(format!("Template '{id}' not found"));
     }
 
-    save_settings(&app, &settings)
+    save_settings_background(&app, &settings);
+    Ok(())
 }
 
 // ── Inbox commands ───────────────────────────────────────────────────
