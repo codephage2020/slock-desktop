@@ -2052,7 +2052,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .titlebar-tools-inner {
-      pointer-events: auto;
+      pointer-events: none;
       position: absolute;
       top: 4px;
       left: 10px;
@@ -2062,6 +2062,10 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       align-items: center;
       gap: 8px;
       padding: 0;
+    }
+
+    .titlebar-tools-inner > * {
+      pointer-events: auto;
     }
 
     .platform-macos .titlebar-tools-inner {
