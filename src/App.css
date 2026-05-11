@@ -1174,7 +1174,7 @@ body:has(.loading-shell),
   border: none;
   border-radius: var(--radius-pill, 999px);
   background: var(--accent);
-  color: white;
+  color: var(--on-accent, #fff);
   font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
@@ -1232,7 +1232,7 @@ body:has(.loading-shell),
   border: none;
   border-radius: var(--radius-xs, 8px);
   background: var(--accent);
-  color: white;
+  color: var(--on-accent, #fff);
   font-size: 0.68rem;
   font-weight: 600;
   cursor: pointer;
