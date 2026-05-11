@@ -407,6 +407,7 @@ struct ServerMachinesCheck {
     machines: Vec<ServerMachineInfo>,
 }
 
+#[cfg(desktop)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DaemonCommandInfo {
@@ -1926,6 +1927,7 @@ fn open_computer_create_page(
     Ok(())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn prepare_daemon_command(
     app: AppHandle,
@@ -10093,7 +10095,6 @@ pub fn run() {
                 bind_local_machine,
                 check_server_machines,
                 open_computer_create_page,
-                prepare_daemon_command,
                 get_socket_auth,
                 fetch_agents,
                 fetch_agent_detail,
