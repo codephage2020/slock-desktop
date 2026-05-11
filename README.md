@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/codephage2020/slock-desktop/releases/tag/v0.2.10"><img alt="Version / 版本 0.2.10" src="https://img.shields.io/badge/Version%20%2F%20%E7%89%88%E6%9C%AC-0.2.10-10A37F?style=flat-square&logo=github"></a>
+  <a href="https://github.com/codephage2020/slock-desktop/releases/tag/v0.2.11"><img alt="Version / 版本 0.2.11" src="https://img.shields.io/badge/Version%20%2F%20%E7%89%88%E6%9C%AC-0.2.11-10A37F?style=flat-square&logo=github"></a>
 </p>
 
 > [!TIP]
