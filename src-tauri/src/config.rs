@@ -150,6 +150,16 @@ pub struct AgentTemplateConfig {
     pub max_turns: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_vars: Option<Vec<EnvVarConfig>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EnvVarConfig {
+    #[serde(default)]
+    pub key: String,
+    #[serde(default)]
+    pub value: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
