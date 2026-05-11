@@ -11,7 +11,9 @@ use config::{
 };
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::Write;
+#[cfg(desktop)]
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 #[cfg(desktop)]
 use std::process::{Child, Stdio};
 #[cfg(unix)]
@@ -30,10 +32,11 @@ use std::{
 };
 use tauri::{
     webview::PageLoadEvent,
-    window::Color,
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, State, Theme, Url,
+    AppHandle, Emitter, Manager, RunEvent, State, Url,
     WebviewUrl, WebviewWindowBuilder,
 };
+#[cfg(desktop)]
+use tauri::{window::Color, LogicalPosition, LogicalSize, Theme};
 #[cfg(desktop)]
 use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
@@ -1669,9 +1672,12 @@ fn open_login_window(
     let url = LOGIN_URL.parse::<Url>().map_err(|err| err.to_string())?;
 
     if let Some(window) = app.get_webview_window(AUTH_LABEL) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        #[cfg(desktop)]
+        {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
         if clear_login_session_storage {
             clear_webview_cookies(&window);
         }
@@ -1681,30 +1687,36 @@ fn open_login_window(
     }
 
     mark_workspace_launch_navigate_called(state, LOGIN_URL);
-    let window = WebviewWindowBuilder::new(
-        app,
-        AUTH_LABEL,
-        WebviewUrl::External("about:blank".parse().unwrap()),
-    )
-    .title("Slock Sign In")
-    .inner_size(AUTH_WINDOW_WIDTH, AUTH_WINDOW_HEIGHT)
-    .min_inner_size(AUTH_WINDOW_MIN_WIDTH, AUTH_WINDOW_MIN_HEIGHT)
-    .resizable(true)
-    .focused(true)
-    .build()
-    .map_err(|err| err.to_string())?;
-    let _ = window.center();
-    if clear_login_session_storage {
-        clear_webview_cookies(&window);
+    #[cfg(desktop)]
+    {
+        let window = WebviewWindowBuilder::new(
+            app,
+            AUTH_LABEL,
+            WebviewUrl::External("about:blank".parse().unwrap()),
+        )
+        .title("Slock Sign In")
+        .inner_size(AUTH_WINDOW_WIDTH, AUTH_WINDOW_HEIGHT)
+        .min_inner_size(AUTH_WINDOW_MIN_WIDTH, AUTH_WINDOW_MIN_HEIGHT)
+        .resizable(true)
+        .focused(true)
+        .build()
+        .map_err(|err| err.to_string())?;
+        let _ = window.center();
+        if clear_login_session_storage {
+            clear_webview_cookies(&window);
+        }
+        window.navigate(url).map_err(|err| err.to_string())?;
     }
-    window.navigate(url).map_err(|err| err.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 fn close_login_window(app: AppHandle) {
     if let Some(window) = app.get_webview_window(AUTH_LABEL) {
+        #[cfg(desktop)]
         let _ = window.close();
+        #[cfg(not(desktop))]
+        let _ = &window;
     }
 }
 
@@ -4698,9 +4710,12 @@ fn request_app_close_prompt(app: &AppHandle, state: &DesktopState) {
         .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "Main window is unavailable".to_string())
         .and_then(|window| {
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
+            #[cfg(desktop)]
+            {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
             window.eval(&script).map_err(|err| err.to_string())
         });
 
@@ -4726,9 +4741,12 @@ fn request_app_close_progress(
         .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "Main window is unavailable".to_string())
         .and_then(|window| {
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
+            #[cfg(desktop)]
+            {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
             window.eval(&prompt_script).map_err(|err| err.to_string())?;
             window.eval(&progress_script).map_err(|err| err.to_string())
         });
@@ -5302,10 +5320,14 @@ fn enter_workspace_url_in_main_window(
         .ok_or_else(|| "Main window is unavailable".to_string())?;
 
     if window_is_workspace(&window) {
-        let _ = window.unminimize();
-        let _ = window.show();
+        #[cfg(desktop)]
+        {
+            let _ = window.unminimize();
+            let _ = window.show();
+        }
         apply_workspace_window_size(&window, false);
         apply_workspace_titlebar_style(&window);
+        #[cfg(desktop)]
         let _ = window.set_focus();
         apply_window_theme(&window, theme_mode);
         apply_window_language(app, &window, language, true);
@@ -5333,21 +5355,27 @@ fn enter_workspace_url_in_main_window(
     inject_transition_cover(&window, transition_bg_for_workspace(&window, theme_mode));
     apply_workspace_window_size(&window, true);
     apply_workspace_titlebar_style(&window);
+    #[cfg(desktop)]
     let _ = window.set_focus();
     mark_workspace_launch_navigate_called(state, target_url.as_str());
     window.navigate(target_url).map_err(|err| err.to_string())
 }
 
 fn apply_launcher_window_size(window: &tauri::WebviewWindow) {
-    let _ = window.set_min_size(Some(LogicalSize::new(
-        LAUNCHER_WINDOW_MIN_WIDTH,
-        LAUNCHER_WINDOW_MIN_HEIGHT,
-    )));
-    let _ = window.set_size(LogicalSize::new(
-        LAUNCHER_WINDOW_WIDTH,
-        LAUNCHER_WINDOW_HEIGHT,
-    ));
-    let _ = window.center();
+    #[cfg(desktop)]
+    {
+        let _ = window.set_min_size(Some(LogicalSize::new(
+            LAUNCHER_WINDOW_MIN_WIDTH,
+            LAUNCHER_WINDOW_MIN_HEIGHT,
+        )));
+        let _ = window.set_size(LogicalSize::new(
+            LAUNCHER_WINDOW_WIDTH,
+            LAUNCHER_WINDOW_HEIGHT,
+        ));
+        let _ = window.center();
+    }
+    #[cfg(not(desktop))]
+    let _ = window;
 }
 
 fn apply_launcher_titlebar_style(window: &tauri::WebviewWindow) {
@@ -5355,20 +5383,27 @@ fn apply_launcher_titlebar_style(window: &tauri::WebviewWindow) {
     {
         let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
 }
 
 fn apply_workspace_window_size(window: &tauri::WebviewWindow, reposition: bool) {
-    let _ = window.set_min_size(Some(LogicalSize::new(
-        WORKSPACE_WINDOW_MIN_WIDTH,
-        WORKSPACE_WINDOW_MIN_HEIGHT,
-    )));
-    let _ = window.set_size(LogicalSize::new(
-        WORKSPACE_WINDOW_WIDTH,
-        WORKSPACE_WINDOW_HEIGHT,
-    ));
-    if reposition {
-        place_workspace_webview_window(window);
+    #[cfg(desktop)]
+    {
+        let _ = window.set_min_size(Some(LogicalSize::new(
+            WORKSPACE_WINDOW_MIN_WIDTH,
+            WORKSPACE_WINDOW_MIN_HEIGHT,
+        )));
+        let _ = window.set_size(LogicalSize::new(
+            WORKSPACE_WINDOW_WIDTH,
+            WORKSPACE_WINDOW_HEIGHT,
+        ));
+        if reposition {
+            place_workspace_webview_window(window);
+        }
     }
+    #[cfg(not(desktop))]
+    let _ = (window, reposition);
 }
 
 fn apply_workspace_titlebar_style(window: &tauri::WebviewWindow) {
@@ -5376,6 +5411,8 @@ fn apply_workspace_titlebar_style(window: &tauri::WebviewWindow) {
     {
         let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
 }
 
 /// Inject a full-screen solid-color cover over the current page content.
@@ -5406,31 +5443,39 @@ fn transition_bg_for_launcher(window: &tauri::WebviewWindow, theme_mode: &str) -
 }
 
 fn apply_workspace_window_size_to_window(window: &tauri::Window, reposition: bool) {
-    let _ = window.set_min_size(Some(LogicalSize::new(
-        WORKSPACE_WINDOW_MIN_WIDTH,
-        WORKSPACE_WINDOW_MIN_HEIGHT,
-    )));
-    let _ = window.set_size(LogicalSize::new(
-        WORKSPACE_WINDOW_WIDTH,
-        WORKSPACE_WINDOW_HEIGHT,
-    ));
-    if reposition {
-        place_workspace_window(window);
+    #[cfg(desktop)]
+    {
+        let _ = window.set_min_size(Some(LogicalSize::new(
+            WORKSPACE_WINDOW_MIN_WIDTH,
+            WORKSPACE_WINDOW_MIN_HEIGHT,
+        )));
+        let _ = window.set_size(LogicalSize::new(
+            WORKSPACE_WINDOW_WIDTH,
+            WORKSPACE_WINDOW_HEIGHT,
+        ));
+        if reposition {
+            place_workspace_window(window);
+        }
     }
+    #[cfg(not(desktop))]
+    let _ = (window, reposition);
 }
 
+#[cfg(desktop)]
 fn place_workspace_webview_window(window: &tauri::WebviewWindow) {
     if let Ok(Some(monitor)) = window.current_monitor() {
         let _ = window.set_position(workspace_position_from_monitor(&monitor));
     }
 }
 
+#[cfg(desktop)]
 fn place_workspace_window(window: &tauri::Window) {
     if let Ok(Some(monitor)) = window.current_monitor() {
         let _ = window.set_position(workspace_position_from_monitor(&monitor));
     }
 }
 
+#[cfg(desktop)]
 fn workspace_position_from_monitor(monitor: &tauri::window::Monitor) -> LogicalPosition<f64> {
     let work_area = monitor.work_area();
     workspace_window_logical_position(
@@ -5440,6 +5485,7 @@ fn workspace_position_from_monitor(monitor: &tauri::window::Monitor) -> LogicalP
     )
 }
 
+#[cfg(desktop)]
 fn workspace_window_logical_position(
     work_area_x: i32,
     work_area_y: i32,
@@ -5462,6 +5508,8 @@ fn apply_workspace_titlebar_style_to_window(window: &tauri::Window) {
     {
         let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
 }
 
 fn apply_theme_to_workspace(
@@ -5524,38 +5572,59 @@ fn apply_theme_to_workspace(
 fn apply_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
     apply_native_window_theme(window, theme_mode);
 
-    let background = if effective_window_dark(window, theme_mode) {
-        Color(37, 38, 35, 255)
-    } else {
-        Color(255, 255, 255, 255)
-    };
-    let _ = window.set_background_color(Some(background));
+    #[cfg(desktop)]
+    {
+        let background = if effective_window_dark(window, theme_mode) {
+            Color(37, 38, 35, 255)
+        } else {
+            Color(255, 255, 255, 255)
+        };
+        let _ = window.set_background_color(Some(background));
+    }
 }
 
 fn apply_launcher_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
     apply_native_window_theme(window, theme_mode);
-    let background = if effective_window_dark(window, theme_mode) {
-        Color(31, 31, 28, 255)
-    } else {
-        Color(247, 247, 245, 255)
-    };
-    let _ = window.set_background_color(Some(background));
+    #[cfg(desktop)]
+    {
+        let background = if effective_window_dark(window, theme_mode) {
+            Color(31, 31, 28, 255)
+        } else {
+            Color(247, 247, 245, 255)
+        };
+        let _ = window.set_background_color(Some(background));
+    }
 }
 
 fn effective_window_dark(window: &tauri::WebviewWindow, theme_mode: &str) -> bool {
     let normalized_mode = theme::normalize_mode(theme_mode);
-    normalized_mode == "dark"
-        || (normalized_mode == "system" && matches!(window.theme(), Ok(Theme::Dark)))
+    if normalized_mode == "dark" {
+        return true;
+    }
+    #[cfg(desktop)]
+    if normalized_mode == "system" && matches!(window.theme(), Ok(Theme::Dark)) {
+        return true;
+    }
+    #[cfg(not(desktop))]
+    let _ = window;
+    false
 }
 
 fn apply_native_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
-    let normalized_mode = theme::normalize_mode(theme_mode);
-    let native_theme = match normalized_mode {
-        "light" => Some(Theme::Light),
-        "dark" => Some(Theme::Dark),
-        _ => None,
-    };
-    let _ = window.set_theme(native_theme);
+    #[cfg(desktop)]
+    {
+        let normalized_mode = theme::normalize_mode(theme_mode);
+        let native_theme = match normalized_mode {
+            "light" => Some(Theme::Light),
+            "dark" => Some(Theme::Dark),
+            _ => None,
+        };
+        let _ = window.set_theme(native_theme);
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (window, theme_mode);
+    }
 }
 
 fn apply_window_language(
@@ -5565,17 +5634,24 @@ fn apply_window_language(
     workspace: bool,
 ) {
     let resolved_language = resolve_desktop_language(language);
-    let title = match (resolved_language, workspace) {
-        ("zh-CN", true) => "Slock 工作区",
-        ("zh-CN", false) => "slock-desktop",
-        (_, true) => "Slock Workspace",
-        (_, false) => "slock-desktop",
-    };
-    let _ = window.set_title(title);
+    #[cfg(desktop)]
+    {
+        let title = match (resolved_language, workspace) {
+            ("zh-CN", true) => "Slock 工作区",
+            ("zh-CN", false) => "slock-desktop",
+            (_, true) => "Slock Workspace",
+            (_, false) => "slock-desktop",
+        };
+        let _ = window.set_title(title);
+    }
+    #[cfg(not(desktop))]
+    let _ = (window, workspace);
     #[cfg(desktop)]
     if let Err(err) = apply_native_menu(app, resolved_language) {
         log::warn!("failed to apply localized native menu: {err}");
     }
+    #[cfg(not(desktop))]
+    let _ = app;
 }
 
 #[cfg(desktop)]
@@ -10472,6 +10548,7 @@ mod tests {
         );
     }
 
+    #[cfg(desktop)]
     #[test]
     fn workspace_position_uses_monitor_work_area_margin() {
         let position = super::workspace_window_logical_position(0, 50, 2.0);
