@@ -14,10 +14,18 @@ import './App.css'
 import './Settings.css'
 import {
   activateAccount,
+  type AgentListItem,
+  type AgentTemplate,
   type BootstrapPayload,
+  createAgent,
   type DesktopUpdateCheck,
+  deleteAgentTemplate,
+  fetchAgentDetail,
+  fetchAgents,
+  fetchMachines,
   type InboxFeedItem,
   type InboxMessage,
+  type MachineListItem,
   type MessageAttachment,
   type ServiceAccountSnapshot,
   type ServiceLogSnapshot,
@@ -32,6 +40,7 @@ import {
   fetchDmChannels,
   fetchInbox,
   fetchThreadMessages,
+  getAgentTemplates,
   getSocketAuth,
   installDesktopUpdate,
   forgetAccount,
@@ -44,6 +53,7 @@ import {
   prepareDaemonCommand,
   refreshServiceServerCatalog,
   refreshServiceServerStatus,
+  saveAgentTemplate,
   selectServiceServer,
   sendMessage,
   startService,
@@ -137,6 +147,42 @@ const COPY = {
     focusSlock: 'Focus Slock',
     openSlock: 'Enter Slock',
     agentCreate: 'Agent',
+    agentNewAgent: 'New Agent',
+    agentTemplates: 'Templates',
+    agentBack: '← Back',
+    agentCreateTitle: 'Create Agent',
+    agentCreateMode: 'Start from',
+    agentModeBlank: 'Scratch',
+    agentModeTemplate: 'Template',
+    agentModeAgent: 'Agent',
+    agentName: 'Name',
+    agentDisplayName: 'Display Name',
+    agentComputer: 'Computer',
+    agentInstructions: 'Instructions',
+    agentAdvanced: 'Advanced',
+    agentModel: 'Model',
+    agentMaxTurns: 'Max Turns',
+    agentChannel: 'Channel',
+    agentSaveTemplate: 'Save as Template',
+    agentCancelBtn: 'Cancel',
+    agentCreateBtn: 'Create',
+    agentCreating: 'Creating…',
+    agentSelectTemplate: 'Select template…',
+    agentSelectAgent: 'Select agent…',
+    agentSelectComputer: 'Select computer…',
+    agentNoComputers: 'No computers available',
+    agentNoTemplates: 'No templates yet',
+    agentNoAgents: 'No agents found',
+    agentTemplateTitle: 'Templates',
+    agentNewTemplate: '+ New Template',
+    agentFromAgent: '+ From Existing Agent',
+    agentEditTemplate: 'Edit Template',
+    agentTemplateName: 'Template Name',
+    agentTemplateSave: 'Save',
+    agentTemplateDelete: 'Delete',
+    agentTemplateDeleting: 'Deleting…',
+    agentTemplateTurns: 'turns',
+    agentTemplateUntitled: 'Untitled',
     messageReminderTitle: 'New message',
     messageReminderOpen: 'Open',
     messageReminderDismiss: 'Dismiss',
@@ -325,6 +371,42 @@ const COPY = {
     focusSlock: '聚焦 Slock',
     openSlock: '进入 Slock',
     agentCreate: 'Agent',
+    agentNewAgent: '新建 Agent',
+    agentTemplates: '模板管理',
+    agentBack: '← 返回',
+    agentCreateTitle: '创建 Agent',
+    agentCreateMode: '创建方式',
+    agentModeBlank: '空白',
+    agentModeTemplate: '模板',
+    agentModeAgent: 'Agent',
+    agentName: '名称',
+    agentDisplayName: '显示名称',
+    agentComputer: '计算机',
+    agentInstructions: '指令',
+    agentAdvanced: '高级选项',
+    agentModel: '模型',
+    agentMaxTurns: '最大轮次',
+    agentChannel: '频道',
+    agentSaveTemplate: '另存为模板',
+    agentCancelBtn: '取消',
+    agentCreateBtn: '创建',
+    agentCreating: '创建中…',
+    agentSelectTemplate: '选择模板…',
+    agentSelectAgent: '选择 Agent…',
+    agentSelectComputer: '选择计算机…',
+    agentNoComputers: '暂无可用计算机',
+    agentNoTemplates: '暂无模板',
+    agentNoAgents: '未找到 Agent',
+    agentTemplateTitle: '模板管理',
+    agentNewTemplate: '+ 新建模板',
+    agentFromAgent: '+ 从现有 Agent 导入',
+    agentEditTemplate: '编辑模板',
+    agentTemplateName: '模板名称',
+    agentTemplateSave: '保存',
+    agentTemplateDelete: '删除',
+    agentTemplateDeleting: '删除中…',
+    agentTemplateTurns: '轮',
+    agentTemplateUntitled: '未命名',
     messageReminderTitle: '新消息',
     messageReminderOpen: '打开',
     messageReminderDismiss: '关闭',
@@ -551,6 +633,26 @@ function App() {
   const [serverPanelOpen, setServerPanelOpen] = useState(false)
   const [stylePanelOpen, setStylePanelOpen] = useState(false)
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
+  const [agentPanelView, setAgentPanelView] = useState<'menu' | 'create' | 'templates' | 'template-edit'>('menu')
+  const [agentCreateMode, setAgentCreateMode] = useState<'scratch' | 'template' | 'agent'>('scratch')
+  const [agentCreateForm, setAgentCreateForm] = useState({
+    name: '',
+    displayName: '',
+    machineId: '',
+    instructions: '',
+    model: '',
+    maxTurns: 0,
+    channelId: '',
+    templateId: '',
+    sourceAgentId: '',
+  })
+  const [agentCreateAdvanced, setAgentCreateAdvanced] = useState(false)
+  const [agentCreateBusy, setAgentCreateBusy] = useState(false)
+  const [agentMachines, setAgentMachines] = useState<MachineListItem[]>([])
+  const [agentList, setAgentList] = useState<AgentListItem[]>([])
+  const [agentTemplateList, setAgentTemplateList] = useState<AgentTemplate[]>([])
+  const [agentEditTemplate, setAgentEditTemplate] = useState<AgentTemplate | null>(null)
+  const [agentTemplateBusy, setAgentTemplateBusy] = useState(false)
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
   const [computerCreateFlow, setComputerCreateFlow] = useState<{
     phase: 'prompt' | 'waiting' | 'ready' | 'command'
@@ -565,6 +667,7 @@ function App() {
   } | null>(null)
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const serverPanelRef = useRef<HTMLDivElement | null>(null)
+  const agentPanelRef = useRef<HTMLDivElement | null>(null)
   const stylePanelRef = useRef<HTMLDivElement | null>(null)
   const releaseNotesRef = useRef<HTMLDivElement | null>(null)
   const newNameInputRef = useRef<HTMLInputElement | null>(null)
@@ -1051,6 +1154,27 @@ function App() {
     document.addEventListener('pointerdown', closeStylePanelOnOutsidePointer)
     return () => document.removeEventListener('pointerdown', closeStylePanelOnOutsidePointer)
   }, [stylePanelOpen])
+
+  useEffect(() => {
+    if (!agentPanelOpen) {
+      return
+    }
+
+    const closeAgentPanelOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (agentPanelRef.current?.contains(target)) {
+        return
+      }
+      setAgentPanelOpen(false)
+      setAgentPanelView('menu')
+    }
+
+    document.addEventListener('pointerdown', closeAgentPanelOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeAgentPanelOnOutsidePointer)
+  }, [agentPanelOpen])
 
   useEffect(() => {
     if (!releaseNotesOpen) {
@@ -1708,6 +1832,208 @@ function App() {
       setErrorMessage(getErrorMessage(error))
     } finally {
       setBusyAction(null)
+    }
+  }
+
+  /* ── Agent panel helpers ────────────────────────────────── */
+
+  async function loadAgentPanelData() {
+    if (!selectedServiceSlug) return
+    try {
+      const [machines, agents, templates] = await Promise.all([
+        fetchMachines(selectedServiceSlug),
+        fetchAgents(selectedServiceSlug),
+        getAgentTemplates(),
+      ])
+      setAgentMachines(machines)
+      setAgentList(agents)
+      setAgentTemplateList(templates)
+    } catch {
+      // silent — lists will be empty
+    }
+  }
+
+  function resetAgentCreateForm() {
+    setAgentCreateForm({
+      name: '',
+      displayName: '',
+      machineId: '',
+      instructions: '',
+      model: '',
+      maxTurns: 0,
+      channelId: '',
+      templateId: '',
+      sourceAgentId: '',
+    })
+    setAgentCreateMode('scratch')
+    setAgentCreateAdvanced(false)
+  }
+
+  async function handleAgentCreateFromTemplate(templateId: string) {
+    const tpl = agentTemplateList.find((t) => t.id === templateId)
+    if (!tpl) return
+    setAgentCreateForm((prev) => ({
+      ...prev,
+      templateId,
+      instructions: tpl.config.instructions,
+      model: tpl.config.model,
+      maxTurns: tpl.config.maxTurns,
+      channelId: tpl.config.channelId ?? '',
+    }))
+  }
+
+  async function handleAgentCreateFromAgent(agentId: string) {
+    if (!selectedServiceSlug) return
+    try {
+      const detail = await fetchAgentDetail(selectedServiceSlug, agentId)
+      setAgentCreateForm((prev) => ({
+        ...prev,
+        sourceAgentId: agentId,
+        instructions: detail.instructions ?? '',
+        model: detail.model ?? '',
+        maxTurns: detail.maxTurns ?? 0,
+        channelId: detail.channelId ?? '',
+      }))
+    } catch {
+      // keep form as-is
+    }
+  }
+
+  async function handleAgentCreate() {
+    if (!selectedServiceSlug || !agentCreateForm.name || !agentCreateForm.machineId) return
+    setAgentCreateBusy(true)
+    try {
+      await createAgent(selectedServiceSlug, {
+        name: agentCreateForm.name,
+        displayName: agentCreateForm.displayName || undefined,
+        machineId: agentCreateForm.machineId,
+        instructions: agentCreateForm.instructions || undefined,
+        model: agentCreateForm.model || undefined,
+        maxTurns: agentCreateForm.maxTurns > 0 ? agentCreateForm.maxTurns : undefined,
+        channelId: agentCreateForm.channelId || undefined,
+      })
+      setAgentPanelOpen(false)
+      setAgentPanelView('menu')
+      resetAgentCreateForm()
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setAgentCreateBusy(false)
+    }
+  }
+
+  async function handleSaveAsTemplate() {
+    const template: AgentTemplate = {
+      id: crypto.randomUUID(),
+      name: agentCreateForm.name || copy.agentTemplateUntitled,
+      source: agentCreateMode === 'agent' ? 'from-agent' : 'custom',
+      sourceAgentId: agentCreateMode === 'agent' ? agentCreateForm.sourceAgentId || null : null,
+      config: {
+        instructions: agentCreateForm.instructions,
+        model: agentCreateForm.model,
+        maxTurns: agentCreateForm.maxTurns,
+        channelId: agentCreateForm.channelId || null,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    try {
+      await saveAgentTemplate(template)
+      setAgentTemplateList((prev) => [...prev, template])
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    }
+  }
+
+  async function handleDeleteTemplate(id: string) {
+    setAgentTemplateBusy(true)
+    try {
+      await deleteAgentTemplate(id)
+      setAgentTemplateList((prev) => prev.filter((t) => t.id !== id))
+      if (agentEditTemplate?.id === id) {
+        setAgentPanelView('templates')
+        setAgentEditTemplate(null)
+      }
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setAgentTemplateBusy(false)
+    }
+  }
+
+  async function handleSaveTemplate() {
+    if (!agentEditTemplate) return
+    setAgentTemplateBusy(true)
+    try {
+      const updated = { ...agentEditTemplate, updatedAt: new Date().toISOString() }
+      await saveAgentTemplate(updated)
+      setAgentTemplateList((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
+      setAgentPanelView('templates')
+      setAgentEditTemplate(null)
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error))
+    } finally {
+      setAgentTemplateBusy(false)
+    }
+  }
+
+  function startNewTemplate() {
+    const blank: AgentTemplate = {
+      id: crypto.randomUUID(),
+      name: '',
+      source: 'custom',
+      sourceAgentId: null,
+      config: { instructions: '', model: '', maxTurns: 0, channelId: null },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    setAgentEditTemplate(blank)
+    setAgentPanelView('template-edit')
+  }
+
+  async function startTemplateFromAgent() {
+    if (!selectedServiceSlug) return
+    // Load agents then go to template-edit with source=agent
+    try {
+      const agents = await fetchAgents(selectedServiceSlug)
+      setAgentList(agents)
+    } catch {
+      // keep existing list
+    }
+    const blank: AgentTemplate = {
+      id: crypto.randomUUID(),
+      name: '',
+      source: 'from-agent',
+      sourceAgentId: null,
+      config: { instructions: '', model: '', maxTurns: 0, channelId: null },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    setAgentEditTemplate(blank)
+    setAgentPanelView('template-edit')
+  }
+
+  async function handleTemplateImportFromAgent(agentId: string) {
+    if (!selectedServiceSlug || !agentEditTemplate) return
+    try {
+      const detail = await fetchAgentDetail(selectedServiceSlug, agentId)
+      setAgentEditTemplate((prev) =>
+        prev
+          ? {
+              ...prev,
+              sourceAgentId: agentId,
+              name: prev.name || detail.displayName || detail.name,
+              config: {
+                instructions: detail.instructions ?? '',
+                model: detail.model ?? '',
+                maxTurns: detail.maxTurns ?? 0,
+                channelId: detail.channelId ?? null,
+              },
+            }
+          : prev,
+      )
+    } catch {
+      // keep form as-is
     }
   }
 
@@ -2622,16 +2948,478 @@ function App() {
           </button>
         ) : null}
 
-        <button
-          type="button"
-          className="titlebar-icon-button"
-          onClick={() => setAgentPanelOpen((open) => !open)}
-          aria-expanded={agentPanelOpen}
-          title={copy.agentCreate}
-          aria-label={copy.agentCreate}
-        >
-          <BotIcon />
-        </button>
+        {/* Agent panel (#83) */}
+        <div className="titlebar-agent" ref={agentPanelRef}>
+          <button
+            type="button"
+            className="titlebar-icon-button"
+            onClick={() => {
+              if (agentPanelOpen) {
+                setAgentPanelOpen(false)
+                setAgentPanelView('menu')
+              } else {
+                setAgentPanelOpen(true)
+                setAgentPanelView('menu')
+                void loadAgentPanelData()
+              }
+            }}
+            aria-expanded={agentPanelOpen}
+            title={copy.agentCreate}
+            aria-label={copy.agentCreate}
+          >
+            <BotIcon />
+          </button>
+          {agentPanelOpen ? (
+            <div className="agent-panel" aria-label={copy.agentCreate}>
+              {/* Menu view */}
+              {agentPanelView === 'menu' ? (
+                <div className="agent-menu">
+                  <button
+                    type="button"
+                    className="agent-menu-item"
+                    onClick={() => {
+                      resetAgentCreateForm()
+                      void loadAgentPanelData()
+                      setAgentPanelView('create')
+                    }}
+                  >
+                    <span className="agent-menu-icon">+</span>
+                    <span>{copy.agentNewAgent}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="agent-menu-item"
+                    onClick={() => {
+                      void loadAgentPanelData()
+                      setAgentPanelView('templates')
+                    }}
+                  >
+                    <span className="agent-menu-icon">⚙</span>
+                    <span>{copy.agentTemplates}</span>
+                  </button>
+                </div>
+              ) : null}
+
+              {/* Create view */}
+              {agentPanelView === 'create' ? (
+                <div className="agent-create">
+                  <button
+                    type="button"
+                    className="agent-back-button"
+                    onClick={() => setAgentPanelView('menu')}
+                  >
+                    {copy.agentBack}
+                  </button>
+                  <p className="eyebrow">{copy.agentCreateTitle}</p>
+
+                  {/* Mode segmented control */}
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentCreateMode}</label>
+                    <div className="agent-segmented" role="radiogroup" aria-label={copy.agentCreateMode}>
+                      {(['scratch', 'template', 'agent'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          role="radio"
+                          aria-checked={agentCreateMode === mode}
+                          className={`agent-segment${agentCreateMode === mode ? ' active' : ''}`}
+                          onClick={() => {
+                            resetAgentCreateForm()
+                            setAgentCreateMode(mode)
+                          }}
+                        >
+                          {mode === 'scratch' ? copy.agentModeBlank : mode === 'template' ? copy.agentModeTemplate : copy.agentModeAgent}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Template selector */}
+                  {agentCreateMode === 'template' ? (
+                    <div className="agent-field">
+                      <select
+                        className="agent-select"
+                        value={agentCreateForm.templateId}
+                        onChange={(e) => {
+                          const templateId = e.target.value
+                          setAgentCreateForm((prev) => ({ ...prev, templateId }))
+                          if (templateId) void handleAgentCreateFromTemplate(templateId)
+                        }}
+                      >
+                        <option value="">{copy.agentSelectTemplate}</option>
+                        {agentTemplateList.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+
+                  {/* Agent selector */}
+                  {agentCreateMode === 'agent' ? (
+                    <div className="agent-field">
+                      <select
+                        className="agent-select"
+                        value={agentCreateForm.sourceAgentId}
+                        onChange={(e) => {
+                          const agentId = e.target.value
+                          setAgentCreateForm((prev) => ({ ...prev, sourceAgentId: agentId }))
+                          if (agentId) void handleAgentCreateFromAgent(agentId)
+                        }}
+                      >
+                        <option value="">{copy.agentSelectAgent}</option>
+                        {agentList.map((a) => (
+                          <option key={a.id} value={a.id}>{a.displayName || a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+
+                  {/* Name */}
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentName}</label>
+                    <input
+                      className="agent-input"
+                      value={agentCreateForm.name}
+                      onChange={(e) => setAgentCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder={copy.agentName}
+                    />
+                  </div>
+
+                  {/* Display name */}
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentDisplayName}</label>
+                    <input
+                      className="agent-input"
+                      value={agentCreateForm.displayName}
+                      onChange={(e) => setAgentCreateForm((prev) => ({ ...prev, displayName: e.target.value }))}
+                      placeholder={copy.agentDisplayName}
+                    />
+                  </div>
+
+                  {/* Computer */}
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentComputer}</label>
+                    <select
+                      className="agent-select"
+                      value={agentCreateForm.machineId}
+                      onChange={(e) => setAgentCreateForm((prev) => ({ ...prev, machineId: e.target.value }))}
+                    >
+                      <option value="">{copy.agentSelectComputer}</option>
+                      {agentMachines.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name} ({m.status})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Instructions */}
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentInstructions}</label>
+                    <textarea
+                      className="agent-textarea"
+                      rows={3}
+                      value={agentCreateForm.instructions}
+                      onChange={(e) => setAgentCreateForm((prev) => ({ ...prev, instructions: e.target.value }))}
+                      placeholder={copy.agentInstructions}
+                    />
+                  </div>
+
+                  {/* Advanced toggle */}
+                  <button
+                    type="button"
+                    className="agent-advanced-toggle"
+                    onClick={() => setAgentCreateAdvanced((prev) => !prev)}
+                  >
+                    {agentCreateAdvanced ? '▾' : '▸'} {copy.agentAdvanced}
+                  </button>
+
+                  {agentCreateAdvanced ? (
+                    <div className="agent-advanced-fields">
+                      <div className="agent-field">
+                        <label className="agent-label">{copy.agentModel}</label>
+                        <input
+                          className="agent-input"
+                          value={agentCreateForm.model}
+                          onChange={(e) => setAgentCreateForm((prev) => ({ ...prev, model: e.target.value }))}
+                          placeholder={copy.agentModel}
+                        />
+                      </div>
+                      <div className="agent-field">
+                        <label className="agent-label">{copy.agentMaxTurns}</label>
+                        <input
+                          className="agent-input"
+                          type="number"
+                          min={0}
+                          value={agentCreateForm.maxTurns || ''}
+                          onChange={(e) => setAgentCreateForm((prev) => ({ ...prev, maxTurns: parseInt(e.target.value, 10) || 0 }))}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="agent-field">
+                        <label className="agent-label">{copy.agentChannel}</label>
+                        <input
+                          className="agent-input"
+                          value={agentCreateForm.channelId}
+                          onChange={(e) => setAgentCreateForm((prev) => ({ ...prev, channelId: e.target.value }))}
+                          placeholder={copy.agentChannel}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Actions */}
+                  <div className="agent-actions">
+                    <button
+                      type="button"
+                      className="tiny-button muted"
+                      onClick={handleSaveAsTemplate}
+                    >
+                      {copy.agentSaveTemplate}
+                    </button>
+                    <div className="agent-actions-right">
+                      <button
+                        type="button"
+                        className="tiny-button muted"
+                        onClick={() => {
+                          setAgentPanelView('menu')
+                          resetAgentCreateForm()
+                        }}
+                      >
+                        {copy.agentCancelBtn}
+                      </button>
+                      <button
+                        type="button"
+                        className="tiny-button accent"
+                        onClick={handleAgentCreate}
+                        disabled={agentCreateBusy || !agentCreateForm.name || !agentCreateForm.machineId}
+                      >
+                        {agentCreateBusy ? copy.agentCreating : copy.agentCreateBtn}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Templates view */}
+              {agentPanelView === 'templates' ? (
+                <div className="agent-templates">
+                  <button
+                    type="button"
+                    className="agent-back-button"
+                    onClick={() => setAgentPanelView('menu')}
+                  >
+                    {copy.agentBack}
+                  </button>
+                  <p className="eyebrow">{copy.agentTemplateTitle}</p>
+
+                  {agentTemplateList.length === 0 ? (
+                    <p className="agent-empty">{copy.agentNoTemplates}</p>
+                  ) : (
+                    <div className="agent-template-list">
+                      {agentTemplateList.map((tpl) => (
+                        <div key={tpl.id} className="agent-template-card">
+                          <div className="agent-template-info">
+                            <span className="agent-template-name">{tpl.name || copy.agentTemplateUntitled}</span>
+                            <span className="agent-template-meta">
+                              {tpl.config.model || '—'} · {tpl.config.maxTurns || '∞'} {copy.agentTemplateTurns}
+                            </span>
+                          </div>
+                          <div className="agent-template-card-actions">
+                            <button
+                              type="button"
+                              className="tiny-button muted"
+                              onClick={() => {
+                                setAgentEditTemplate({ ...tpl })
+                                setAgentPanelView('template-edit')
+                              }}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              type="button"
+                              className="tiny-button muted"
+                              onClick={() => void handleDeleteTemplate(tpl.id)}
+                              disabled={agentTemplateBusy}
+                            >
+                              🗑
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="agent-template-add-actions">
+                    <button
+                      type="button"
+                      className="agent-menu-item compact"
+                      onClick={startNewTemplate}
+                    >
+                      {copy.agentNewTemplate}
+                    </button>
+                    <button
+                      type="button"
+                      className="agent-menu-item compact"
+                      onClick={() => void startTemplateFromAgent()}
+                    >
+                      {copy.agentFromAgent}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Template edit view */}
+              {agentPanelView === 'template-edit' && agentEditTemplate ? (
+                <div className="agent-template-edit">
+                  <button
+                    type="button"
+                    className="agent-back-button"
+                    onClick={() => {
+                      setAgentPanelView('templates')
+                      setAgentEditTemplate(null)
+                    }}
+                  >
+                    {copy.agentBack}
+                  </button>
+                  <p className="eyebrow">{copy.agentEditTemplate}</p>
+
+                  {/* Import from agent (for source=agent templates) */}
+                  {agentEditTemplate.source === 'from-agent' ? (
+                    <div className="agent-field">
+                      <label className="agent-label">{copy.agentSelectAgent}</label>
+                      <select
+                        className="agent-select"
+                        value={agentEditTemplate.sourceAgentId ?? ''}
+                        onChange={(e) => {
+                          const agentId = e.target.value
+                          if (agentId) void handleTemplateImportFromAgent(agentId)
+                        }}
+                      >
+                        <option value="">{copy.agentSelectAgent}</option>
+                        {agentList.map((a) => (
+                          <option key={a.id} value={a.id}>{a.displayName || a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentTemplateName}</label>
+                    <input
+                      className="agent-input"
+                      value={agentEditTemplate.name}
+                      onChange={(e) =>
+                        setAgentEditTemplate((prev) =>
+                          prev ? { ...prev, name: e.target.value } : prev,
+                        )
+                      }
+                      placeholder={copy.agentTemplateName}
+                    />
+                  </div>
+
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentInstructions}</label>
+                    <textarea
+                      className="agent-textarea"
+                      rows={3}
+                      value={agentEditTemplate.config.instructions}
+                      onChange={(e) =>
+                        setAgentEditTemplate((prev) =>
+                          prev
+                            ? { ...prev, config: { ...prev.config, instructions: e.target.value } }
+                            : prev,
+                        )
+                      }
+                      placeholder={copy.agentInstructions}
+                    />
+                  </div>
+
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentModel}</label>
+                    <input
+                      className="agent-input"
+                      value={agentEditTemplate.config.model}
+                      onChange={(e) =>
+                        setAgentEditTemplate((prev) =>
+                          prev
+                            ? { ...prev, config: { ...prev.config, model: e.target.value } }
+                            : prev,
+                        )
+                      }
+                      placeholder={copy.agentModel}
+                    />
+                  </div>
+
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentMaxTurns}</label>
+                    <input
+                      className="agent-input"
+                      type="number"
+                      min={0}
+                      value={agentEditTemplate.config.maxTurns || ''}
+                      onChange={(e) =>
+                        setAgentEditTemplate((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                config: {
+                                  ...prev.config,
+                                  maxTurns: parseInt(e.target.value, 10) || 0,
+                                },
+                              }
+                            : prev,
+                        )
+                      }
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentChannel}</label>
+                    <input
+                      className="agent-input"
+                      value={agentEditTemplate.config.channelId ?? ''}
+                      onChange={(e) =>
+                        setAgentEditTemplate((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                config: {
+                                  ...prev.config,
+                                  channelId: e.target.value || null,
+                                },
+                              }
+                            : prev,
+                        )
+                      }
+                      placeholder={copy.agentChannel}
+                    />
+                  </div>
+
+                  <div className="agent-actions">
+                    <button
+                      type="button"
+                      className="tiny-button muted"
+                      onClick={() => {
+                        setAgentPanelView('templates')
+                        setAgentEditTemplate(null)
+                      }}
+                    >
+                      {copy.agentCancelBtn}
+                    </button>
+                    <button
+                      type="button"
+                      className="tiny-button accent"
+                      onClick={handleSaveTemplate}
+                      disabled={agentTemplateBusy || !agentEditTemplate.name}
+                    >
+                      {copy.agentTemplateSave}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
 
         <div className="tauri-titlebar-drag" data-tauri-drag-region />
 

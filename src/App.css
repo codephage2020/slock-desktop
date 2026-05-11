@@ -1522,6 +1522,315 @@ body:has(.loading-shell),
   height: 14px;
 }
 
+/* ── Agent panel (#83) ───────────────────────────────── */
+
+.titlebar-agent {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.agent-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(320px, calc(100vw - 20px));
+  max-height: min(480px, calc(100vh - 60px));
+  overflow-y: auto;
+  padding: 10px;
+  border-radius: var(--radius-md, 12px);
+  background: color-mix(in srgb, var(--surface) 98%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--text) 12%, transparent),
+    0 24px 48px -24px color-mix(in srgb, var(--text) 24%, transparent);
+  z-index: 40;
+  animation: panel-appear 150ms ease;
+}
+
+/* Menu view — compact 200px */
+.agent-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 180px;
+}
+
+.agent-panel:has(.agent-menu) {
+  width: min(200px, calc(100vw - 20px));
+}
+
+.agent-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-xs, 8px);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.agent-menu-item:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.agent-menu-item.compact {
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.agent-menu-item.compact:hover {
+  color: var(--text);
+}
+
+.agent-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* Back button */
+.agent-back-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 2px 0;
+  margin-bottom: 4px;
+  text-align: left;
+  transition: color 0.12s;
+}
+
+.agent-back-button:hover {
+  color: var(--text);
+}
+
+/* Form fields */
+.agent-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.agent-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.agent-input,
+.agent-select {
+  appearance: none;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: var(--radius-xs, 8px);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 0.78rem;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.agent-select {
+  /* Arrow color is hardcoded — CSS vars cannot be used inside data-URIs */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+
+.agent-input:focus,
+.agent-select:focus {
+  border-color: var(--accent);
+}
+
+.agent-input::placeholder {
+  color: var(--muted);
+}
+
+.agent-textarea {
+  appearance: none;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: var(--radius-xs, 8px);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 0.78rem;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+  min-height: 48px;
+  transition: border-color 0.15s;
+}
+
+.agent-textarea:focus {
+  border-color: var(--accent);
+}
+
+.agent-textarea::placeholder {
+  color: var(--muted);
+}
+
+/* Segmented control */
+.agent-segmented {
+  display: flex;
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: var(--radius-xs, 8px);
+  overflow: hidden;
+}
+
+.agent-segment {
+  flex: 1;
+  appearance: none;
+  border: none;
+  border-right: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 5px 4px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.agent-segment:last-child {
+  border-right: none;
+}
+
+.agent-segment:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.agent-segment.active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Advanced toggle */
+.agent-advanced-toggle {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+  transition: color 0.12s;
+}
+
+.agent-advanced-toggle:hover {
+  color: var(--text);
+}
+
+.agent-advanced-fields {
+  padding-left: 4px;
+}
+
+/* Actions row */
+.agent-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+}
+
+.agent-actions-right {
+  display: flex;
+  gap: 6px;
+}
+
+/* Empty state */
+.agent-empty {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+  padding: 12px 0;
+}
+
+/* Template cards */
+.agent-template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.agent-template-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-xs, 8px);
+  background: color-mix(in srgb, var(--surface-strong) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+.agent-template-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.agent-template-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-template-meta {
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+
+.agent-template-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.agent-template-add-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 30%, transparent);
+}
+
 .titlebar-appearance {
   position: relative;
   display: inline-flex;
