@@ -2260,7 +2260,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
 
     .appearance-style-check::after {
-      content: '\2713';
+      content: '✓';
     }
 
     .appearance-style-name {
