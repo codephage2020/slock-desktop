@@ -27,14 +27,19 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{
-    menu::{MenuBuilder, SubmenuBuilder},
     webview::PageLoadEvent,
     window::Color,
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, State, Theme, Url,
-    WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    WebviewUrl, WebviewWindowBuilder,
+};
+#[cfg(desktop)]
+use tauri::{
+    menu::{MenuBuilder, SubmenuBuilder},
+    WindowEvent,
 };
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_opener::OpenerExt;
+#[cfg(desktop)]
 use tauri_plugin_updater::{Updater, UpdaterExt};
 use theme::{
     color_catalog, resolve_style, resolve_theme_with_style, sanitize_hex,
@@ -69,8 +74,10 @@ const DAEMON_MACHINE_ID_ARG: &str = "--slock-desktop-machine-id";
 const DAEMON_DESKTOP_MANAGED_ARG: &str = "--slock-desktop-managed";
 const RUNTIME_WRAPPER_DIR: &str = "runtime-wrappers";
 const CLAUDE_WRAPPER_NAME: &str = "claude";
+#[cfg(desktop)]
 const DESKTOP_UPDATER_ENDPOINT: &str =
     "https://github.com/codephage2020/slock-desktop/releases/latest/download/latest.json";
+#[cfg(desktop)]
 const DESKTOP_UPDATE_CHECK_TIMEOUT: u64 = 8;
 const SERVICE_MACHINE_FETCH_CONCURRENCY_LIMIT: usize = 8;
 const SERVICE_LOG_MAX_BYTES: u64 = 2 * 1024 * 1024;
@@ -4347,6 +4354,7 @@ fn start_window_drag(app: AppHandle) -> Result<(), String> {
     window.start_dragging().map_err(|err| err.to_string())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 async fn check_desktop_update(
     app: AppHandle,
@@ -4383,6 +4391,23 @@ async fn check_desktop_update(
     Ok(result)
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn check_desktop_update(
+    app: AppHandle,
+    _state: State<'_, DesktopState>,
+) -> Result<DesktopUpdateCheck, String> {
+    Ok(DesktopUpdateCheck {
+        current_version: app.package_info().version.to_string(),
+        available: false,
+        version: None,
+        body: None,
+        date: None,
+        download_url: None,
+    })
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 async fn install_desktop_update(app: AppHandle) -> Result<(), String> {
     let updater = desktop_updater(&app)?;
@@ -4398,6 +4423,13 @@ async fn install_desktop_update(app: AppHandle) -> Result<(), String> {
     app.restart()
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn install_desktop_update(_app: AppHandle) -> Result<(), String> {
+    Err("Desktop updates are not available on mobile.".to_string())
+}
+
+#[cfg(desktop)]
 fn desktop_updater(app: &AppHandle) -> Result<Updater, String> {
     let endpoint = Url::parse(DESKTOP_UPDATER_ENDPOINT).map_err(|err| err.to_string())?;
     app.updater_builder()
@@ -5475,11 +5507,13 @@ fn apply_window_language(
         (_, false) => "slock-desktop",
     };
     let _ = window.set_title(title);
+    #[cfg(desktop)]
     if let Err(err) = apply_native_menu(app, resolved_language) {
         log::warn!("failed to apply localized native menu: {err}");
     }
 }
 
+#[cfg(desktop)]
 struct NativeMenuCopy {
     app: &'static str,
     about: &'static str,
@@ -5502,6 +5536,7 @@ struct NativeMenuCopy {
     close: &'static str,
 }
 
+#[cfg(desktop)]
 fn apply_native_menu(app: &AppHandle, language: &str) -> tauri::Result<()> {
     static APPLIED_MENU_LANGUAGE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
     let menu_language = sanitize_language(language);
@@ -5557,6 +5592,7 @@ fn apply_native_menu(app: &AppHandle, language: &str) -> tauri::Result<()> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn native_menu_copy(language: &str) -> NativeMenuCopy {
     if language == "zh-CN" {
         NativeMenuCopy {
@@ -9660,8 +9696,10 @@ fn custom_style_set(custom_styles: &[ThemeStyleConfig]) -> CustomStyleSet {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let app = builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .manage(DesktopState {
@@ -9925,6 +9963,7 @@ pub fn run() {
     app.run(|app: &AppHandle, event: RunEvent| {
         let state = app.state::<DesktopState>();
         match event {
+            #[cfg(desktop)]
             RunEvent::WindowEvent {
                 label,
                 event: WindowEvent::CloseRequested { api, .. },
@@ -9933,6 +9972,7 @@ pub fn run() {
                 api.prevent_close();
                 handle_window_close_requested(app, &state);
             }
+            #[cfg(desktop)]
             RunEvent::WindowEvent {
                 label,
                 event: WindowEvent::CloseRequested { .. },
@@ -9942,6 +9982,7 @@ pub fn run() {
                     let _ = app.emit(DESKTOP_AUTH_CANCELLED_EVENT, ());
                 }
             }
+            #[cfg(desktop)]
             RunEvent::WindowEvent {
                 label,
                 event: WindowEvent::ThemeChanged(_),
