@@ -77,9 +77,7 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
   let serviceError = null;
   let appearanceBusyAction = null;
   let updateBusyAction = null;
-  let titlebarThemeMenuOpen = false;
-  let titlebarThemeWheelOpen = false;
-  let titlebarStyleMenuOpen = false;
+  let titlebarAppearanceOpen = false;
   let releaseNotesOpen = false;
   const waitForNextPaint = () => new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
@@ -93,15 +91,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     { id: "en-US", icon: "latin", key: "languageEnglish" },
     { id: "zh-CN", icon: "han", key: "languageChinese" },
     { id: "system", icon: "globe", key: "languageSystem" },
-  ];
-  const themeAccentPresets = [
-    '#ff3b30',
-    '#ff9500',
-    '#ffcc00',
-    '#34c759',
-    '#32ade6',
-    '#007aff',
-    '#af52de',
   ];
   const optionIcon = (type, className = "option-icon") => {
     if (type === "han") {
@@ -159,111 +148,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     }
     return null;
   };
-  const hexToRgb = (hex) => {
-    const normalized = normalizeHexColor(hex) || '#10a37f';
-    return {
-      r: parseInt(normalized.slice(1, 3), 16),
-      g: parseInt(normalized.slice(3, 5), 16),
-      b: parseInt(normalized.slice(5, 7), 16),
-    };
-  };
-  const rgbToHex = (r, g, b) =>
-    `#${[r, g, b].map((value) => Number(value).toString(16).padStart(2, "0")).join("")}`;
-  const hsvToHex = (hue, saturation, value) => {
-    const chroma = value * saturation;
-    const huePrime = ((((hue % 360) + 360) % 360) / 60);
-    const x = chroma * (1 - Math.abs((huePrime % 2) - 1));
-    const match = value - chroma;
-    const [r1, g1, b1] =
-      huePrime < 1
-        ? [chroma, x, 0]
-        : huePrime < 2
-          ? [x, chroma, 0]
-          : huePrime < 3
-            ? [0, chroma, x]
-            : huePrime < 4
-              ? [0, x, chroma]
-              : huePrime < 5
-                ? [x, 0, chroma]
-                : [chroma, 0, x];
-    return rgbToHex(
-      Math.round((r1 + match) * 255),
-      Math.round((g1 + match) * 255),
-      Math.round((b1 + match) * 255),
-    );
-  };
-  const rgbToHsv = (r, g, b) => {
-    const red = r / 255;
-    const green = g / 255;
-    const blue = b / 255;
-    const max = Math.max(red, green, blue);
-    const min = Math.min(red, green, blue);
-    const delta = max - min;
-    const saturation = max === 0 ? 0 : delta / max;
-    let hue = 0;
-    if (delta !== 0) {
-      if (max === red) hue = 60 * (((green - blue) / delta) % 6);
-      else if (max === green) hue = 60 * ((blue - red) / delta + 2);
-      else hue = 60 * ((red - green) / delta + 4);
-    }
-    return { h: (hue + 360) % 360, s: saturation, v: max };
-  };
-  const accentFromWheelPointer = (event, target) => {
-    const rect = target.getBoundingClientRect();
-    const radius = Math.min(rect.width, rect.height) / 2;
-    const dx = event.clientX - (rect.left + rect.width / 2);
-    const dy = event.clientY - (rect.top + rect.height / 2);
-    const distance = Math.min(radius, Math.hypot(dx, dy));
-    const saturation = radius === 0 ? 0 : distance / radius;
-    const hue = (Math.atan2(dy, dx) * 180) / Math.PI + 180;
-    return hsvToHex(hue, saturation, 0.96);
-  };
-  const accentWheelMarkerStyle = (accent) => {
-    const rgb = hexToRgb(accent);
-    const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
-    const angle = (hsv.h - 180) * (Math.PI / 180);
-    const radius = Math.max(0.08, Math.min(1, hsv.s)) * 46;
-    const x = 50 + Math.cos(angle) * radius;
-    const y = 50 + Math.sin(angle) * radius;
-    return `--wheel-x:${x}%;--wheel-y:${y}%;--custom-accent:${escapeHtml(accent)}`;
-  };
-  const makeThemeDraft = (accent = '#10a37f', name = "") => {
-    const normalized = normalizeHexColor(accent) || '#10a37f';
-    const rgb = hexToRgb(normalized);
-    return {
-      name,
-      accent: normalized,
-      hexInput: normalized.toUpperCase(),
-      rgbInput: {
-        r: String(rgb.r),
-        g: String(rgb.g),
-        b: String(rgb.b),
-      },
-    };
-  };
-  const syncThemeDraftAccent = (draft, accent) => {
-    const normalized = normalizeHexColor(accent) || draft.accent || '#10a37f';
-    const rgb = hexToRgb(normalized);
-    return {
-      ...draft,
-      accent: normalized,
-      hexInput: normalized.toUpperCase(),
-      rgbInput: {
-        r: String(rgb.r),
-        g: String(rgb.g),
-        b: String(rgb.b),
-      },
-    };
-  };
-  const sanitizeRgbInput = (value) => String(value || "").replace(/\D/g, "").slice(0, 3);
-  const parseRgbInput = (input) => {
-    const r = Number(input.r);
-    const g = Number(input.g);
-    const b = Number(input.b);
-    if (!input.r || !input.g || !input.b) return null;
-    if ([r, g, b].some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return null;
-    return { r, g, b };
-  };
+  const makeThemeDraft = (accent = '#10a37f', name = "") => ({
+    name,
+    accent: normalizeHexColor(accent) || '#10a37f',
+  });
+  const syncThemeDraftAccent = (draft, accent) => ({
+    ...draft,
+    accent: normalizeHexColor(accent) || draft.accent || '#10a37f',
+  });
   const copy = {
     "en-US": {
       eyebrow: "Slock Desktop",
@@ -920,7 +812,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     try {
       const payload = await invokeDesktop("create_custom_theme", { name, accent });
       newThemeDraft = null;
-      titlebarThemeWheelOpen = false;
       syncAppearancePayload(payload);
     } catch (error) {
       console.warn("[Slock Desktop] custom theme create failed", error);
@@ -940,6 +831,14 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     } finally {
       appearanceBusyAction = null;
       render();
+    }
+  };
+  const updateCustomThemeAccent = async (id, accent) => {
+    try {
+      const payload = await invokeDesktop("update_custom_theme_accent", { id, accent });
+      syncAppearancePayload(payload);
+    } catch (error) {
+      console.warn("[Slock Desktop] custom theme accent update failed", error);
     }
   };
   const setThemeStyle = async (styleId) => {
@@ -2226,10 +2125,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       height: 16px;
     }
 
-    .titlebar-theme-wrap {
+    .titlebar-appearance {
       position: relative;
-      display: inline-grid;
-      place-items: center;
+      display: inline-flex;
+      align-items: center;
+      flex: 0 0 auto;
     }
 
     .titlebar-theme-button {
@@ -2258,453 +2158,247 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 34%, transparent);
     }
 
-    .titlebar-theme-menu {
+    /* ── Appearance panel (compact unified Style + Theme Color) ── */
+
+    .appearance-panel {
       position: absolute;
-      top: 32px;
+      top: calc(100% + 8px);
       right: 0;
-      z-index: 4;
-      width: min(320px, calc(100vw - 20px));
+      width: min(240px, calc(100vw - 20px));
       max-height: min(400px, calc(100vh - 60px));
-      overflow: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+      overflow-y: auto;
       padding: 10px;
-      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       border-radius: var(--desktop-radius-md);
       background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
       box-shadow:
         0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
         0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
+      z-index: 40;
       animation: panel-appear 150ms ease;
     }
 
-    .titlebar-theme-menu:has(.titlebar-accent-wheel-popover) {
-      width: min(440px, calc(100vw - 20px));
-      max-height: none;
-      overflow: visible;
-    }
-
-    .titlebar-theme-menu-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 2px 2px 6px;
-    }
-
-    .titlebar-theme-menu-eyebrow {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--desktop-text-secondary);
-    }
-
-    .titlebar-theme-menu-add {
-      width: 28px;
-      height: 28px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: none;
-      border-radius: var(--desktop-radius-pill);
-      background: transparent;
-      color: var(--desktop-text);
-      font-size: 16px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
-    }
-
-    .titlebar-theme-option-wrap {
-      position: relative;
-      width: 24px;
-      height: 24px;
-      display: inline-grid;
-      place-items: center;
-    }
-
-    .titlebar-theme-option {
-      width: 24px;
-      height: 24px;
-      display: inline-grid;
-      place-items: center;
-      border: 1px solid color-mix(in srgb, var(--desktop-line) 70%, transparent);
-      border-radius: var(--desktop-radius-pill);
-      background: var(--theme-accent, var(--desktop-accent));
-      color: var(--desktop-text);
-      cursor: pointer;
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--desktop-surface) 58%, transparent);
-    }
-
-    .titlebar-theme-option-wrap.active .titlebar-theme-option {
-      border-color: color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 55%, var(--desktop-line));
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 18%, transparent);
-    }
-
-    .titlebar-theme-option-swatch {
-      width: 100%;
-      height: 100%;
-      border-radius: inherit;
-      background: var(--theme-accent, var(--desktop-accent));
-    }
-
-    /* Vertical theme list rows */
-    .titlebar-theme-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px;
-      border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
-      border-radius: var(--desktop-radius-sm);
-      position: relative;
-      transition: background 150ms ease, border-color 150ms ease;
-    }
-
-    .titlebar-theme-row:hover {
-      background: var(--desktop-surface-secondary);
-      border-color: color-mix(in srgb, var(--desktop-line) 70%, transparent);
-    }
-
-    .titlebar-theme-row.selected {
-      background: var(--desktop-selection);
-      border-color: color-mix(in srgb, var(--theme-accent, var(--desktop-accent)) 30%, var(--desktop-line));
-    }
-
-    .titlebar-theme-row-button {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex: 1;
-      min-width: 0;
-      appearance: none;
-      border: none;
-      background: transparent;
-      color: var(--desktop-text);
-      cursor: pointer;
-      font: inherit;
-      padding: 4px 6px;
-    }
-
-    .titlebar-theme-row-swatch {
-      width: 16px;
-      height: 16px;
-      border-radius: var(--desktop-radius-pill);
-      background: var(--theme-accent, var(--desktop-accent));
-      flex-shrink: 0;
-      box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 12%, transparent),
-        0 0 0 2px color-mix(in srgb, var(--desktop-surface) 70%, transparent);
-    }
-
-    .titlebar-theme-row-copy {
-      flex: 1;
-      min-width: 0;
+    .appearance-section {
       display: flex;
       flex-direction: column;
-      gap: 1px;
+      gap: 6px;
     }
 
-    .titlebar-theme-row-name {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--desktop-text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .titlebar-theme-row-hex {
+    .appearance-section .eyebrow {
+      margin: 0;
       font-size: 10px;
-      color: var(--desktop-muted);
+      font-weight: 600;
       text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--desktop-muted);
+      line-height: 1;
     }
 
-    .titlebar-theme-delete {
-      flex-shrink: 0;
+    .appearance-divider {
+      margin: 8px 0;
+      border: none;
+      border-top: 1px solid color-mix(in srgb, var(--desktop-line) 48%, transparent);
+    }
+
+    /* ── Style presets row ── */
+
+    .appearance-style-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .appearance-style-block {
+      position: relative;
+      appearance: none;
+      border: 2px solid transparent;
+      padding: 0;
+      cursor: pointer;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--desktop-radius-sm);
+      overflow: hidden;
+      transition: border-color 120ms ease, transform 100ms ease;
+      background: var(--block-a);
+    }
+
+    .appearance-style-block:hover {
+      transform: translateY(-1px);
+      border-color: color-mix(in srgb, var(--desktop-line) 72%, transparent);
+    }
+
+    .appearance-style-block:active {
+      transform: scale(0.95);
+    }
+
+    .appearance-style-block.selected {
+      border-color: var(--desktop-accent);
+    }
+
+    .appearance-style-block.busy {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .appearance-style-preview {
+      display: block;
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, var(--block-a) 33%, var(--block-b) 33% 66%, var(--block-c) 66%);
+    }
+
+    .appearance-style-check {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      z-index: 1;
+    }
+
+    .appearance-style-check::after {
+      content: '✓';
+    }
+
+    .appearance-style-name {
+      font-size: 11px;
+      color: var(--desktop-muted);
+      line-height: 1;
+    }
+
+    /* ── Accent color dots ── */
+
+    .appearance-accent-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .appearance-accent-dot {
+      appearance: none;
+      border: 2px solid transparent;
+      padding: 0;
+      cursor: pointer;
       width: 20px;
       height: 20px;
-      display: inline-grid;
-      place-items: center;
-      padding: 0;
-      border: 1px solid color-mix(in srgb, var(--desktop-danger) 38%, var(--desktop-line));
-      border-radius: var(--desktop-radius-pill);
-      background: var(--desktop-surface);
-      color: color-mix(in srgb, var(--desktop-danger) 86%, var(--desktop-text));
-      opacity: 0;
-      pointer-events: none;
-      transition:
-        opacity 150ms ease,
-        transform 150ms ease;
+      border-radius: 999px;
+      background: var(--dot-color);
+      transition: border-color 120ms ease, transform 100ms ease;
     }
 
-    .titlebar-theme-delete svg {
-      width: 10px;
-      height: 10px;
+    .appearance-accent-dot:hover {
+      transform: scale(1.15);
     }
 
-    .titlebar-theme-option-wrap:hover .titlebar-theme-delete,
-    .titlebar-theme-option-wrap:focus-within .titlebar-theme-delete {
-      opacity: 1;
-      pointer-events: auto;
+    .appearance-accent-dot:active {
+      transform: scale(0.92);
     }
 
-    .titlebar-theme-draft {
-      position: relative;
-      flex: 1 0 100%;
+    .appearance-accent-dot.selected {
+      border-color: var(--desktop-text);
+      box-shadow: 0 0 0 1px var(--desktop-surface);
+    }
+
+    .appearance-accent-add {
+      appearance: none;
+      border: 1.5px dashed color-mix(in srgb, var(--desktop-muted) 56%, transparent);
+      background: transparent;
+      cursor: pointer;
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 30px;
-      grid-template-areas:
-        "fields accent"
-        "actions actions";
-      align-items: start;
-      gap: 8px 9px;
-      margin-top: 2px;
-      padding-top: 8px;
-      border-top: 1px solid var(--desktop-line);
+      place-items: center;
+      font-size: 13px;
+      line-height: 1;
+      color: var(--desktop-muted);
+      transition: border-color 120ms ease, color 120ms ease;
     }
 
-    .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) {
-      z-index: 3;
-      min-height: 148px;
-      grid-template-columns: minmax(0, 1fr) 136px;
-      grid-template-areas:
-        "fields accent"
-        "actions accent";
+    .appearance-accent-add:hover {
+      border-color: var(--desktop-text);
+      color: var(--desktop-text);
+    }
+
+    .appearance-accent-add:disabled {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    /* ── Custom theme inline actions ── */
+
+    .appearance-custom-actions {
+      display: flex;
       align-items: center;
-      gap: 10px 12px;
-      padding-top: 10px;
+      gap: 6px;
+      margin-top: 2px;
     }
 
-    .titlebar-theme-draft-accent {
-      grid-area: accent;
-      justify-self: end;
-      margin-top: 1px;
-      position: relative;
-      z-index: 4;
+    .appearance-accent-picker {
+      appearance: none;
+      -webkit-appearance: none;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 56%, transparent);
+      padding: 0;
+      cursor: pointer;
+      width: 22px;
+      height: 22px;
+      border-radius: var(--desktop-radius-xs);
+      background: transparent;
+      flex: 0 0 auto;
     }
 
-    .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) .titlebar-theme-draft-accent {
-      width: 124px;
-      height: 124px;
-      align-self: center;
+    .appearance-accent-picker::-webkit-color-swatch-wrapper {
+      padding: 1px;
+    }
+
+    .appearance-accent-picker::-webkit-color-swatch {
+      border: none;
+      border-radius: 2px;
+    }
+
+    /* ── New theme draft ── */
+
+    .appearance-new-theme {
       margin-top: 0;
     }
 
-    .titlebar-theme-draft .theme-draft-fields {
-      grid-area: fields;
-    }
-
-    .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) .theme-draft-fields {
-      display: grid;
-      gap: 10px;
-    }
-
-    .theme-color-picker-label {
-      color: var(--desktop-muted);
-      font-size: 0.78rem;
-      font-weight: 700;
-    }
-
-    .theme-preset-row {
+    .appearance-new-theme-row {
       display: flex;
       align-items: center;
-      gap: 7px;
+      gap: 6px;
     }
 
-    .theme-preset-swatch {
+    .appearance-name-input {
+      flex: 1 1 auto;
+      min-width: 0;
       appearance: none;
-      width: 20px;
-      height: 20px;
-      padding: 0;
-      border: 1px solid color-mix(in srgb, var(--desktop-surface) 82%, transparent);
-      border-radius: var(--desktop-radius-pill);
-      background: var(--preset-accent);
-      box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
-        0 7px 14px -12px rgba(0, 0, 0, 0.48);
-      cursor: pointer;
-      transition:
-        transform 160ms ease,
-        box-shadow 160ms ease;
-    }
-
-    .theme-preset-swatch:hover,
-    .theme-preset-swatch:focus-visible {
-      transform: translateY(-1px);
-      box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
-        0 0 0 3px color-mix(in srgb, var(--preset-accent) 20%, transparent);
-    }
-
-    .theme-preset-swatch.selected {
-      box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
-        0 0 0 3px color-mix(in srgb, var(--preset-accent) 24%, transparent);
-    }
-
-    .titlebar-theme-draft .theme-color-inputs {
-      grid-template-columns: minmax(104px, 1fr) repeat(3, minmax(50px, 0.42fr));
-      gap: 6px;
-    }
-
-    .titlebar-theme-draft:has(.titlebar-accent-wheel-popover) .theme-color-inputs {
-      grid-template-columns: minmax(112px, 1fr) repeat(3, minmax(44px, 0.34fr));
-      gap: 6px;
-    }
-
-    .titlebar-theme-draft-actions {
-      grid-area: actions;
-      display: inline-flex;
-      justify-content: flex-end;
-      gap: 6px;
-    }
-
-    .titlebar-theme-draft .tiny-button {
-      min-height: 28px;
-      min-width: 46px;
-      padding-inline: 10px;
-    }
-
-    .titlebar-accent-wheel {
-      appearance: none;
-      position: relative;
-      z-index: 2;
-      width: 30px;
-      height: 30px;
-      display: grid;
-      place-items: center;
-      padding: 0;
-      border: 0;
-      border-radius: var(--desktop-radius-pill);
-      overflow: hidden;
-      background: conic-gradient(
-        from 180deg,
-        #ff3b30,
-        #ff9500,
-        #ffcc00,
-        #34c759,
-        #32ade6,
-        #007aff,
-        #af52de,
-        #ff2d55,
-        #ff3b30
-      );
-      box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
-        0 0 0 4px color-mix(in srgb, var(--custom-accent) 14%, transparent);
-      cursor: pointer;
-      transition:
-        transform 180ms ease,
-        box-shadow 180ms ease;
-    }
-
-    .titlebar-accent-wheel::before,
-    .titlebar-accent-wheel-large::before {
-      content: '';
-      position: absolute;
-      z-index: 1;
-      border-radius: inherit;
-      pointer-events: none;
-      background:
-        radial-gradient(
-          circle at 50% 32%,
-          #ffffff 0,
-          rgba(255, 255, 255, 0.78) 24%,
-          rgba(255, 255, 255, 0) 58%
-        ),
-        linear-gradient(to bottom, rgba(255, 255, 255, 0) 42%, rgba(0, 0, 0, 0.62) 100%),
-        conic-gradient(
-          from 180deg,
-          #ff3b30,
-          #ff9500,
-          #ffcc00,
-          #34c759,
-          #32ade6,
-          #007aff,
-          #af52de,
-          #ff2d55,
-          #ff3b30
-        );
-    }
-
-    .titlebar-accent-wheel::before {
-      inset: 6px;
-    }
-
-    .titlebar-accent-wheel:hover {
-      transform: scale(1.06);
-    }
-
-    .titlebar-accent-wheel.expanded {
-      display: none;
-    }
-
-    .titlebar-accent-wheel span {
-      display: none;
-    }
-
-    .titlebar-accent-wheel-popover {
-      position: absolute;
-      z-index: 1;
-      top: 0;
-      right: 0;
-      margin: 0;
-      width: 124px;
-      height: 124px;
-      padding: 0;
-      border: 0;
-      border-radius: var(--desktop-radius-pill);
-      background: transparent;
-      box-shadow: none;
-      transform-origin: 50% 50%;
-      will-change: transform, opacity;
-      animation: accent-wheel-pop 180ms cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .titlebar-accent-wheel-large {
-      position: relative;
-      width: 124px;
-      height: 124px;
-      border-radius: var(--desktop-radius-pill);
-      overflow: hidden;
-      background: conic-gradient(
-        from 180deg,
-        #ff3b30,
-        #ff9500,
-        #ffcc00,
-        #34c759,
-        #32ade6,
-        #007aff,
-        #af52de,
-        #ff2d55,
-        #ff3b30
-      );
-      box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--desktop-text) 10%, transparent),
-        0 16px 32px -22px rgba(0, 0, 0, 0.32);
-      cursor: pointer;
-      touch-action: none;
+      border: 1px solid color-mix(in srgb, var(--desktop-line) 56%, transparent);
+      background: color-mix(in srgb, var(--desktop-surface-strong) 48%, transparent);
+      color: var(--desktop-text);
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: var(--desktop-radius-xs);
       outline: none;
+      transition: border-color 120ms ease;
     }
 
-    .titlebar-accent-wheel-large::before {
-      inset: 24px;
+    .appearance-name-input:focus {
+      border-color: var(--desktop-accent);
     }
 
-    .titlebar-accent-wheel-marker {
-      position: absolute;
-      z-index: 2;
-      left: var(--wheel-x);
-      top: var(--wheel-y);
-      width: 14px;
-      height: 14px;
-      border: 2px solid var(--desktop-surface);
-      border-radius: var(--desktop-radius-pill);
-      background: var(--custom-accent);
-      box-shadow: 0 1px 5px rgba(0, 0, 0, 0.22);
-      transform: translate(-50%, -50%);
-      pointer-events: none;
+    .appearance-name-input::placeholder {
+      color: var(--desktop-muted);
+      opacity: 0.6;
+    }
+
+    .appearance-new-theme-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
     }
 
     @keyframes panel-appear {
@@ -2715,44 +2409,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       to {
         opacity: 1;
         transform: translateY(0);
-      }
-    }
-
-    @keyframes accent-wheel-pop {
-      0% {
-        opacity: 0;
-        transform: scale(0.96) rotate(-8deg);
-      }
-      100% {
-        opacity: 1;
-        transform: scale(1) rotate(0deg);
-      }
-    }
-
-    @keyframes accent-wheel-origin-flyout {
-      0% {
-        opacity: 1;
-        transform: translate3d(405px, -50%, 0) scale(1) rotate(0deg);
-      }
-      52% {
-        opacity: 0.9;
-        transform: translate3d(185px, -50%, 0) scale(2.55) rotate(-116deg);
-      }
-      100% {
-        opacity: 0;
-        transform: translate3d(-51px, -50%, 0) scale(4.4) rotate(-236deg);
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .titlebar-accent-wheel.expanded {
-        opacity: 0;
-        animation: none;
-        transform: none;
-      }
-
-      .titlebar-accent-wheel-popover {
-        animation: none;
       }
     }
 
@@ -3137,8 +2793,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       .service-open-button,
       .titlebar-button,
       .titlebar-theme-button,
-      .titlebar-theme-delete,
-      .titlebar-theme-option,
+      .appearance-style-block,
+      .appearance-accent-dot,
+      .appearance-accent-add,
       .titlebar-version {
 	      pointer-events: auto;
 	      appearance: none;
@@ -3920,9 +3577,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
 
       .titlebar-button:hover,
       .titlebar-theme-button:hover,
-      .titlebar-theme-delete:hover,
-      .titlebar-theme-option:hover,
-      .titlebar-theme-menu-add:hover,
       .titlebar-version:hover {
         color: var(--desktop-text);
         background: color-mix(in srgb, var(--desktop-surface) 76%, transparent);
@@ -3953,9 +3607,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         .service-open-button:active,
         .titlebar-button:active,
         .titlebar-theme-button:active,
-        .titlebar-theme-delete:active,
-        .titlebar-theme-option:active,
-        .titlebar-theme-menu-add:active,
         .titlebar-version:active {
 		      transform: scale(0.97);
 		    }
@@ -4040,153 +3691,6 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       }
     }
 
-    .titlebar-style-wrap {
-      position: relative;
-      display: inline-grid;
-      place-items: center;
-    }
-
-    .titlebar-style-panel {
-      position: absolute;
-      top: 32px;
-      right: 0;
-      z-index: 5;
-      width: min(320px, calc(100vw - 20px));
-      max-height: min(400px, calc(100vh - 60px));
-      overflow: auto;
-      padding: 10px;
-      border: 1px solid color-mix(in srgb, var(--desktop-line) 64%, transparent);
-      border-radius: var(--desktop-radius-md);
-      background: color-mix(in srgb, var(--desktop-surface) 98%, var(--desktop-canvas));
-      box-shadow:
-        0 4px 12px color-mix(in srgb, var(--desktop-text) 12%, transparent),
-        0 24px 48px -24px color-mix(in srgb, var(--desktop-text) 24%, transparent);
-      animation: panel-appear 150ms ease;
-    }
-
-    .titlebar-style-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-
-    .titlebar-style-eyebrow {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--desktop-muted);
-    }
-
-    .titlebar-style-head-actions {
-      display: flex;
-      gap: 8px;
-    }
-
-    .text-action-button {
-      appearance: none;
-      min-height: 24px;
-      padding: 3px 7px;
-      border: 1px solid color-mix(in srgb, var(--desktop-line) 70%, transparent);
-      border-radius: var(--desktop-radius-pill);
-      background: color-mix(in srgb, var(--desktop-surface-secondary) 70%, transparent);
-      color: var(--desktop-muted);
-      font: inherit;
-      font-size: 11px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-    .text-action-button:hover {
-      border-color: color-mix(in srgb, var(--desktop-accent) 28%, var(--desktop-line));
-      color: var(--desktop-accent);
-    }
-
-    .text-action-button:disabled {
-      opacity: 0.5;
-      cursor: default;
-      text-decoration: none;
-    }
-
-    .titlebar-style-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .titlebar-style-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 8px;
-      border: 1px solid color-mix(in srgb, var(--desktop-line) 40%, transparent);
-      border-radius: var(--desktop-radius-sm);
-      cursor: pointer;
-      transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
-    }
-
-    .titlebar-style-row:hover {
-      background: var(--desktop-surface-secondary);
-      border-color: color-mix(in srgb, var(--desktop-line) 70%, transparent);
-      transform: translateY(-1px);
-    }
-
-    .titlebar-style-row.selected {
-      background: var(--desktop-selection);
-      border-color: color-mix(in srgb, var(--desktop-accent) 30%, var(--desktop-line));
-    }
-
-    .titlebar-style-preview {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr 1fr;
-      gap: 3px;
-      width: 40px;
-      height: 28px;
-      padding: 3px;
-      border-radius: var(--desktop-radius-sm);
-      background: var(--desktop-surface);
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--desktop-line) 70%, transparent);
-      flex-shrink: 0;
-    }
-
-    .titlebar-style-preview span {
-      border-radius: 6px;
-    }
-
-    .titlebar-style-preview span:first-child {
-      grid-row: span 2;
-    }
-
-    .titlebar-style-copy {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
-    }
-
-    .titlebar-style-name {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--desktop-text);
-    }
-
-    .titlebar-style-summary {
-      font-size: 11px;
-      color: var(--desktop-muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .titlebar-style-actions {
-      flex-shrink: 0;
-      width: 14px;
-      height: 14px;
-    }
-
     .spin {
       animation: spin-anim 1s linear infinite;
     }
@@ -4209,9 +3713,9 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
         .service-open-button,
         .titlebar-button,
         .titlebar-version,
-        .titlebar-theme-button,
-        .titlebar-theme-delete,
-        .titlebar-theme-option,
+        .appearance-style-block,
+        .appearance-accent-dot,
+        .appearance-accent-add,
 	      .panel {
         transition-duration: 1ms;
       }
@@ -4270,94 +3774,58 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     const theme = selectedTheme();
     const themeAccent = titlebarThemeSwatch(theme);
     const themeLabel = theme ? titlebarThemeLabel(theme) : t("theme");
-    const themeOptions = themeCatalog
+    const activeIsOriginal = activeStyleId === "original" || !activeStyleId;
+    const styleBlocks = styleCatalog
+      .map((style) => {
+        const sel = style.id === activeStyleId || (style.id === "original" && activeIsOriginal);
+        const busy = appearanceBusyAction === `style:${style.id}`;
+        const name = getThemeStyleName(style);
+        const colors = style.preview || [];
+        return `<button class="appearance-style-block${sel ? " selected" : ""}${busy ? " busy" : ""}" type="button" role="radio" aria-checked="${sel}" data-appearance-style-option="${escapeHtml(style.id)}" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}" style="--block-a:${escapeHtml(colors[0] || '#333')};--block-b:${escapeHtml(colors[1] || '#666')};--block-c:${escapeHtml(colors[2] || '#999')}" ${busy ? "disabled" : ""}><span class="appearance-style-preview" aria-hidden="true"></span>${sel ? '<span class="appearance-style-check" aria-hidden="true"></span>' : ""}</button>`;
+      })
+      .join("");
+    const activeStyleName = getThemeStyleName(
+      styleCatalog.find((s) => s.id === activeStyleId) ||
+      styleCatalog.find((s) => s.id === "original") ||
+      styleCatalog[0] || { id: "original" }
+    );
+    const accentDots = themeCatalog
       .map((theme) => {
         const selected = theme.id === (activeThemeId || "default");
         const swatch = titlebarThemeSwatch(theme);
         const custom = isCustomTheme(theme);
-        const deleting = appearanceBusyAction === `theme-delete:${theme.id}`;
         const label = titlebarThemeLabel(theme);
-        return `
-          <div class="titlebar-theme-row${selected ? " selected" : ""}" style="--theme-accent:${escapeHtml(swatch)}">
-            <button
-              class="titlebar-theme-row-button"
-              type="button"
-              data-titlebar-theme-option="${escapeHtml(theme.id)}"
-              title="${escapeHtml(label)}"
-              aria-label="${escapeHtml(label)}"
-              ${appearanceBusyAction ? "disabled" : ""}
-            >
-              <span class="titlebar-theme-row-swatch" aria-hidden="true"></span>
-              <span class="titlebar-theme-row-copy">
-                <span class="titlebar-theme-row-name">${escapeHtml(label)}</span>
-                <span class="titlebar-theme-row-hex">${escapeHtml(swatch)}</span>
-              </span>
-            </button>
-            ${
-              custom
-                ? `<button class="titlebar-theme-delete" type="button" data-titlebar-theme-delete="${escapeHtml(theme.id)}" title="${t("themeDelete")}" aria-label="${t("themeDelete")}: ${escapeHtml(label)}" ${deleting ? "disabled" : ""}>${deleting ? actionIcon("refresh", true) : closeIcon()}</button>`
-                : ""
-            }
-          </div>
-        `;
+        return `<button class="appearance-accent-dot${selected ? " selected" : ""}" type="button" role="radio" aria-checked="${selected}" data-appearance-accent-option="${escapeHtml(theme.id)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" style="--dot-color:${escapeHtml(swatch)}" ${appearanceBusyAction ? "disabled" : ""}></button>`;
       })
       .join("");
-    const draftRgb = newThemeDraft ? hexToRgb(newThemeDraft.accent) : null;
-    const themePresetOptions = newThemeDraft
-      ? themeAccentPresets
-          .map((accent) => {
-            const selected = normalizeHexColor(accent) === newThemeDraft.accent;
-            return `<button class="theme-preset-swatch${selected ? " selected" : ""}" type="button" data-titlebar-theme-preset="${accent}" style="--preset-accent:${accent}" title="${accent.toUpperCase()}" aria-label="${accent.toUpperCase()}"></button>`;
-          })
-          .join("")
+    const selectedCustomTheme = (() => {
+      const sel = themeCatalog.find((t) => t.id === (activeThemeId || "default"));
+      return sel && isCustomTheme(sel) ? sel : null;
+    })();
+    const customThemeActions = selectedCustomTheme
+      ? `<div class="appearance-custom-actions">
+          <input type="color" class="appearance-accent-picker" value="${escapeHtml(titlebarThemeSwatch(selectedCustomTheme))}" data-appearance-accent-picker="${escapeHtml(selectedCustomTheme.id)}" aria-label="${t("themeAccent")}" title="${t("themeAccent")}">
+          <button class="tiny-button muted" type="button" data-appearance-accent-delete="${escapeHtml(selectedCustomTheme.id)}" ${appearanceBusyAction === `theme-delete:${selectedCustomTheme.id}` ? "disabled" : ""}>${t("themeDelete")}</button>
+        </div>`
       : "";
     const themeDraft = newThemeDraft
-      ? `<div class="titlebar-theme-draft">
-          <div class="titlebar-theme-draft-accent" style="--custom-accent:${escapeHtml(newThemeDraft.accent)}">
-            <button class="titlebar-accent-wheel${titlebarThemeWheelOpen ? " expanded" : ""}" type="button" data-titlebar-theme-wheel-toggle aria-label="${t("themeAccent")}" aria-expanded="${titlebarThemeWheelOpen}"><span aria-hidden="true"></span></button>
-            ${titlebarThemeWheelOpen ? `<div class="titlebar-accent-wheel-popover"><div class="titlebar-accent-wheel-large" role="slider" tabindex="0" data-titlebar-theme-wheel aria-label="${t("themeAccent")}" aria-valuetext="${escapeHtml(newThemeDraft.hexInput)}" style="${accentWheelMarkerStyle(newThemeDraft.accent)}"><span class="titlebar-accent-wheel-marker" aria-hidden="true"></span></div></div>` : ""}
-          </div>
-          <div class="theme-draft-fields">
-            <div class="theme-color-picker-label">${t("themeAccent")}</div>
-            <div class="theme-preset-row" aria-label="${t("themeAccent")}">${themePresetOptions}</div>
-            <input class="theme-name-input" data-titlebar-theme-draft-name value="${escapeHtml(newThemeDraft.name)}" placeholder="${t("themeNamePlaceholder")}" aria-label="${t("themeNewLabel")}">
-            <div class="theme-color-inputs">
-              <label class="theme-hex-input"><span>HEX</span><input data-titlebar-theme-draft-hex value="${escapeHtml(newThemeDraft.hexInput || newThemeDraft.accent.toUpperCase())}" spellcheck="false" aria-label="HEX"></label>
-              <label class="theme-rgb-input"><span>R</span><input data-titlebar-theme-draft-rgb="r" value="${escapeHtml(newThemeDraft.rgbInput?.r || String(draftRgb.r))}" inputmode="numeric" aria-label="R"></label>
-              <label class="theme-rgb-input"><span>G</span><input data-titlebar-theme-draft-rgb="g" value="${escapeHtml(newThemeDraft.rgbInput?.g || String(draftRgb.g))}" inputmode="numeric" aria-label="G"></label>
-              <label class="theme-rgb-input"><span>B</span><input data-titlebar-theme-draft-rgb="b" value="${escapeHtml(newThemeDraft.rgbInput?.b || String(draftRgb.b))}" inputmode="numeric" aria-label="B"></label>
+      ? `<div class="appearance-new-theme">
+          <hr class="appearance-divider">
+          <div class="appearance-section">
+            <p class="eyebrow">${t("themeNewLabel")}</p>
+            <div class="appearance-new-theme-row">
+              <input type="color" class="appearance-accent-picker" value="${escapeHtml(newThemeDraft.accent)}" data-appearance-draft-picker aria-label="${t("themeAccent")}">
+              <input class="appearance-name-input" data-appearance-draft-name value="${escapeHtml(newThemeDraft.name)}" placeholder="${t("themeNamePlaceholder")}" aria-label="${t("themeNewLabel")}">
             </div>
-          </div>
-          <div class="titlebar-theme-draft-actions">
-            <button class="tiny-button accent" type="button" data-titlebar-theme-create ${appearanceBusyAction === "theme-create" ? "disabled" : ""}>${appearanceBusyAction === "theme-create" ? t("creatingTheme") : t("themeCreate")}</button>
-            <button class="tiny-button muted" type="button" data-titlebar-theme-draft-cancel>${t("themeRenameCancel")}</button>
+            <div class="appearance-new-theme-actions">
+              <button class="tiny-button accent" type="button" data-appearance-draft-create ${appearanceBusyAction === "theme-create" ? "disabled" : ""}>${appearanceBusyAction === "theme-create" ? t("creatingTheme") : t("themeCreate")}</button>
+              <button class="tiny-button muted" type="button" data-appearance-draft-cancel>${t("themeRenameCancel")}</button>
+            </div>
           </div>
         </div>`
       : "";
     const releaseNote = escapeHtml(releaseNotesText());
     const releaseVersion = latestReleaseVersion();
-
-    const activeIsOriginal = activeStyleId === "original" || !activeStyleId;
-    const styleOptions = styleCatalog
-      .map((style) => {
-        const sel = style.id === activeStyleId || (style.id === "original" && activeIsOriginal);
-        const busy = appearanceBusyAction === `style:${style.id}`;
-        const name = getThemeStyleName(style);
-        const summary = getThemeStyleSummary(style);
-        return `
-          <div class="titlebar-style-row${sel ? " selected" : ""}" role="radio" aria-checked="${sel}" tabindex="0" data-titlebar-style-option="${escapeHtml(style.id)}">
-            <span class="titlebar-style-preview" aria-hidden="true">
-              ${(style.preview || []).map((color) => `<span style="background:${escapeHtml(color)}"></span>`).join("")}
-            </span>
-            <span class="titlebar-style-copy">
-              <span class="titlebar-style-name">${escapeHtml(name)}</span>
-              <span class="titlebar-style-summary">${escapeHtml(summary)}</span>
-            </span>
-            <span class="titlebar-style-actions">${busy ? spinnerIcon() : ""}</span>
-          </div>
-        `;
-      })
-      .join("");
 
     return `
       <div class="titlebar-drag-strip" data-titlebar-drag data-tauri-drag-region aria-hidden="true"></div>
@@ -4385,34 +3853,27 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
           aria-label="${t("openServerLog")}"
           ${!selectedSlug ? "disabled" : ""}
         >${logIcon()}</button>
-        <div class="titlebar-style-wrap">
-          <button
-            class="titlebar-button"
-            type="button"
-            data-titlebar-style-toggle
-            title="${t("themeStyle")}"
-            aria-label="${t("themeStyle")}"
-            aria-expanded="${titlebarStyleMenuOpen}"
-          >${styleIcon()}</button>
-          ${titlebarStyleMenuOpen ? `<div class="titlebar-style-panel" aria-label="${t("themeStyle")}" data-titlebar-style-panel>
-            <div class="titlebar-style-head">
-              <span class="titlebar-style-eyebrow">${t("themeStyle")}</span>
-            </div>
-            <div class="titlebar-style-list" role="radiogroup" aria-label="${t("themeStyle")}">
-              ${styleOptions}
-            </div>
-          </div>` : ""}
-        </div>
-        <div class="titlebar-theme-wrap" style="--theme-accent:${escapeHtml(themeAccent)}">
-          <button class="titlebar-theme-button" type="button" data-titlebar-theme-toggle title="${escapeHtml(themeLabel)}" aria-label="${t("theme")}">
+        <div class="titlebar-appearance" style="--theme-accent:${escapeHtml(themeAccent)}">
+          <button class="titlebar-theme-button" type="button" data-appearance-toggle title="${escapeHtml(themeLabel)}" aria-label="${t("theme")}" aria-expanded="${titlebarAppearanceOpen}">
             <span class="titlebar-theme-swatch"></span>
           </button>
-          ${titlebarThemeMenuOpen ? `<div class="titlebar-theme-menu" role="menu" aria-label="${t("theme")}" data-titlebar-theme-menu>
-            <div class="titlebar-theme-menu-header">
-              <span class="titlebar-theme-menu-eyebrow">${t("themeColor")}</span>
-              <button class="titlebar-theme-menu-add" type="button" data-titlebar-theme-new title="${t("themeNewLabel")}" aria-label="${t("themeNewLabel")}">${plusIcon()}</button>
+          ${titlebarAppearanceOpen ? `<div class="appearance-panel" aria-label="${t("themeStyle")}">
+            <div class="appearance-section">
+              <p class="eyebrow">${t("themeStyle")}</p>
+              <div class="appearance-style-row" role="radiogroup" aria-label="${t("themeStyle")}">
+                ${styleBlocks}
+              </div>
+              <span class="appearance-style-name">${escapeHtml(activeStyleName)}</span>
             </div>
-            ${themeOptions}
+            <hr class="appearance-divider">
+            <div class="appearance-section">
+              <p class="eyebrow">${t("themeColor")}</p>
+              <div class="appearance-accent-row" role="radiogroup" aria-label="${t("themeColor")}">
+                ${accentDots}
+                <button type="button" class="appearance-accent-add" data-appearance-accent-new ${newThemeDraft || appearanceBusyAction === "theme-create" ? "disabled" : ""} aria-label="${t("themeNewLabel")}" title="${t("themeNewLabel")}">+</button>
+              </div>
+              ${customThemeActions}
+            </div>
             ${themeDraft}
           </div>` : ""}
         </div>
@@ -4712,140 +4173,62 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     toolbar.querySelector("[data-titlebar-log]")?.addEventListener("click", () => {
       void openSelectedServiceLog();
     });
-    toolbar.querySelector("[data-titlebar-style-toggle]")?.addEventListener("click", () => {
-      titlebarStyleMenuOpen = !titlebarStyleMenuOpen;
-      titlebarThemeMenuOpen = false;
+    toolbar.querySelector("[data-appearance-toggle]")?.addEventListener("click", () => {
+      titlebarAppearanceOpen = !titlebarAppearanceOpen;
+      if (!titlebarAppearanceOpen) {
+        newThemeDraft = null;
+      }
       releaseNotesOpen = false;
-      newThemeDraft = null;
-      titlebarThemeWheelOpen = false;
       render();
     });
-    toolbar.querySelectorAll("[data-titlebar-style-option]").forEach((row) => {
-      const handler = () => {
-        const styleId = row.getAttribute("data-titlebar-style-option");
-        titlebarStyleMenuOpen = false;
+    toolbar.querySelectorAll("[data-appearance-style-option]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const styleId = button.getAttribute("data-appearance-style-option");
+        titlebarAppearanceOpen = false;
+        newThemeDraft = null;
         if (styleId) setThemeStyle(styleId);
-      };
-      row.addEventListener("click", handler);
-      row.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handler(); }
       });
     });
-    toolbar.querySelector("[data-titlebar-theme-toggle]")?.addEventListener("click", () => {
-      const nextOpen = !titlebarThemeMenuOpen;
-      titlebarThemeMenuOpen = nextOpen;
-      if (!nextOpen) {
-        newThemeDraft = null;
-        titlebarThemeWheelOpen = false;
-      }
-      titlebarStyleMenuOpen = false;
-      releaseNotesOpen = false;
-      render();
-    });
-    toolbar.querySelectorAll("[data-titlebar-theme-option]").forEach((button) => {
+    toolbar.querySelectorAll("[data-appearance-accent-option]").forEach((button) => {
       button.addEventListener("click", () => {
-        const themeId = button.getAttribute("data-titlebar-theme-option");
-        titlebarThemeMenuOpen = false;
+        const themeId = button.getAttribute("data-appearance-accent-option");
+        titlebarAppearanceOpen = false;
         newThemeDraft = null;
-        titlebarThemeWheelOpen = false;
         if (themeId) setTheme(themeId);
       });
     });
-    toolbar.querySelector("[data-titlebar-theme-new]")?.addEventListener("click", () => {
-      titlebarThemeMenuOpen = true;
-      titlebarThemeWheelOpen = true;
-      releaseNotesOpen = false;
+    toolbar.querySelector("[data-appearance-accent-new]")?.addEventListener("click", () => {
       newThemeDraft = makeThemeDraft();
       render();
-      queueMicrotask(() => shadow.querySelector("[data-titlebar-theme-draft-name]")?.focus());
+      queueMicrotask(() => shadow.querySelector("[data-appearance-draft-name]")?.focus());
     });
-    toolbar.querySelectorAll("[data-titlebar-theme-delete]").forEach((button) => {
+    toolbar.querySelectorAll("[data-appearance-accent-delete]").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        const themeId = button.getAttribute("data-titlebar-theme-delete");
+        const themeId = button.getAttribute("data-appearance-accent-delete");
         if (themeId) deleteCustomTheme(themeId);
       });
     });
-    toolbar.querySelector("[data-titlebar-theme-wheel-toggle]")?.addEventListener("click", () => {
-      titlebarThemeWheelOpen = !titlebarThemeWheelOpen;
-      render();
-    });
-    toolbar.querySelectorAll("[data-titlebar-theme-preset]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const accent = button.getAttribute("data-titlebar-theme-preset");
-        if (!accent) return;
-        newThemeDraft = syncThemeDraftAccent(newThemeDraft || makeThemeDraft(), accent);
-        titlebarThemeWheelOpen = true;
-        render();
-      });
-    });
-    toolbar.querySelector("[data-titlebar-theme-wheel]")?.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-      newThemeDraft = syncThemeDraftAccent(
-        newThemeDraft || makeThemeDraft(),
-        accentFromWheelPointer(event, event.currentTarget),
-      );
-      render();
-    });
-    toolbar.querySelector("[data-titlebar-theme-wheel]")?.addEventListener("pointermove", (event) => {
-      if (event.buttons !== 1) return;
-      newThemeDraft = syncThemeDraftAccent(
-        newThemeDraft || makeThemeDraft(),
-        accentFromWheelPointer(event, event.currentTarget),
-      );
-      render();
-    });
-    toolbar.querySelector("[data-titlebar-theme-draft-hex]")?.addEventListener("input", (event) => {
-      const value = String(event.target.value || "").toUpperCase();
-      const normalized = normalizeHexColor(value);
-      newThemeDraft = {
-        ...(newThemeDraft || makeThemeDraft()),
-        hexInput: value,
-      };
-      if (normalized) {
-        newThemeDraft = syncThemeDraftAccent(newThemeDraft, normalized);
-      }
-      render();
-      queueMicrotask(() => {
-        const input = shadow.querySelector("[data-titlebar-theme-draft-hex]");
-        if (input) {
-          input.focus();
-          input.setSelectionRange(input.value.length, input.value.length);
-        }
-      });
-    });
-    toolbar.querySelectorAll("[data-titlebar-theme-draft-rgb]").forEach((input) => {
+    toolbar.querySelectorAll("[data-appearance-accent-picker]").forEach((input) => {
       input.addEventListener("input", (event) => {
-        const channel = input.getAttribute("data-titlebar-theme-draft-rgb");
-        const value = sanitizeRgbInput(event.target.value);
-        const draft = newThemeDraft || makeThemeDraft();
-        const rgbInput = {
-          ...draft.rgbInput,
-          [channel]: value,
-        };
-        newThemeDraft = { ...draft, rgbInput };
-        const rgb = parseRgbInput(rgbInput);
-        if (rgb) {
-          newThemeDraft = syncThemeDraftAccent(newThemeDraft, rgbToHex(rgb.r, rgb.g, rgb.b));
-        }
-        render();
-        queueMicrotask(() => {
-          const nextInput = shadow.querySelector(`[data-titlebar-theme-draft-rgb="${channel}"]`);
-          if (nextInput) {
-            nextInput.focus();
-            nextInput.setSelectionRange(nextInput.value.length, nextInput.value.length);
-          }
-        });
+        const themeId = input.getAttribute("data-appearance-accent-picker");
+        const accent = event.target.value;
+        if (themeId && accent) updateCustomThemeAccent(themeId, accent);
       });
     });
-    toolbar.querySelector("[data-titlebar-theme-draft-name]")?.addEventListener("input", (event) => {
+    toolbar.querySelector("[data-appearance-draft-picker]")?.addEventListener("input", (event) => {
+      const accent = normalizeHexColor(event.target.value);
+      if (accent) {
+        newThemeDraft = syncThemeDraftAccent(newThemeDraft || makeThemeDraft(), accent);
+      }
+    });
+    toolbar.querySelector("[data-appearance-draft-name]")?.addEventListener("input", (event) => {
       newThemeDraft = {
         ...(newThemeDraft || makeThemeDraft()),
         name: event.target.value,
       };
     });
-    toolbar.querySelector("[data-titlebar-theme-draft-name]")?.addEventListener("keydown", (event) => {
+    toolbar.querySelector("[data-appearance-draft-name]")?.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
         if (newThemeDraft) createCustomTheme(newThemeDraft.name, newThemeDraft.accent);
@@ -4853,29 +4236,25 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       if (event.key === "Escape") {
         event.preventDefault();
         newThemeDraft = null;
-        titlebarThemeWheelOpen = false;
         render();
       }
     });
-    toolbar.querySelector("[data-titlebar-theme-create]")?.addEventListener("click", () => {
+    toolbar.querySelector("[data-appearance-draft-create]")?.addEventListener("click", () => {
       if (newThemeDraft) createCustomTheme(newThemeDraft.name, newThemeDraft.accent);
     });
-    toolbar.querySelector("[data-titlebar-theme-draft-cancel]")?.addEventListener("click", () => {
+    toolbar.querySelector("[data-appearance-draft-cancel]")?.addEventListener("click", () => {
       newThemeDraft = null;
-      titlebarThemeWheelOpen = false;
       render();
     });
     toolbar.querySelector("[data-titlebar-mode]")?.addEventListener("click", () => {
-      titlebarThemeMenuOpen = false;
+      titlebarAppearanceOpen = false;
       newThemeDraft = null;
-      titlebarThemeWheelOpen = false;
       releaseNotesOpen = false;
       setMode(nextModeId());
     });
     toolbar.querySelector("[data-titlebar-language]")?.addEventListener("click", () => {
-      titlebarThemeMenuOpen = false;
+      titlebarAppearanceOpen = false;
       newThemeDraft = null;
-      titlebarThemeWheelOpen = false;
       releaseNotesOpen = false;
       setLanguage(nextLanguageId());
     });
@@ -4889,15 +4268,13 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
     });
     toolbar.querySelector("[data-titlebar-update]")?.addEventListener("click", () => {
       if (releaseUpdateAvailable()) {
-        titlebarThemeMenuOpen = false;
+        titlebarAppearanceOpen = false;
         newThemeDraft = null;
-        titlebarThemeWheelOpen = false;
         releaseNotesOpen = !releaseNotesOpen;
         render();
       } else {
-        titlebarThemeMenuOpen = false;
+        titlebarAppearanceOpen = false;
         newThemeDraft = null;
-        titlebarThemeWheelOpen = false;
         releaseNotesOpen = false;
         checkDesktopRelease();
       }
@@ -5238,13 +4615,11 @@ const WORKSPACE_SETTINGS_SCRIPT: &str = r#"
       closeServiceLogViewer();
       return true;
     }
-	    if (!titlebarThemeMenuOpen && !titlebarStyleMenuOpen && !releaseNotesOpen) return false;
-    if (titlebarThemeMenuOpen) {
+	    if (!titlebarAppearanceOpen && !releaseNotesOpen) return false;
+    if (titlebarAppearanceOpen) {
       newThemeDraft = null;
-      titlebarThemeWheelOpen = false;
     }
-    titlebarThemeMenuOpen = false;
-    titlebarStyleMenuOpen = false;
+    titlebarAppearanceOpen = false;
     releaseNotesOpen = false;
     render();
     return true;
@@ -5365,14 +4740,14 @@ mod tests {
 
         assert!(script.contains("data-titlebar-service"));
         assert!(script.contains("data-titlebar-log"));
-        assert!(script.contains("data-titlebar-theme"));
+        assert!(script.contains("data-appearance-toggle"));
         assert!(script.contains("data-titlebar-mode"));
         assert!(script.contains("data-titlebar-language"));
         assert!(script.contains("data-titlebar-update"));
         assert!(script.contains("titlebar-theme-button"));
-        assert!(script.contains("titlebar-theme-menu"));
-        assert!(script.contains("titlebar-theme-option"));
-        assert!(script.contains("data-titlebar-theme-new"));
+        assert!(script.contains("appearance-panel"));
+        assert!(script.contains("appearance-accent-dot"));
+        assert!(script.contains("data-appearance-accent-new"));
         assert!(script.contains("titlebarThemeSwatch"));
         assert!(script.contains("#ffd701"));
         assert!(script.contains("width: 100%;"));
@@ -5406,14 +4781,14 @@ mod tests {
         assert!(
             script.contains("transform: translate3d(0, var(--slock-desktop-titlebar-height), 0)")
         );
-        assert!(script.contains("data-titlebar-theme-wheel-toggle"));
-        assert!(script.contains("data-titlebar-theme-wheel"));
-        assert!(script.contains("accentFromWheelPointer"));
-        assert!(script.contains("titlebar-accent-wheel-large"));
-        assert!(script.contains("data-titlebar-theme-draft-hex"));
-        assert!(script.contains("data-titlebar-theme-draft-rgb"));
-        assert!(script.contains("data-titlebar-theme-create"));
-        assert!(script.contains("data-titlebar-theme-delete"));
+        assert!(script.contains("data-appearance-accent-option"));
+        assert!(script.contains("data-appearance-draft-picker"));
+        assert!(script.contains("appearance-accent-picker"));
+        assert!(script.contains("appearance-style-block"));
+        assert!(script.contains("data-appearance-draft-name"));
+        assert!(!script.contains("data-titlebar-theme-draft-rgb"));
+        assert!(script.contains("data-appearance-draft-create"));
+        assert!(script.contains("data-appearance-accent-delete"));
         assert!(script.contains("create_custom_theme"));
         assert!(script.contains("delete_custom_theme"));
         assert!(script.contains("newThemeDraft = makeThemeDraft();"));
