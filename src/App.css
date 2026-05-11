@@ -174,7 +174,7 @@ body:has(.loading-shell),
   padding: 0 4px;
   border-radius: var(--radius-pill, 999px);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 0.62rem;
   font-weight: 700;
   line-height: 1;
@@ -293,7 +293,7 @@ body:has(.loading-shell),
   text-align: center;
   border-radius: var(--radius-pill, 999px);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   padding: 0 4px;
 }
 
@@ -835,7 +835,7 @@ body:has(.loading-shell),
   text-align: center;
   border-radius: var(--radius-pill, 999px);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   padding: 0 5px;
 }
 
@@ -1001,7 +1001,7 @@ body:has(.loading-shell),
   border-radius: var(--radius-xs, 8px);
   padding: 6px 14px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font: inherit;
   font-size: 0.76rem;
   font-weight: 600;
@@ -1174,7 +1174,7 @@ body:has(.loading-shell),
   border: none;
   border-radius: var(--radius-pill, 999px);
   background: var(--accent);
-  color: white;
+  color: var(--on-accent, #fff);
   font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
@@ -1232,7 +1232,7 @@ body:has(.loading-shell),
   border: none;
   border-radius: var(--radius-xs, 8px);
   background: var(--accent);
-  color: white;
+  color: var(--on-accent, #fff);
   font-size: 0.68rem;
   font-weight: 600;
   cursor: pointer;
@@ -1761,7 +1761,7 @@ body:has(.loading-shell),
 
 .tiny-button.accent {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-color: transparent;
 }
 
@@ -2106,7 +2106,7 @@ body:has(.loading-shell),
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
   border-radius: var(--radius-pill, 999px);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font: inherit;
   cursor: pointer;
   transition:
@@ -3043,7 +3043,7 @@ body:has(.loading-shell),
 
 .computer-create-action.primary {
   background: var(--accent, var(--surface-strong));
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-color: transparent;
 }
 
@@ -3054,7 +3054,7 @@ body:has(.loading-shell),
 .computer-create-machine-name {
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  color: var(--text);
   margin: 0 0 8px;
 }
 
@@ -3066,7 +3066,7 @@ body:has(.loading-shell),
   font-family: var(--font-family-mono, 'SF Mono', 'Menlo', 'Consolas', monospace);
   font-size: 11px;
   line-height: 1.5;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  color: var(--muted);
   word-break: break-all;
   white-space: pre-wrap;
   margin: 0 0 12px;
@@ -3200,7 +3200,7 @@ body:has(.loading-shell),
   appearance: none;
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font: inherit;
   font-size: 0.75rem;
   font-weight: 600;
