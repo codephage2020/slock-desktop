@@ -472,6 +472,64 @@ struct DashboardAgent {
     updated_at: Option<String>,
 }
 
+// ── Agent creation types ────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentListItem {
+    id: String,
+    name: String,
+    #[serde(default)]
+    status: String,
+    #[serde(default, alias = "display_name")]
+    display_name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default, alias = "updated_at")]
+    updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentDetail {
+    id: String,
+    name: String,
+    #[serde(default)]
+    status: String,
+    #[serde(default, alias = "display_name")]
+    display_name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    instructions: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    max_turns: Option<u32>,
+    #[serde(default, alias = "channel_id")]
+    channel_id: Option<String>,
+    #[serde(default, alias = "machine_id")]
+    machine_id: Option<String>,
+    #[serde(default, alias = "updated_at")]
+    updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateAgentResponse {
+    #[serde(flatten)]
+    agent: AgentListItem,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MachineListItem {
+    id: String,
+    name: String,
+    #[serde(default)]
+    status: String,
+}
+
 #[derive(Debug, Clone)]
 struct MessageReminderConnection {
     key: String,
@@ -3296,6 +3354,311 @@ fn start_agent(
     }
 
     Ok(())
+}
+
+// ── Agent creation commands ─────────────────────────────────────────
+
+#[tauri::command]
+fn fetch_agents(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<Vec<AgentListItem>, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    load_authenticated_json::<Vec<AgentListItem>>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/agents"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+}
+
+#[tauri::command]
+fn fetch_agent_detail(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    agent_id: String,
+) -> Result<AgentDetail, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+    if agent_id.trim().is_empty() {
+        return Err("Agent ID is required".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    load_authenticated_json::<AgentDetail>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/agents/{agent_id}"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )
+}
+
+#[tauri::command]
+fn create_agent(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+    name: String,
+    display_name: Option<String>,
+    machine_id: String,
+    instructions: Option<String>,
+    model: Option<String>,
+    max_turns: Option<u32>,
+    channel_id: Option<String>,
+) -> Result<AgentListItem, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+    if name.trim().is_empty() {
+        return Err("Agent name is required".to_string());
+    }
+    if machine_id.trim().is_empty() {
+        return Err("Machine (computer) ID is required".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    let mut body = serde_json::json!({
+        "name": name.trim(),
+        "machineId": machine_id.trim(),
+    });
+    if let Some(ref dn) = display_name {
+        if !dn.trim().is_empty() {
+            body["displayName"] = serde_json::json!(dn.trim());
+        }
+    }
+    if let Some(ref inst) = instructions {
+        if !inst.trim().is_empty() {
+            body["instructions"] = serde_json::json!(inst.trim());
+        }
+    }
+    if let Some(ref m) = model {
+        if !m.trim().is_empty() {
+            body["model"] = serde_json::json!(m.trim());
+        }
+    }
+    if let Some(turns) = max_turns {
+        body["maxTurns"] = serde_json::json!(turns);
+    }
+    if let Some(ref ch) = channel_id {
+        if !ch.trim().is_empty() {
+            body["channelId"] = serde_json::json!(ch.trim());
+        }
+    }
+
+    load_authenticated_json::<AgentListItem>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .post(format!("{api_root}/agents"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+                .json(&body)
+        },
+    )
+}
+
+#[tauri::command]
+fn fetch_machines(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    server_slug: String,
+) -> Result<Vec<MachineListItem>, String> {
+    let slug = server_slug.trim();
+    if slug.is_empty() {
+        return Err("No server selected".to_string());
+    }
+
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?
+        .service
+        .clone();
+
+    let server_id = {
+        let runtime = state
+            .service
+            .lock()
+            .map_err(|_| "Unable to lock service runtime".to_string())?;
+        runtime
+            .cached_servers
+            .iter()
+            .find(|s| s.slug == slug)
+            .map(|s| s.id.clone())
+            .ok_or_else(|| format!("Server '{slug}' not found"))?
+    };
+
+    let server_url = settings.server_url.clone();
+    let api_root = api_base_url(&server_url);
+
+    let payload = load_authenticated_json::<serde_json::Value>(
+        &app,
+        &state,
+        &server_url,
+        |client, access_token| {
+            client
+                .get(format!("{api_root}/servers/{server_id}/machines"))
+                .header("X-Server-Id", &server_id)
+                .bearer_auth(access_token)
+        },
+    )?;
+
+    // API may return a bare array or { machines: [...] } envelope
+    if payload.is_array() {
+        serde_json::from_value::<Vec<MachineListItem>>(payload)
+            .map_err(|err| format!("Failed to parse machine list: {err}"))
+    } else {
+        #[derive(Deserialize)]
+        struct Envelope {
+            #[serde(default)]
+            machines: Vec<MachineListItem>,
+        }
+        serde_json::from_value::<Envelope>(payload)
+            .map(|e| e.machines)
+            .map_err(|err| format!("Failed to parse machine list envelope: {err}"))
+    }
+}
+
+// ── Agent template CRUD (local storage) ─────────────────────────────
+
+#[tauri::command]
+fn get_agent_templates(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<Vec<config::AgentTemplate>, String> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+    Ok(settings.agent_templates.clone())
+}
+
+#[tauri::command]
+fn save_agent_template(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    template: config::AgentTemplate,
+) -> Result<(), String> {
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+
+    if let Some(existing) = settings.agent_templates.iter_mut().find(|t| t.id == template.id) {
+        *existing = template;
+    } else {
+        settings.agent_templates.push(template);
+    }
+
+    save_settings(&app, &settings)
+}
+
+#[tauri::command]
+fn delete_agent_template(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    id: String,
+) -> Result<(), String> {
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Unable to lock desktop settings".to_string())?;
+
+    let before = settings.agent_templates.len();
+    settings.agent_templates.retain(|t| t.id != id);
+    if settings.agent_templates.len() == before {
+        return Err(format!("Template '{id}' not found"));
+    }
+
+    save_settings(&app, &settings)
 }
 
 // ── Inbox commands ───────────────────────────────────────────────────
@@ -9551,7 +9914,14 @@ pub fn run() {
             check_server_machines,
             open_computer_create_page,
             prepare_daemon_command,
-            get_socket_auth
+            get_socket_auth,
+            fetch_agents,
+            fetch_agent_detail,
+            create_agent,
+            fetch_machines,
+            get_agent_templates,
+            save_agent_template,
+            delete_agent_template
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

@@ -106,6 +106,8 @@ pub struct AppSettings {
     pub session: SessionSettings,
     #[serde(default)]
     pub service: ServiceSettings,
+    #[serde(default)]
+    pub agent_templates: Vec<AgentTemplate>,
 }
 
 impl Default for AppSettings {
@@ -119,8 +121,35 @@ impl Default for AppSettings {
             language: default_language(),
             session: SessionSettings::default(),
             service: ServiceSettings::default(),
+            agent_templates: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentTemplate {
+    pub id: String,
+    pub name: String,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_agent_id: Option<String>,
+    pub config: AgentTemplateConfig,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentTemplateConfig {
+    #[serde(default)]
+    pub instructions: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub max_turns: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
