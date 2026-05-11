@@ -519,6 +519,14 @@ struct AgentDetail {
     machine_id: Option<String>,
     #[serde(default, alias = "updated_at")]
     updated_at: Option<String>,
+    #[serde(default, alias = "environment_variables")]
+    environment_variables: Option<Vec<EnvVar>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct EnvVar {
+    key: String,
+    value: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3468,6 +3476,7 @@ fn create_agent(
     model: Option<String>,
     max_turns: Option<u32>,
     channel_id: Option<String>,
+    environment_variables: Option<Vec<EnvVar>>,
 ) -> Result<AgentListItem, String> {
     let slug = server_slug.trim();
     if slug.is_empty() {
@@ -3528,6 +3537,11 @@ fn create_agent(
     if let Some(ref ch) = channel_id {
         if !ch.trim().is_empty() {
             body["channelId"] = serde_json::json!(ch.trim());
+        }
+    }
+    if let Some(ref env_vars) = environment_variables {
+        if !env_vars.is_empty() {
+            body["environmentVariables"] = serde_json::json!(env_vars);
         }
     }
 

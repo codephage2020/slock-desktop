@@ -183,6 +183,10 @@ const COPY = {
     agentTemplateDeleting: 'Deleting…',
     agentTemplateTurns: 'turns',
     agentTemplateUntitled: 'Untitled',
+    agentEnvVars: 'Environment Variables',
+    agentEnvVarsKey: 'Key',
+    agentEnvVarsValue: 'Value',
+    agentEnvVarsAdd: '+ Add Variable',
     messageReminderTitle: 'New message',
     messageReminderOpen: 'Open',
     messageReminderDismiss: 'Dismiss',
@@ -407,6 +411,10 @@ const COPY = {
     agentTemplateDeleting: '删除中…',
     agentTemplateTurns: '轮',
     agentTemplateUntitled: '未命名',
+    agentEnvVars: '环境变量',
+    agentEnvVarsKey: '键',
+    agentEnvVarsValue: '值',
+    agentEnvVarsAdd: '+ 添加变量',
     messageReminderTitle: '新消息',
     messageReminderOpen: '打开',
     messageReminderDismiss: '关闭',
@@ -645,6 +653,7 @@ function App() {
     channelId: '',
     templateId: '',
     sourceAgentId: '',
+    envVars: [] as { key: string; value: string }[],
   })
   const [agentCreateAdvanced, setAgentCreateAdvanced] = useState(false)
   const [agentCreateBusy, setAgentCreateBusy] = useState(false)
@@ -1864,6 +1873,7 @@ function App() {
       channelId: '',
       templateId: '',
       sourceAgentId: '',
+      envVars: [],
     })
     setAgentCreateMode('scratch')
     setAgentCreateAdvanced(false)
@@ -1879,6 +1889,7 @@ function App() {
       model: tpl.config.model,
       maxTurns: tpl.config.maxTurns,
       channelId: tpl.config.channelId ?? '',
+      envVars: tpl.config.envVars?.map((v) => ({ ...v })) ?? [],
     }))
   }
 
@@ -1893,6 +1904,7 @@ function App() {
         model: detail.model ?? '',
         maxTurns: detail.maxTurns ?? 0,
         channelId: detail.channelId ?? '',
+        envVars: detail.environmentVariables?.map((v) => ({ ...v })) ?? [],
       }))
     } catch {
       // keep form as-is
@@ -1911,6 +1923,7 @@ function App() {
         model: agentCreateForm.model || undefined,
         maxTurns: agentCreateForm.maxTurns > 0 ? agentCreateForm.maxTurns : undefined,
         channelId: agentCreateForm.channelId || undefined,
+        environmentVariables: agentCreateForm.envVars.length > 0 ? agentCreateForm.envVars : undefined,
       })
       setAgentPanelOpen(false)
       setAgentPanelView('menu')
@@ -1933,6 +1946,7 @@ function App() {
         model: agentCreateForm.model,
         maxTurns: agentCreateForm.maxTurns,
         channelId: agentCreateForm.channelId || null,
+        envVars: agentCreateForm.envVars.length > 0 ? agentCreateForm.envVars : null,
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1983,7 +1997,7 @@ function App() {
       name: '',
       source: 'custom',
       sourceAgentId: null,
-      config: { instructions: '', model: '', maxTurns: 0, channelId: null },
+      config: { instructions: '', model: '', maxTurns: 0, channelId: null, envVars: null },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -2005,7 +2019,7 @@ function App() {
       name: '',
       source: 'from-agent',
       sourceAgentId: null,
-      config: { instructions: '', model: '', maxTurns: 0, channelId: null },
+      config: { instructions: '', model: '', maxTurns: 0, channelId: null, envVars: null },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -2028,6 +2042,7 @@ function App() {
                 model: detail.model ?? '',
                 maxTurns: detail.maxTurns ?? 0,
                 channelId: detail.channelId ?? null,
+                envVars: detail.environmentVariables?.map((v) => ({ ...v })) ?? null,
               },
             }
           : prev,
@@ -3067,7 +3082,7 @@ function App() {
                         }}
                       >
                         <option value="">{copy.agentSelectAgent}</option>
-                        {agentList.map((a) => (
+                        {agentList.filter((a) => a.status !== 'deleted').map((a) => (
                           <option key={a.id} value={a.id}>{a.displayName || a.name}</option>
                         ))}
                       </select>
@@ -3162,6 +3177,57 @@ function App() {
                           onChange={(e) => setAgentCreateForm((prev) => ({ ...prev, channelId: e.target.value }))}
                           placeholder={copy.agentChannel}
                         />
+                      </div>
+
+                      {/* Environment Variables */}
+                      <div className="agent-field">
+                        <label className="agent-label">{copy.agentEnvVars}</label>
+                        {agentCreateForm.envVars.map((ev, idx) => (
+                          <div key={idx} className="agent-env-row">
+                            <input
+                              className="agent-input agent-env-key"
+                              value={ev.key}
+                              onChange={(e) => {
+                                const next = [...agentCreateForm.envVars]
+                                next[idx] = { ...next[idx], key: e.target.value }
+                                setAgentCreateForm((prev) => ({ ...prev, envVars: next }))
+                              }}
+                              placeholder={copy.agentEnvVarsKey}
+                            />
+                            <input
+                              className="agent-input agent-env-value"
+                              value={ev.value}
+                              onChange={(e) => {
+                                const next = [...agentCreateForm.envVars]
+                                next[idx] = { ...next[idx], value: e.target.value }
+                                setAgentCreateForm((prev) => ({ ...prev, envVars: next }))
+                              }}
+                              placeholder={copy.agentEnvVarsValue}
+                            />
+                            <button
+                              type="button"
+                              className="agent-env-delete"
+                              onClick={() => {
+                                const next = agentCreateForm.envVars.filter((_, i) => i !== idx)
+                                setAgentCreateForm((prev) => ({ ...prev, envVars: next }))
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className="agent-env-add"
+                          onClick={() =>
+                            setAgentCreateForm((prev) => ({
+                              ...prev,
+                              envVars: [...prev.envVars, { key: '', value: '' }],
+                            }))
+                          }
+                        >
+                          {copy.agentEnvVarsAdd}
+                        </button>
                       </div>
                     </div>
                   ) : null}
@@ -3295,7 +3361,7 @@ function App() {
                         }}
                       >
                         <option value="">{copy.agentSelectAgent}</option>
-                        {agentList.map((a) => (
+                        {agentList.filter((a) => a.status !== 'deleted').map((a) => (
                           <option key={a.id} value={a.id}>{a.displayName || a.name}</option>
                         ))}
                       </select>
@@ -3393,6 +3459,72 @@ function App() {
                       }
                       placeholder={copy.agentChannel}
                     />
+                  </div>
+
+                  {/* Environment Variables */}
+                  <div className="agent-field">
+                    <label className="agent-label">{copy.agentEnvVars}</label>
+                    {(agentEditTemplate.config.envVars ?? []).map((ev, idx) => (
+                      <div key={idx} className="agent-env-row">
+                        <input
+                          className="agent-input agent-env-key"
+                          value={ev.key}
+                          onChange={(e) =>
+                            setAgentEditTemplate((prev) => {
+                              if (!prev) return prev
+                              const next = [...(prev.config.envVars ?? [])]
+                              next[idx] = { ...next[idx], key: e.target.value }
+                              return { ...prev, config: { ...prev.config, envVars: next } }
+                            })
+                          }
+                          placeholder={copy.agentEnvVarsKey}
+                        />
+                        <input
+                          className="agent-input agent-env-value"
+                          value={ev.value}
+                          onChange={(e) =>
+                            setAgentEditTemplate((prev) => {
+                              if (!prev) return prev
+                              const next = [...(prev.config.envVars ?? [])]
+                              next[idx] = { ...next[idx], value: e.target.value }
+                              return { ...prev, config: { ...prev.config, envVars: next } }
+                            })
+                          }
+                          placeholder={copy.agentEnvVarsValue}
+                        />
+                        <button
+                          type="button"
+                          className="agent-env-delete"
+                          onClick={() =>
+                            setAgentEditTemplate((prev) => {
+                              if (!prev) return prev
+                              const next = (prev.config.envVars ?? []).filter((_, i) => i !== idx)
+                              return { ...prev, config: { ...prev.config, envVars: next.length > 0 ? next : null } }
+                            })
+                          }
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="agent-env-add"
+                      onClick={() =>
+                        setAgentEditTemplate((prev) => {
+                          if (!prev) return prev
+                          return {
+                            ...prev,
+                            config: {
+                              ...prev.config,
+                              envVars: [...(prev.config.envVars ?? []), { key: '', value: '' }],
+                            },
+                          }
+                        })
+                      }
+                    >
+                      {copy.agentEnvVarsAdd}
+                    </button>
                   </div>
 
                   <div className="agent-actions">

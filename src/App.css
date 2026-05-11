@@ -1752,6 +1752,60 @@ body:has(.loading-shell),
   padding-left: 4px;
 }
 
+/* Environment variables editor */
+.agent-env-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.agent-env-key {
+  flex: 2;
+  min-width: 0;
+}
+
+.agent-env-value {
+  flex: 3;
+  min-width: 0;
+}
+
+.agent-env-delete {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs, 4px);
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.agent-env-delete:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.agent-env-add {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.agent-env-add:hover {
+  text-decoration: underline;
+}
+
 /* Actions row */
 .agent-actions {
   display: flex;

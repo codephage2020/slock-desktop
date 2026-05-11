@@ -640,6 +640,11 @@ export interface AgentListItem {
   updatedAt: string | null
 }
 
+export interface EnvVar {
+  key: string
+  value: string
+}
+
 export interface AgentDetail {
   id: string
   name: string
@@ -652,6 +657,7 @@ export interface AgentDetail {
   channelId: string | null
   machineId: string | null
   updatedAt: string | null
+  environmentVariables: EnvVar[] | null
 }
 
 export interface MachineListItem {
@@ -665,6 +671,7 @@ export interface AgentTemplateConfig {
   model: string
   maxTurns: number
   channelId: string | null
+  envVars: EnvVar[] | null
 }
 
 export interface AgentTemplate {
@@ -695,6 +702,7 @@ export async function createAgent(
     model?: string
     maxTurns?: number
     channelId?: string
+    environmentVariables?: EnvVar[]
   }
 ) {
   return invoke<AgentListItem>('create_agent', {
@@ -706,6 +714,7 @@ export async function createAgent(
     model: params.model,
     maxTurns: params.maxTurns,
     channelId: params.channelId,
+    environmentVariables: params.environmentVariables,
   })
 }
 
