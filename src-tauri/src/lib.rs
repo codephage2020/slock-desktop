@@ -11,7 +11,9 @@ use config::{
 };
 use reqwest::blocking::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::Write;
+#[cfg(desktop)]
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 #[cfg(desktop)]
 use std::process::{Child, Stdio};
 #[cfg(unix)]
@@ -30,10 +32,11 @@ use std::{
 };
 use tauri::{
     webview::PageLoadEvent,
-    window::Color,
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, State, Theme, Url,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, State, Url,
     WebviewUrl, WebviewWindowBuilder,
 };
+#[cfg(desktop)]
+use tauri::{window::Color, Theme};
 #[cfg(desktop)]
 use tauri::{
     menu::{MenuBuilder, SubmenuBuilder},
@@ -5524,38 +5527,59 @@ fn apply_theme_to_workspace(
 fn apply_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
     apply_native_window_theme(window, theme_mode);
 
-    let background = if effective_window_dark(window, theme_mode) {
-        Color(37, 38, 35, 255)
-    } else {
-        Color(255, 255, 255, 255)
-    };
-    let _ = window.set_background_color(Some(background));
+    #[cfg(desktop)]
+    {
+        let background = if effective_window_dark(window, theme_mode) {
+            Color(37, 38, 35, 255)
+        } else {
+            Color(255, 255, 255, 255)
+        };
+        let _ = window.set_background_color(Some(background));
+    }
 }
 
 fn apply_launcher_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
     apply_native_window_theme(window, theme_mode);
-    let background = if effective_window_dark(window, theme_mode) {
-        Color(31, 31, 28, 255)
-    } else {
-        Color(247, 247, 245, 255)
-    };
-    let _ = window.set_background_color(Some(background));
+    #[cfg(desktop)]
+    {
+        let background = if effective_window_dark(window, theme_mode) {
+            Color(31, 31, 28, 255)
+        } else {
+            Color(247, 247, 245, 255)
+        };
+        let _ = window.set_background_color(Some(background));
+    }
 }
 
 fn effective_window_dark(window: &tauri::WebviewWindow, theme_mode: &str) -> bool {
     let normalized_mode = theme::normalize_mode(theme_mode);
-    normalized_mode == "dark"
-        || (normalized_mode == "system" && matches!(window.theme(), Ok(Theme::Dark)))
+    if normalized_mode == "dark" {
+        return true;
+    }
+    #[cfg(desktop)]
+    if normalized_mode == "system" && matches!(window.theme(), Ok(Theme::Dark)) {
+        return true;
+    }
+    #[cfg(not(desktop))]
+    let _ = window;
+    false
 }
 
 fn apply_native_window_theme(window: &tauri::WebviewWindow, theme_mode: &str) {
-    let normalized_mode = theme::normalize_mode(theme_mode);
-    let native_theme = match normalized_mode {
-        "light" => Some(Theme::Light),
-        "dark" => Some(Theme::Dark),
-        _ => None,
-    };
-    let _ = window.set_theme(native_theme);
+    #[cfg(desktop)]
+    {
+        let normalized_mode = theme::normalize_mode(theme_mode);
+        let native_theme = match normalized_mode {
+            "light" => Some(Theme::Light),
+            "dark" => Some(Theme::Dark),
+            _ => None,
+        };
+        let _ = window.set_theme(native_theme);
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (window, theme_mode);
+    }
 }
 
 fn apply_window_language(
@@ -5565,17 +5589,24 @@ fn apply_window_language(
     workspace: bool,
 ) {
     let resolved_language = resolve_desktop_language(language);
-    let title = match (resolved_language, workspace) {
-        ("zh-CN", true) => "Slock 工作区",
-        ("zh-CN", false) => "slock-desktop",
-        (_, true) => "Slock Workspace",
-        (_, false) => "slock-desktop",
-    };
-    let _ = window.set_title(title);
+    #[cfg(desktop)]
+    {
+        let title = match (resolved_language, workspace) {
+            ("zh-CN", true) => "Slock 工作区",
+            ("zh-CN", false) => "slock-desktop",
+            (_, true) => "Slock Workspace",
+            (_, false) => "slock-desktop",
+        };
+        let _ = window.set_title(title);
+    }
+    #[cfg(not(desktop))]
+    let _ = (window, workspace);
     #[cfg(desktop)]
     if let Err(err) = apply_native_menu(app, resolved_language) {
         log::warn!("failed to apply localized native menu: {err}");
     }
+    #[cfg(not(desktop))]
+    let _ = app;
 }
 
 #[cfg(desktop)]
